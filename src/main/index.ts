@@ -6,6 +6,7 @@ import { gitInfo } from './git/gitInfo'
 import { buildHandlers } from './ipc/handlers'
 import { registerHandlers } from './ipc/register'
 import { installMenu } from './menu'
+import { isAllowedNavigation } from './navigation'
 import { PtyManager } from './pty/PtyManager'
 import { spawnShell } from './pty/spawnShell'
 import { createStores } from './store/stores'
@@ -69,6 +70,12 @@ function createWindow(): BrowserWindow {
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
+  })
+  win.webContents.on('will-navigate', (event, url) => {
+    if (!isAllowedNavigation(url, win.webContents.getURL())) event.preventDefault()
+  })
+  win.webContents.on('will-redirect', (event, url) => {
+    if (!isAllowedNavigation(url, win.webContents.getURL())) event.preventDefault()
   })
   if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL)
   else void win.loadFile(join(__dirname, '../renderer/index.html'))
