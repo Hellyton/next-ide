@@ -9,6 +9,7 @@ import { useCallback, type FunctionComponent } from 'react'
 import type { PanelParams } from '@shared/models'
 import { AgentStubPanel } from '../panels/agent/AgentStubPanel'
 import { TerminalPanel } from '../panels/terminal/TerminalPanel'
+import { disposeTerminal } from '../panels/terminal/terminalRegistry'
 import { useSessions } from '../stores/sessionsStore'
 import { useDock } from './dockStore'
 import { PanelTab } from './PanelTab'
@@ -24,6 +25,10 @@ const removedListeners: RemovedListener[] = []
 export function registerPanelRemovedListener(fn: RemovedListener): void {
   removedListeners.push(fn)
 }
+
+registerPanelRemovedListener((panelId, params) => {
+  if (params?.type === 'terminal') disposeTerminal(panelId)
+})
 
 function Watermark() {
   return (

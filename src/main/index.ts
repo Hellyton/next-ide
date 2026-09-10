@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { EventChannel, EventMap } from '@shared/ipc-contract'
@@ -65,6 +65,10 @@ function createWindow(): BrowserWindow {
     },
   })
   win.once('ready-to-show', () => win.show())
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//.test(url)) void shell.openExternal(url)
+    return { action: 'deny' }
+  })
   if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL)
   else void win.loadFile(join(__dirname, '../renderer/index.html'))
   return win
