@@ -1,7 +1,9 @@
 import { Dock } from './dock/Dock'
+import { useDockShortcuts } from './dock/useDockShortcuts'
 import { Sidebar } from './sidebar/Sidebar'
 
 export function App() {
+  useDockShortcuts()
   return (
     <div className="grid h-full grid-cols-[280px_1fr] bg-neutral-950 text-neutral-200">
       <aside className="overflow-hidden border-r border-neutral-800" data-testid="sidebar">

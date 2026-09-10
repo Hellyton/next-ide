@@ -5,6 +5,7 @@ import type { EventChannel, EventMap } from '@shared/ipc-contract'
 import { gitInfo } from './git/gitInfo'
 import { buildHandlers } from './ipc/handlers'
 import { registerHandlers } from './ipc/register'
+import { installMenu } from './menu'
 import { PtyManager } from './pty/PtyManager'
 import { spawnShell } from './pty/spawnShell'
 import { createStores } from './store/stores'
@@ -75,6 +76,7 @@ function createWindow(): BrowserWindow {
 }
 
 void app.whenReady().then(() => {
+  installMenu()
   mainWindow = createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow()
