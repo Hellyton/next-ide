@@ -29,7 +29,9 @@ const uuid = () => crypto.randomUUID()
 export const useWorkspaces = create<WorkspaceState>()((set, get) => {
   const commit = (next: Workspace[]) => {
     set({ workspaces: next })
-    void window.api.invoke('workspace:save', next)
+    void window.api
+      .invoke('workspace:save', next)
+      .catch((err) => console.error('[next-ide] failed to save workspaces', err))
   }
   return {
     workspaces: [],
@@ -42,15 +44,23 @@ export const useWorkspaces = create<WorkspaceState>()((set, get) => {
     remove: (id) => commit(removeWorkspace(get().workspaces, id)),
     toggle: (id) => commit(toggleWorkspace(get().workspaces, id)),
     addFolder: async (workspaceId) => {
-      const path = await window.api.invoke('fs:pickFolder')
-      if (path) commit(addProjects(get().workspaces, workspaceId, [path], uuid))
+      try {
+        const path = await window.api.invoke('fs:pickFolder')
+        if (path) commit(addProjects(get().workspaces, workspaceId, [path], uuid))
+      } catch (err) {
+        console.error('[next-ide] failed to pick folder', err)
+      }
     },
     importCodeWorkspace: async () => {
-      const picked = await window.api.invoke('fs:pickWorkspaceFile')
-      if (!picked) return
-      const withWs = addWorkspace(get().workspaces, picked.name, uuid)
-      const created = withWs[withWs.length - 1]!
-      commit(addProjects(withWs, created.id, picked.paths, uuid))
+      try {
+        const picked = await window.api.invoke('fs:pickWorkspaceFile')
+        if (!picked) return
+        const withWs = addWorkspace(get().workspaces, picked.name, uuid)
+        const created = withWs[withWs.length - 1]!
+        commit(addProjects(withWs, created.id, picked.paths, uuid))
+      } catch (err) {
+        console.error('[next-ide] failed to import .code-workspace', err)
+      }
     },
     removeProject: (workspaceId, projectId) => commit(removeProject(get().workspaces, workspaceId, projectId)),
   }

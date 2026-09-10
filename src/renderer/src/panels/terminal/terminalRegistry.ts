@@ -47,7 +47,9 @@ export function attachTerminal(panelId: string, cwd: string, container: HTMLElem
     if (term.cols !== cols || term.rows !== rows) {
       cols = term.cols
       rows = term.rows
-      void window.api.invoke('pty:resize', panelId, cols, rows)
+      void window.api
+        .invoke('pty:resize', panelId, cols, rows)
+        .catch((err) => console.error('[next-ide] pty ipc failed', panelId, err))
     }
   }
 
@@ -59,8 +61,17 @@ export function attachTerminal(panelId: string, cwd: string, container: HTMLElem
     term.write(`\r\n\x1b[2m[processo encerrado: ${code}]\x1b[0m\r\n`)
     useSessions.getState().setState(panelId, 'exited')
   })
-  const input = term.onData((data) => void window.api.invoke('pty:write', panelId, data))
-  void window.api.invoke('pty:create', panelId, cwd, cols, rows)
+  const input = term.onData(
+    (data) =>
+      void window.api
+        .invoke('pty:write', panelId, data)
+        .catch((err) => console.error('[next-ide] pty ipc failed', panelId, err)),
+  )
+  window.api.invoke('pty:create', panelId, cwd, cols, rows).catch((err) => {
+    const message = err instanceof Error ? err.message : String(err)
+    term.write(`\r\n\x1b[31m[falha ao iniciar o terminal: ${message}]\x1b[0m\r\n`)
+    useSessions.getState().setState(panelId, 'error')
+  })
 
   const entry: InternalEntry = {
     term,
@@ -70,7 +81,7 @@ export function attachTerminal(panelId: string, cwd: string, container: HTMLElem
       input.dispose()
       offData()
       offExit()
-      void window.api.invoke('pty:kill', panelId)
+      void window.api.invoke('pty:kill', panelId).catch((err) => console.error('[next-ide] pty ipc failed', panelId, err))
       term.dispose()
       host.remove()
       entries.delete(panelId)
