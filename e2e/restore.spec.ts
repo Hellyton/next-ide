@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { launch } from './helpers'
@@ -16,7 +16,17 @@ test('reabrir o app restaura workspaces e painéis', async () => {
   await first.page.getByRole('button', { name: 'Adicionar pasta em ws' }).click()
   await first.page.getByRole('button', { name: `Abrir terminal em ${name}` }).click()
   await first.page.getByRole('button', { name: `Abrir Claude em ${name}` }).click()
-  await first.page.waitForTimeout(800)
+  // dockview serializes panel titles into layout.json; wait for the persisted layout
+  // to actually contain the claude panel instead of an arbitrary fixed delay.
+  await expect
+    .poll(() => {
+      try {
+        return readFileSync(join(first.userData, 'layout.json'), 'utf8')
+      } catch {
+        return ''
+      }
+    })
+    .toContain(`${name} · claude`)
   await first.app.close()
 
   const second = await launch({ userData: first.userData, env })
