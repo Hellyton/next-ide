@@ -1,4 +1,5 @@
 import type { Handlers } from '@shared/ipc-contract'
+import { sanitizeLayout } from '@shared/layout'
 import { DEFAULT_SETTINGS, type GitInfo } from '@shared/models'
 import type { PtyManager } from '../pty/PtyManager'
 import { parseCodeWorkspace } from '../store/codeWorkspace'
@@ -19,7 +20,7 @@ export function buildHandlers(d: HandlerDeps): Handlers {
     'workspace:save': (workspaces) => d.stores.workspaces.schedule(workspaces),
     'settings:get': async () => ({ ...DEFAULT_SETTINGS, ...(await d.stores.settings.read()) }),
     'settings:save': (settings) => d.stores.settings.writeNow(settings),
-    'layout:get': () => d.stores.layout.read(),
+    'layout:get': async () => sanitizeLayout(await d.stores.layout.read()),
     'layout:save': (layout) => d.stores.layout.schedule(layout),
     'fs:pickFolder': () => d.pickFolder(),
     'fs:pickWorkspaceFile': async () => {

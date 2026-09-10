@@ -12,6 +12,7 @@ import { TerminalPanel } from '../panels/terminal/TerminalPanel'
 import { disposeTerminal } from '../panels/terminal/terminalRegistry'
 import { useSessions } from '../stores/sessionsStore'
 import { useDock } from './dockStore'
+import { attachLayoutPersistence, restoreLayout } from './layoutPersistence'
 import { PanelTab } from './PanelTab'
 import { panelTitle } from './panelOptions'
 
@@ -57,6 +58,7 @@ export function Dock() {
       useSessions.getState().remove(panel.id)
       for (const fn of removedListeners) fn(panel.id, panel.params as PanelParams | undefined)
     })
+    void restoreLayout(api).then(() => attachLayoutPersistence(api))
   }, [])
 
   return (
