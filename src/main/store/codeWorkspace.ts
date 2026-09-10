@@ -1,5 +1,46 @@
 import { basename, dirname, isAbsolute, resolve } from 'node:path'
 
+/** Removes trailing commas outside strings, tracking escapes and string boundaries. */
+function removeTrailingCommas(src: string): string {
+  let out = ''
+  let inString = false
+  let i = 0
+  while (i < src.length) {
+    const c = src[i]!
+    if (inString) {
+      out += c
+      if (c === '\\') {
+        out += src[i + 1] ?? ''
+        i += 2
+        continue
+      }
+      if (c === '"') inString = false
+      i++
+      continue
+    }
+    if (c === '"') {
+      inString = true
+      out += c
+      i++
+      continue
+    }
+    if (c === ',') {
+      let j = i + 1
+      while (j < src.length && /\s/.test(src[j]!)) j++
+      if (j < src.length && (src[j] === '}' || src[j] === ']')) {
+        i = j
+        continue
+      }
+      out += c
+      i++
+      continue
+    }
+    out += c
+    i++
+  }
+  return out
+}
+
 /** Removes // and /* *\/ comments outside strings, then trailing commas. */
 export function stripJsonc(src: string): string {
   let out = ''
@@ -38,7 +79,7 @@ export function stripJsonc(src: string): string {
     out += c
     i++
   }
-  return out.replace(/,(\s*[}\]])/g, '$1')
+  return removeTrailingCommas(out)
 }
 
 export function parseCodeWorkspace(json: string, filePath: string): { name: string; paths: string[] } {

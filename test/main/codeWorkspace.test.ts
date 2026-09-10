@@ -16,6 +16,18 @@ describe('stripJsonc', () => {
       a: 'say "hi" // not comment',
     })
   })
+
+  it('does not touch commas inside strings', () => {
+    expect(JSON.parse(stripJsonc('{"a": "x,}", "b": "y, ]", "c": [1, 2,],}'))).toEqual({
+      a: 'x,}',
+      b: 'y, ]',
+      c: [1, 2],
+    })
+  })
+
+  it('removes a trailing comma followed by a comment', () => {
+    expect(JSON.parse(stripJsonc('{"a": 1, // c\n}'))).toEqual({ a: 1 })
+  })
 })
 
 describe('parseCodeWorkspace', () => {
