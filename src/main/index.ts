@@ -82,7 +82,11 @@ app.on('before-quit', (event) => {
   if (quitting) return
   event.preventDefault()
   quitting = true
-  ptys.killAll()
+  try {
+    ptys.killAll()
+  } catch (err) {
+    console.error('[next-ide] killAll failed', err)
+  }
   void Promise.allSettled([stores.workspaces.flush(), stores.layout.flush(), stores.settings.flush()]).finally(
     () => app.quit(),
   )

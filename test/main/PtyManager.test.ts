@@ -7,6 +7,7 @@ class FakePty implements PtyLike {
   written: string[] = []
   size: [number, number] | null = null
   killed = false
+  throwOnKill = false
   onData(cb: (d: string) => void) {
     this.dataCb = cb
   }
@@ -20,6 +21,7 @@ class FakePty implements PtyLike {
     this.size = [c, r]
   }
   kill() {
+    if (this.throwOnKill) throw new Error('kill failed')
     this.killed = true
   }
 }
@@ -96,5 +98,22 @@ describe('PtyManager', () => {
     mgr.create('b', '/p', 80, 24)
     mgr.killAll()
     expect(spawned.every((s) => s.pty.killed)).toBe(true)
+  })
+
+  it('kill never throws and killAll continues when a pty kill fails', () => {
+    const { mgr, spawned } = setup()
+    mgr.create('a', '/p', 80, 24)
+    mgr.create('b', '/p', 80, 24)
+    spawned[0]!.pty.throwOnKill = true
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(() => mgr.killAll()).not.toThrow()
+
+    expect(spawned[1]!.pty.killed).toBe(true)
+    expect(mgr.has('a')).toBe(false)
+    expect(mgr.has('b')).toBe(false)
+    expect(errorSpy).toHaveBeenCalledTimes(1)
+    expect(errorSpy.mock.calls[0]![0]).toBe('[next-ide] failed to kill pty')
+    errorSpy.mockRestore()
   })
 })

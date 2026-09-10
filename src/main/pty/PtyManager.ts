@@ -58,7 +58,11 @@ export class PtyManager {
     if (!entry) return
     this.entries.delete(panelId)
     entry.batcher.flush()
-    entry.proc.kill()
+    try {
+      entry.proc.kill()
+    } catch (err) {
+      console.error('[next-ide] failed to kill pty', panelId, err)
+    }
   }
 
   killAll(): void {
