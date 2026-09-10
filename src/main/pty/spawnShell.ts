@@ -1,5 +1,6 @@
 import * as pty from 'node-pty'
 import type { SpawnFn } from './PtyManager'
+import { shellEnv } from './shellEnv'
 
 export const spawnShell: SpawnFn = (cwd, cols, rows) =>
   pty.spawn(process.env.SHELL || '/bin/zsh', ['-l'], {
@@ -7,5 +8,5 @@ export const spawnShell: SpawnFn = (cwd, cols, rows) =>
     cwd,
     cols,
     rows,
-    env: { ...process.env, TERM_PROGRAM: 'next-ide' } as Record<string, string>,
+    env: shellEnv(process.env),
   })
