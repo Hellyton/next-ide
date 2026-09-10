@@ -31,6 +31,10 @@ registerPanelRemovedListener((panelId, params) => {
   if (params?.type === 'terminal') disposeTerminal(panelId)
 })
 
+// Survives StrictMode's double-invoke of onReady: only the persistence listeners attached
+// for the api that is still current get to keep running.
+let detachPersistence: (() => void) | null = null
+
 function Watermark() {
   return (
     <div className="flex h-full items-center justify-center text-sm text-neutral-600">
@@ -58,7 +62,12 @@ export function Dock() {
       useSessions.getState().remove(panel.id)
       for (const fn of removedListeners) fn(panel.id, panel.params as PanelParams | undefined)
     })
-    void restoreLayout(api).then(() => attachLayoutPersistence(api))
+    const isCurrent = () => useDock.getState().api === api
+    void restoreLayout(api, isCurrent).then((ok) => {
+      if (!ok || !isCurrent()) return
+      detachPersistence?.()
+      detachPersistence = attachLayoutPersistence(api)
+    })
   }, [])
 
   return (

@@ -21,7 +21,10 @@ export function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanel
     return () => {
       observer.disconnect()
       active.dispose()
-      entry.host.remove()
+      // A newer mount may already have re-adopted this terminal's host into its own
+      // container (e.g. under StrictMode's double-invoke); only remove it if it is
+      // still ours to remove.
+      if (entry.host.parentElement === container) entry.host.remove()
     }
   }, [api, params.projectPath])
 
