@@ -60,6 +60,9 @@ export function replacePanelParams(panelId: string, params: AgentPanelParams): v
 }
 
 export function handleAgentEvent(panelId: string, event: AgentEvent): void {
+  // Late events (e.g. the `exited` from agent:close) can arrive after the panel left the dock;
+  // applying them would resurrect a chat entry for a panel that no longer exists.
+  if (!useSessions.getState().byId[panelId]) return
   useAgents.getState().apply(panelId, event)
   if (event.kind === 'status') useSessions.getState().setState(panelId, event.state)
   if (event.kind === 'init' && event.sessionId) persistParams(panelId, { sessionId: event.sessionId })

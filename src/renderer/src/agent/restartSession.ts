@@ -1,5 +1,5 @@
 import type { AgentEvent } from '@shared/agent'
-import type { AgentPanelParams } from '@shared/models'
+import type { AgentPanelParams, SessionState } from '@shared/models'
 import type { ChatState } from './chatReducer'
 
 export type RestartSessionDeps = {
@@ -11,6 +11,8 @@ export type RestartSessionDeps = {
   currentParams(panelId: string): AgentPanelParams | undefined
   replaceParams(panelId: string, params: AgentPanelParams): void
   apply(panelId: string, event: AgentEvent): void
+  /** Mirrors the panel's state into the sessions list (close() reported `exited`). */
+  setSessionState(panelId: string, state: SessionState): void
 }
 
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
@@ -31,6 +33,7 @@ export async function restartSession(panelId: string, next: AgentPanelParams, hi
     deps.replaceParams(panelId, next)
     await deps.invoke('agent:create', panelId, next)
     if (!next.sessionId) await deps.invoke('agent:start', panelId)
+    deps.setSessionState(panelId, 'idle')
   } catch (err) {
     deps.setChat(panelId, prevChat)
     if (prevParams) deps.replaceParams(panelId, prevParams)
@@ -38,6 +41,7 @@ export async function restartSession(panelId: string, next: AgentPanelParams, hi
     if (prevParams) {
       try {
         await deps.invoke('agent:create', panelId, prevParams)
+        deps.setSessionState(panelId, 'idle')
       } catch (err2) {
         deps.apply(panelId, { kind: 'error', message: `Não foi possível trocar de sessão: ${errorText(err2)}` })
       }

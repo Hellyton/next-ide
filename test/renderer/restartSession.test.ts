@@ -13,6 +13,7 @@ function makeDeps(overrides: Partial<RestartSessionDeps> = {}): RestartSessionDe
     currentParams: vi.fn(() => undefined),
     replaceParams: vi.fn(),
     apply: vi.fn(),
+    setSessionState: vi.fn(),
     ...overrides,
   }
 }
@@ -33,6 +34,8 @@ describe('restartSession', () => {
     expect(deps.clearChat).toHaveBeenCalledWith('panel1')
     expect(deps.replaceParams).toHaveBeenCalledWith('panel1', next)
     expect(deps.apply).not.toHaveBeenCalled()
+    // close() reported `exited` for the old session; the fresh one is idle.
+    expect(deps.setSessionState).toHaveBeenCalledWith('panel1', 'idle')
   })
 
   it('loads the given history and skips agent:start when next already has a sessionId', async () => {

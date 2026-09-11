@@ -5,6 +5,7 @@ import type { AgentPanelParams } from '@shared/models'
 import { restartSession } from '../../agent/restartSession'
 import type { LocalCommand } from '../../agent/slash'
 import { currentAgentParams, replacePanelParams, selectChat, useAgents } from '../../stores/agentStore'
+import { useSessions } from '../../stores/sessionsStore'
 import { ChatView } from './ChatView'
 import { Composer } from './Composer'
 import { ResumeModal } from './ResumeModal'
@@ -57,6 +58,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
       currentParams: currentAgentParams,
       replaceParams: replacePanelParams,
       apply: (id, event) => useAgents.getState().apply(id, event),
+      setSessionState: (id, state) => useSessions.getState().setState(id, state),
     })
 
   const base = (): AgentPanelParams => {

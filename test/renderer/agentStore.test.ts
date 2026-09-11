@@ -18,6 +18,12 @@ describe('agentStore', () => {
     expect(selectChat('other')(useAgents.getState()).items).toEqual([])
   })
 
+  it('drops late events for panels that are no longer in the dock', () => {
+    handleAgentEvent('gone', { kind: 'status', state: 'exited' })
+    handleAgentEvent('gone', { kind: 'user', id: 'u', text: 'tarde', images: 0 })
+    expect(useAgents.getState().chats.gone).toBeUndefined()
+  })
+
   it('loads history, clears and removes', () => {
     useAgents.getState().load('p1', [{ kind: 'user', id: 'u', text: 'antiga', images: 0 }])
     expect(useAgents.getState().chats.p1!.items).toHaveLength(1)

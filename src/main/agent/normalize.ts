@@ -161,15 +161,30 @@ export class StreamNormalizer {
   }
 }
 
+/** Wrappers Claude Code stores as user messages for slash commands, hooks and reminders. */
+const META_WRAPPERS = [
+  '<command-name>',
+  '<command-message>',
+  '<command-args>',
+  '<local-command-stdout>',
+  '<local-command-stderr>',
+  '<system-reminder>',
+  '<user-prompt-submit-hook>',
+]
+const isMetaText = (text: string): boolean => {
+  const t = text.trimStart()
+  return META_WRAPPERS.some((tag) => t.startsWith(tag))
+}
+
 function userText(message: unknown): { text: string; images: number } | null {
   if (!isRec(message)) return null
   const content = message.content
-  if (typeof content === 'string') return content.startsWith('<') ? null : { text: content, images: 0 }
+  if (typeof content === 'string') return isMetaText(content) ? null : { text: content, images: 0 }
   if (!Array.isArray(content)) return null
   const texts = content.filter((b): b is Rec => isRec(b) && b.type === 'text').map((b) => str(b.text) ?? '')
   const images = content.filter((b) => isRec(b) && b.type === 'image').length
   const text = texts.join('\n')
-  if ((!text && images === 0) || text.startsWith('<')) return null
+  if ((!text && images === 0) || isMetaText(text)) return null
   return { text, images }
 }
 

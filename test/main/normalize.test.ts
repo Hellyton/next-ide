@@ -42,15 +42,38 @@ describe('StreamNormalizer (recorded stream)', () => {
     expect(events.some((e) => e.kind === 'thinking')).toBe(false)
   })
 
-  it('emits stats with cost, duration and context percentage', () => {
+  it('emits stats with cost, duration and context percentage from the last assistant call', () => {
+    // Result usage sums both API calls (18 + 34522 + 8306); the context in use is the
+    // last assistant message's prompt: 3 + 21000 + 500 = 21503 / 200000 → 11%.
     expect(events.at(-1)).toEqual({
       kind: 'stats',
       usage: { inputTokens: 18, outputTokens: 212, cacheReadTokens: 34522, cacheCreationTokens: 8306 },
       costUsd: 0.0221112,
       durationMs: 3242,
       contextWindow: 200000,
-      contextPct: 21,
+      contextPct: 11,
     })
+  })
+})
+
+describe('StreamNormalizer (context usage)', () => {
+  const RESULT = { type: 'result', subtype: 'success', is_error: false, usage: { input_tokens: 999999 }, total_cost_usd: 0, duration_ms: 1, modelUsage: { m: { contextWindow: 1000 } } }
+  const assistant = (usage: Record<string, number>, parent: string | null = null) => ({
+    type: 'assistant',
+    parent_tool_use_id: parent,
+    message: { id: `a${Math.random()}`, content: [], usage },
+  })
+
+  it('ignores subagent usage and omits the percentage when no main assistant usage is known', () => {
+    const none = run([assistant({ input_tokens: 500 }, 'task_1'), RESULT]).at(-1)
+    expect(none).toMatchObject({ kind: 'stats', contextWindow: 1000 })
+    expect(none).not.toHaveProperty('contextPct')
+    const main = run([
+      assistant({ input_tokens: 100, cache_read_input_tokens: 150, cache_creation_input_tokens: 0 }),
+      assistant({ input_tokens: 900 }, 'task_1'),
+      RESULT,
+    ]).at(-1)
+    expect(main).toMatchObject({ contextWindow: 1000, contextPct: 25 })
   })
 })
 
@@ -128,9 +151,13 @@ describe('historyToEvents', () => {
       { type: 'user', uuid: 'u2', parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } },
       { type: 'assistant', uuid: 'a2', parent_tool_use_id: null, message: { id: 'm2', content: [{ type: 'text', text: 'pronto' }] } },
       { type: 'user', uuid: 'u3', parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'text', text: 'veja' }, { type: 'image', source: {} }] } },
+      { type: 'user', uuid: 'u4', parent_tool_use_id: null, message: { role: 'user', content: '<div class="x">colado</div> isso quebra?' } },
+      { type: 'user', uuid: 'u5', parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'text', text: '<local-command-stdout>ok</local-command-stdout>' }] } },
+      { type: 'user', uuid: 'u6', parent_tool_use_id: null, message: { role: 'user', content: '<system-reminder>x</system-reminder>' } },
     ])
-    expect(out.map((e) => e.kind)).toEqual(['user', 'tool-start', 'tool-result', 'text', 'user'])
+    expect(out.map((e) => e.kind)).toEqual(['user', 'tool-start', 'tool-result', 'text', 'user', 'user'])
     expect(out[0]).toEqual({ kind: 'user', id: 'u1', text: 'leia o arquivo', images: 0 })
     expect(out[4]).toEqual({ kind: 'user', id: 'u3', text: 'veja', images: 1 })
+    expect(out[5]).toEqual({ kind: 'user', id: 'u4', text: '<div class="x">colado</div> isso quebra?', images: 0 })
   })
 })
