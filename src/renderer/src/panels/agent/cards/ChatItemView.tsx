@@ -1,6 +1,7 @@
-import { memo } from 'react'
+import { memo, useContext } from 'react'
 import type { ChatItem } from '../../../agent/chatReducer'
 import { sameItems } from '../../../agent/chatTree'
+import { ChatActionsContext } from '../chatActions'
 import { ErrorCard } from './ErrorCard'
 import { PermissionCard } from './PermissionCard'
 import { TextBlock } from './TextBlock'
@@ -30,6 +31,7 @@ type Props = {
 }
 
 function ChatItemViewImpl({ item, descendants, panelId }: Props) {
+  const actions = useContext(ChatActionsContext)
   switch (item.type) {
     case 'user':
       return <UserBubble text={item.text} images={item.images} />
@@ -40,7 +42,9 @@ function ChatItemViewImpl({ item, descendants, panelId }: Props) {
     case 'tool':
       return <ToolCard item={item} descendants={descendants} panelId={panelId} />
     case 'error':
-      return <ErrorCard message={item.message} />
+      return (
+        <ErrorCard message={item.message} {...(item.action === 'new-session' ? { action: { label: 'Nova sessão', onAction: actions.newSession } } : {})} />
+      )
     case 'permission':
       return <PermissionCard item={item} panelId={panelId} />
   }

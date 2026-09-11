@@ -16,6 +16,9 @@ export type StatsEvent = {
 
 export type PermissionDecision = 'allow' | 'allow-always' | 'deny'
 
+/** Recovery the chat can offer next to an error ('new-session': start a fresh session in the panel). */
+export type ErrorAction = 'new-session'
+
 export type AgentEvent =
   | { kind: 'status'; state: SessionState }
   | { kind: 'init'; sessionId: string; model: string; cwd: string; permissionMode: PermissionMode; slashCommands: string[] }
@@ -30,7 +33,7 @@ export type AgentEvent =
   | { kind: 'mode'; permissionMode: PermissionMode }
   | { kind: 'model'; model: string }
   | StatsEvent
-  | { kind: 'error'; message: string }
+  | { kind: 'error'; message: string; action?: ErrorAction }
 
 export type CommandOption = { name: string; description: string; argumentHint: string }
 export type ModelOption = { value: string; displayName: string; description: string }

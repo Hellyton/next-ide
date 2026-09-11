@@ -1,4 +1,4 @@
-import type { AgentEvent, PermissionDecision, StatsEvent } from '@shared/agent'
+import type { AgentEvent, ErrorAction, PermissionDecision, StatsEvent } from '@shared/agent'
 import type { PermissionMode, SessionState } from '@shared/models'
 
 export type TextItem = { type: 'text'; key: string; text: string; final: boolean; parentToolUseId?: string }
@@ -18,7 +18,7 @@ export type ChatItem =
   | { type: 'thinking'; key: string; text: string }
   | ToolItem
   | PermissionItem
-  | { type: 'error'; id: string; message: string }
+  | { type: 'error'; id: string; message: string; action?: ErrorAction }
 
 export type ChatState = {
   items: ChatItem[]
@@ -44,6 +44,12 @@ const replaceAt = (s: ChatState, index: number, item: ChatItem): ChatState => {
   items[index] = item
   return { ...s, items }
 }
+/**
+ * Claude Code's wording when `--resume` points at a transcript that is gone
+ * ("No conversation found with session ID: …" / "No conversation found to continue").
+ */
+export const isMissingConversationError = (message: string): boolean => /no conversation found/i.test(message)
+
 /** Searches from the end: updates almost always target the newest items of a long chat. */
 const lastIndexWhere = (s: ChatState, match: (item: ChatItem) => boolean): number => {
   for (let i = s.items.length - 1; i >= 0; i--) if (match(s.items[i]!)) return i
@@ -104,8 +110,10 @@ export function reduceChat(s: ChatState, e: AgentEvent): ChatState {
       const costBaseUsd = e.costUsd < s.lastQueryCostUsd ? s.costBaseUsd + s.lastQueryCostUsd : s.costBaseUsd
       return { ...s, stats: e, costBaseUsd, lastQueryCostUsd: e.costUsd, totalCostUsd: costBaseUsd + e.costUsd }
     }
-    case 'error':
-      return push(s, { type: 'error', id: `err-${s.items.length}`, message: e.message })
+    case 'error': {
+      const action = e.action ?? (isMissingConversationError(e.message) ? 'new-session' : undefined)
+      return push(s, { type: 'error', id: `err-${s.items.length}`, message: e.message, ...(action ? { action } : {}) })
+    }
   }
 }
 

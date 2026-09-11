@@ -48,7 +48,7 @@ describe('reduceChat', () => {
     expect(r.items[0]).toMatchObject({ type: 'permission', decision: 'deny' })
   })
 
-  it('accumulates cost across turns, keeps last stats, pushes users, thinking and errors', () => {
+  it('treats cost as cumulative per query, keeps last stats, pushes users, thinking and errors', () => {
     const stats = (costUsd: number): AgentEvent => ({
       kind: 'stats',
       usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
@@ -60,11 +60,28 @@ describe('reduceChat', () => {
       { kind: 'thinking', key: 'th', text: 'hmm' },
       { kind: 'thinking', key: 'th', text: 'hmm' },
       stats(0.5),
-      stats(0.25),
+      stats(0.75),
       { kind: 'error', message: 'boom' },
     ])
     expect(s.totalCostUsd).toBeCloseTo(0.75)
-    expect(s.stats?.costUsd).toBe(0.25)
+    expect(s.stats?.costUsd).toBe(0.75)
     expect(s.items.map((i) => i.type)).toEqual(['user', 'thinking', 'error'])
+    // A fresh query (resume/crash/restart) restarts its running total from zero.
+    const next = reduceChat(s, stats(0.1))
+    expect(next.totalCostUsd).toBeCloseTo(0.85)
+    expect(reduceChat(next, stats(0.2)).totalCostUsd).toBeCloseTo(0.95)
+  })
+
+  it('carries a new-session action on errors, inferring it for missing conversations', () => {
+    const s = reduceAll([
+      { kind: 'error', message: 'Sessão anterior não encontrada.', action: 'new-session' },
+      { kind: 'error', message: 'No conversation found with session ID: abc' },
+      { kind: 'error', message: 'boom' },
+    ])
+    expect(s.items).toEqual([
+      { type: 'error', id: 'err-0', message: 'Sessão anterior não encontrada.', action: 'new-session' },
+      { type: 'error', id: 'err-1', message: 'No conversation found with session ID: abc', action: 'new-session' },
+      { type: 'error', id: 'err-2', message: 'boom' },
+    ])
   })
 })

@@ -1,17 +1,19 @@
 import type { IDockviewPanelProps } from 'dockview-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentEvent, ImageAttachment } from '@shared/agent'
 import type { AgentPanelParams } from '@shared/models'
 import { restartSession } from '../../agent/restartSession'
 import type { LocalCommand } from '../../agent/slash'
 import { currentAgentParams, replacePanelParams, selectChat, useAgents } from '../../stores/agentStore'
 import { useSessions } from '../../stores/sessionsStore'
+import { ChatActionsContext, type ChatActions } from './chatActions'
 import { ChatView } from './ChatView'
 import { Composer } from './Composer'
 import { ResumeModal } from './ResumeModal'
 import { StatusLine } from './StatusLine'
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
+const MISSING_SESSION: AgentEvent = { kind: 'error', message: 'Sessão anterior não encontrada.', action: 'new-session' }
 
 export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams>) {
   const panelId = api.id
@@ -29,7 +31,10 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
         // Restored panel: show history now, spawn `claude --resume` only on the first send.
         if (useAgents.getState().chats[panelId]) return
         const history = await window.api.invoke('agent:history', params.projectPath, params.sessionId)
-        if (!cancelled) useAgents.getState().load(panelId, history)
+        if (cancelled) return
+        useAgents.getState().load(panelId, history)
+        // Transcript deleted/moved: resuming would fail on the first send, so offer a fresh session now.
+        if (history.length === 0) useAgents.getState().apply(panelId, MISSING_SESSION)
       } else if (!cancelled) {
         await window.api.invoke('agent:start', panelId)
       }
@@ -66,6 +71,13 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
     return { type: 'agent', projectPath: p.projectPath, ...(p.model ? { model: p.model } : {}), ...(p.permissionMode ? { permissionMode: p.permissionMode } : {}) }
   }
 
+  // Stable object for the (memoized) chat cards; the ref always points at the latest closure.
+  const newSessionRef = useRef<() => void>(() => undefined)
+  useEffect(() => {
+    newSessionRef.current = () => void restart(base()).catch(fail)
+  })
+  const actions = useMemo<ChatActions>(() => ({ newSession: () => newSessionRef.current() }), [])
+
   const onLocalCommand = (name: LocalCommand) => {
     if (name === 'resume') setResumeOpen(true)
     else if (name === 'clear') void restart(base()).catch(fail)
@@ -83,7 +95,9 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
 
   return (
     <div className="relative flex h-full flex-col bg-neutral-950" data-testid="agent-panel">
-      <ChatView items={chat.items} panelId={panelId} />
+      <ChatActionsContext.Provider value={actions}>
+        <ChatView items={chat.items} panelId={panelId} />
+      </ChatActionsContext.Provider>
       <Composer panelId={panelId} chat={chat} projectPath={params.projectPath} onSend={send} onLocalCommand={onLocalCommand} />
       <StatusLine
         projectPath={params.projectPath}
