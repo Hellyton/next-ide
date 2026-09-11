@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell, type MessageBoxSyncOptions } from 'electron'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { EventChannel, EventMap } from '@shared/ipc-contract'
@@ -13,6 +13,7 @@ import { registerHandlers } from './ipc/register'
 import { installMenu } from './menu'
 import { isAllowedNavigation } from './navigation'
 import { PtyManager } from './pty/PtyManager'
+import { createQuitGuard } from './quitGuard'
 import { shellEnv } from './pty/shellEnv'
 import { spawnShell } from './pty/spawnShell'
 import { runStatusLine } from './statusline/runStatusLine'
@@ -93,6 +94,24 @@ registerHandlers(
   }),
 )
 
+let quitting = false
+const quitGuard = createQuitGuard<BrowserWindow>({
+  hasBusy: () => agents.hasBusy(),
+  skipConfirm: () => process.env.NEXT_IDE_E2E_NO_QUIT_CONFIRM === '1',
+  ask: (parent) => {
+    const options: MessageBoxSyncOptions = {
+      type: 'warning',
+      buttons: ['Sair', 'Cancelar'],
+      defaultId: 1,
+      cancelId: 1,
+      message: 'Há agentes trabalhando.',
+      detail: 'Sair agora interrompe as sessões em andamento.',
+    }
+    const choice = parent && !parent.isDestroyed() ? dialog.showMessageBoxSync(parent, options) : dialog.showMessageBoxSync(options)
+    return choice === 0
+  },
+})
+
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1600,
@@ -108,6 +127,10 @@ function createWindow(): BrowserWindow {
     },
   })
   win.once('ready-to-show', () => win.show())
+  // Closing the only window quits the app (see window-all-closed); confirm first if agents are busy.
+  win.on('close', (event) => {
+    if (!quitting && !quitGuard.allowWindowClose(win)) event.preventDefault()
+  })
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
@@ -131,22 +154,12 @@ void app.whenReady().then(() => {
   })
 })
 
-let quitting = false
 app.on('before-quit', (event) => {
   if (quitting) return
-  if (mainWindow && !mainWindow.isDestroyed() && agents.hasBusy() && process.env.NEXT_IDE_E2E_NO_QUIT_CONFIRM !== '1') {
-    const choice = dialog.showMessageBoxSync(mainWindow, {
-      type: 'warning',
-      buttons: ['Sair', 'Cancelar'],
-      defaultId: 1,
-      cancelId: 1,
-      message: 'Há agentes trabalhando.',
-      detail: 'Sair agora interrompe as sessões em andamento.',
-    })
-    if (choice === 1) {
-      event.preventDefault()
-      return
-    }
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
+  if (!quitGuard.allowQuit(win)) {
+    event.preventDefault()
+    return
   }
   event.preventDefault()
   quitting = true
@@ -163,6 +176,6 @@ app.on('before-quit', (event) => {
   void Promise.allSettled([stores.workspaces.flush(), stores.layout.flush(), stores.settings.flush()]).finally(() => app.quit())
 })
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
+// Single-window IDE: closing the window quits on macOS too, so sessions and ptys are torn
+// down by the before-quit path instead of lingering with no UI.
+app.on('window-all-closed', () => app.quit())
