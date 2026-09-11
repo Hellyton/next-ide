@@ -1,12 +1,16 @@
 import { app, BrowserWindow, dialog, ipcMain, shell, type MessageBoxSyncOptions } from 'electron'
+import { watch } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type { EventChannel, EventMap } from '@shared/ipc-contract'
+import { projectPaths } from '@shared/workspaces'
 import { AgentManager } from './agent/AgentManager'
 import type { QueryFn } from './agent/AgentSession'
 import { fakeQuery, fakeSessions } from './agent/fakeQuery'
 import { loadSdk, type SessionStoreApi } from './agent/sdk'
 import { loginShellPath, mergePath, resolveClaudePath } from './env/loginShell'
+import { FilesService } from './fs/FilesService'
+import { WatcherManager, type WatchFn } from './fs/WatcherManager'
 import { gitInfo } from './git/gitInfo'
 import { buildHandlers } from './ipc/handlers'
 import { registerHandlers } from './ipc/register'
@@ -32,6 +36,40 @@ const ptys = new PtyManager(spawnShell, {
   data: (id, chunk) => send('pty:data', id, chunk),
   exit: (id, code) => send('pty:exit', id, code),
 })
+
+// Project folders the renderer may read. Kept in memory (not re-read from the debounced
+// store) so a folder added a moment ago is readable right away.
+let roots: string[] = []
+let rootsReady: Promise<void> = Promise.resolve()
+
+const files = new FilesService(async () => {
+  await rootsReady
+  return roots
+})
+
+const watchFs: WatchFn = (root, onChange) => {
+  const watcher = watch(root, { recursive: true }, (_event, filename) => onChange(filename ? filename.toString() : null))
+  watcher.on('error', (err) => console.error('[next-ide] watcher error', root, err))
+  return watcher
+}
+
+const watchers = new WatcherManager(watchFs, {
+  fsChanged: (projectPath, paths) => {
+    if (paths.some((p) => p === projectPath || basename(p) === '.gitignore')) files.invalidateIgnore(projectPath)
+    send('fs:changed', projectPath, paths)
+  },
+  gitChanged: (projectPath) => send('git:changed', projectPath),
+})
+
+function setProjects(paths: string[]): void {
+  roots = paths
+  watchers.sync(paths)
+}
+
+rootsReady = stores.workspaces
+  .read()
+  .then((ws) => setProjects(projectPaths(ws)))
+  .catch((err) => console.error('[next-ide] failed to read workspaces for file access', err))
 
 type Sdk = { queryFn: QueryFn } & SessionStoreApi
 const FAKE_AGENT = process.env.NEXT_IDE_FAKE_AGENT === '1'
@@ -91,6 +129,8 @@ registerHandlers(
     agentReady: () => agentReady,
     runStatusLine: (input) =>
       runStatusLine(input, process.env.NEXT_IDE_CLAUDE_SETTINGS ? { settingsPath: process.env.NEXT_IDE_CLAUDE_SETTINGS } : {}),
+    files,
+    onWorkspaces: (ws) => setProjects(projectPaths(ws)),
   }),
 )
 
@@ -172,6 +212,11 @@ app.on('before-quit', (event) => {
     ptys.killAll()
   } catch (err) {
     console.error('[next-ide] killAll failed', err)
+  }
+  try {
+    watchers.closeAll()
+  } catch (err) {
+    console.error('[next-ide] closing watchers failed', err)
   }
   void Promise.allSettled([stores.workspaces.flush(), stores.layout.flush(), stores.settings.flush()]).finally(() => app.quit())
 })

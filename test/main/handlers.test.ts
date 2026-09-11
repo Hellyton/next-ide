@@ -28,6 +28,13 @@ function deps(over: Partial<HandlerDeps> = {}): HandlerDeps & { ptyCalls: unknow
     sessions: fakeSessions,
     agentReady: async () => undefined,
     runStatusLine: async () => 'linha',
+    files: {
+      list: async (p, d) => [{ name: 'a.ts', path: `${d}/a.ts`, kind: 'file' }],
+      read: async () => ({ kind: 'missing' }),
+      index: async () => ['a.ts'],
+      status: async () => ({ 'a.ts': 'M' }),
+    },
+    onWorkspaces: () => undefined,
     ptyCalls,
     agentEvents,
     ...over,
@@ -133,5 +140,21 @@ describe('buildHandlers', () => {
     await p
     expect(create).toHaveBeenCalledTimes(1)
     expect(create).toHaveBeenCalledWith('p1', { type: 'agent', projectPath: '/p' })
+  })
+
+  it('fs and git:status channels delegate to FilesService', async () => {
+    const h = buildHandlers(deps())
+    expect(await h['fs:list']('/p', '/p')).toEqual([{ name: 'a.ts', path: '/p/a.ts', kind: 'file' }])
+    expect(await h['fs:read']('/p/a.ts')).toEqual({ kind: 'missing' })
+    expect(await h['fs:index']('/p')).toEqual(['a.ts'])
+    expect(await h['git:status']('/p')).toEqual({ 'a.ts': 'M' })
+  })
+
+  it('workspace:save reports the new workspaces so watchers and roots follow', async () => {
+    const onWorkspaces = vi.fn()
+    const h = buildHandlers(deps({ onWorkspaces }))
+    const ws = [{ id: 'w', name: 'x', projects: [{ id: 'p', name: 'p', path: '/p' }], collapsed: false }]
+    await h['workspace:save'](ws)
+    expect(onWorkspaces).toHaveBeenCalledWith(ws)
   })
 })

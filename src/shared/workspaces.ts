@@ -53,6 +53,25 @@ export function removeProject(list: Workspace[], workspaceId: string, projectId:
   )
 }
 
+export function uniqueProjects(list: Workspace[]): Project[] {
+  const seen = new Set<string>()
+  const out: Project[] = []
+  for (const w of list) {
+    for (const p of w.projects) {
+      if (seen.has(p.path)) continue
+      seen.add(p.path)
+      out.push(p)
+    }
+  }
+  return out
+}
+
+export const projectPaths = (list: Workspace[]): string[] => uniqueProjects(list).map((p) => p.path)
+
+export function moveWorkspaceById(list: Workspace[], id: string, targetId: string): Workspace[] {
+  return moveWorkspace(list, list.findIndex((w) => w.id === id), list.findIndex((w) => w.id === targetId))
+}
+
 export function filterWorkspaces(list: Workspace[], query: string): Workspace[] {
   const q = query.trim().toLowerCase()
   if (!q) return list

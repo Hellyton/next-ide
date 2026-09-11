@@ -1,4 +1,5 @@
 import type { AgentEvent, CommandOption, ImageAttachment, ModelOption, PermissionDecision, SessionSummary, StatusLineInput } from './agent'
+import type { FileContent, FsEntry, GitFileStatus } from './files'
 import type { AgentPanelParams, GitInfo, LayoutState, PermissionMode, Settings, Workspace } from './models'
 
 export type InvokeMap = {
@@ -11,6 +12,10 @@ export type InvokeMap = {
   'fs:pickFolder': { args: []; result: string | null }
   'fs:pickWorkspaceFile': { args: []; result: { name: string; paths: string[] } | null }
   'git:info': { args: [projectPath: string]; result: GitInfo }
+  'fs:list': { args: [projectPath: string, dir: string]; result: FsEntry[] }
+  'fs:read': { args: [path: string]; result: FileContent }
+  'fs:index': { args: [projectPath: string]; result: string[] }
+  'git:status': { args: [projectPath: string]; result: Record<string, GitFileStatus> }
   'pty:create': { args: [panelId: string, cwd: string, cols: number, rows: number]; result: void }
   'pty:write': { args: [panelId: string, data: string]; result: void }
   'pty:resize': { args: [panelId: string, cols: number, rows: number]; result: void }
@@ -34,6 +39,8 @@ export type EventMap = {
   'pty:data': [panelId: string, chunk: string]
   'pty:exit': [panelId: string, exitCode: number]
   'agent:event': [panelId: string, event: AgentEvent]
+  'fs:changed': [projectPath: string, paths: string[]]
+  'git:changed': [projectPath: string]
 }
 
 export type InvokeChannel = keyof InvokeMap
@@ -55,6 +62,10 @@ export const INVOKE_CHANNELS = [
   'fs:pickFolder',
   'fs:pickWorkspaceFile',
   'git:info',
+  'fs:list',
+  'fs:read',
+  'fs:index',
+  'git:status',
   'pty:create',
   'pty:write',
   'pty:resize',
@@ -74,7 +85,7 @@ export const INVOKE_CHANNELS = [
   'statusline:run',
 ] as const satisfies readonly InvokeChannel[]
 
-export const EVENT_CHANNELS = ['pty:data', 'pty:exit', 'agent:event'] as const satisfies readonly EventChannel[]
+export const EVENT_CHANNELS = ['pty:data', 'pty:exit', 'agent:event', 'fs:changed', 'git:changed'] as const satisfies readonly EventChannel[]
 
 // Compile-time guard: every channel in the maps must be listed above.
 type MissingInvoke = Exclude<InvokeChannel, (typeof INVOKE_CHANNELS)[number]>

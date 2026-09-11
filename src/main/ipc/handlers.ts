@@ -1,10 +1,11 @@
 import type { StatusLineInput } from '@shared/agent'
 import type { Handlers } from '@shared/ipc-contract'
 import { sanitizeLayout } from '@shared/layout'
-import { DEFAULT_SETTINGS, type GitInfo } from '@shared/models'
+import { DEFAULT_SETTINGS, type GitInfo, type Workspace } from '@shared/models'
 import type { AgentManager } from '../agent/AgentManager'
 import { historyToEvents } from '../agent/normalize'
 import type { SessionStoreApi } from '../agent/sdk'
+import type { FilesService } from '../fs/FilesService'
 import type { PtyManager } from '../pty/PtyManager'
 import { parseCodeWorkspace } from '../store/codeWorkspace'
 import type { Stores } from '../store/stores'
@@ -20,12 +21,17 @@ export type HandlerDeps = {
   sessions: SessionStoreApi
   agentReady: () => Promise<void>
   runStatusLine: (input: StatusLineInput) => Promise<string | null>
+  files: Pick<FilesService, 'list' | 'read' | 'index' | 'status'>
+  onWorkspaces: (workspaces: Workspace[]) => void
 }
 
 export function buildHandlers(d: HandlerDeps): Handlers {
   return {
     'workspace:get': () => d.stores.workspaces.read(),
-    'workspace:save': (workspaces) => d.stores.workspaces.schedule(workspaces),
+    'workspace:save': (workspaces) => {
+      d.onWorkspaces(workspaces)
+      return d.stores.workspaces.schedule(workspaces)
+    },
     'settings:get': async () => {
       const stored = await d.stores.settings.read()
       return { ...DEFAULT_SETTINGS, ...stored, statusline: { ...DEFAULT_SETTINGS.statusline, ...stored.statusline } }
@@ -40,6 +46,10 @@ export function buildHandlers(d: HandlerDeps): Handlers {
       return parseCodeWorkspace(await d.readTextFile(file), file)
     },
     'git:info': (projectPath) => d.gitInfo(projectPath),
+    'fs:list': (projectPath, dir) => d.files.list(projectPath, dir),
+    'fs:read': (path) => d.files.read(path),
+    'fs:index': (projectPath) => d.files.index(projectPath),
+    'git:status': (projectPath) => d.files.status(projectPath),
     'pty:create': (panelId, cwd, cols, rows) => d.pty.create(panelId, cwd, cols, rows),
     'pty:write': (panelId, data) => d.pty.write(panelId, data),
     'pty:resize': (panelId, cols, rows) => d.pty.resize(panelId, cols, rows),

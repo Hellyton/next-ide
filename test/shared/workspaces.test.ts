@@ -6,10 +6,13 @@ import {
   basename,
   filterWorkspaces,
   moveWorkspace,
+  moveWorkspaceById,
+  projectPaths,
   removeProject,
   removeWorkspace,
   renameWorkspace,
   toggleWorkspace,
+  uniqueProjects,
 } from '@shared/workspaces'
 
 const ids = () => {
@@ -84,5 +87,20 @@ describe('workspaces', () => {
   it('filterWorkspaces returns list unchanged for blank query', () => {
     const list = sample()
     expect(filterWorkspaces(list, '  ')).toBe(list)
+  })
+})
+
+describe('project helpers', () => {
+  const list = [
+    { id: 'w1', name: 'a', collapsed: false, projects: [{ id: 'p1', name: 'api', path: '/x/api' }, { id: 'p2', name: 'ui', path: '/x/ui' }] },
+    { id: 'w2', name: 'b', collapsed: false, projects: [{ id: 'p3', name: 'api', path: '/x/api' }] },
+  ]
+  it('uniqueProjects / projectPaths drop repeated paths', () => {
+    expect(uniqueProjects(list).map((p) => p.id)).toEqual(['p1', 'p2'])
+    expect(projectPaths(list)).toEqual(['/x/api', '/x/ui'])
+  })
+  it('moveWorkspaceById moves the dragged workspace to the target index', () => {
+    expect(moveWorkspaceById(list, 'w2', 'w1').map((w) => w.id)).toEqual(['w2', 'w1'])
+    expect(moveWorkspaceById(list, 'nope', 'w1')).toBe(list)
   })
 })
