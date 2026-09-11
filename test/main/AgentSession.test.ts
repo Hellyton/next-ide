@@ -60,7 +60,7 @@ describe('AgentSession', () => {
     expect(f.calls).toHaveLength(1)
     expect(f.calls[0]!.options).toMatchObject({ cwd: '/p', permissionMode: 'default', includePartialMessages: true, pathToClaudeCodeExecutable: '/bin/claude', settingSources: ['user', 'project', 'local'] })
     expect(f.received.map((m) => m.message.content)).toEqual([[{ type: 'text', text: 'oi' }], [{ type: 'text', text: 'de novo' }]])
-    expect(events.slice(0, 2)).toEqual([{ kind: 'user', id: 'id1', text: 'oi', images: 0 }, { kind: 'status', state: 'running' }])
+    expect(events.slice(0, 3)).toEqual([{ kind: 'query-start' }, { kind: 'user', id: 'id1', text: 'oi', images: 0 }, { kind: 'status', state: 'running' }])
   })
 
   it('sends images before text as base64 blocks', async () => {
@@ -175,6 +175,18 @@ describe('AgentSession', () => {
     expect(s.currentState).toBe('error')
     s.send('de novo')
     expect(calls[1]).toMatchObject({ resume: 'sess-9' })
+    // Once per query, including the resume after a crash.
+    expect(events.filter((e) => e.kind === 'query-start')).toHaveLength(2)
+  })
+
+  it('emits query-start exactly once per query, not per send', async () => {
+    const f = fake()
+    const { s, events } = session(f.fn)
+    s.send('oi')
+    s.send('de novo')
+    await tick()
+    expect(events.filter((e) => e.kind === 'query-start')).toHaveLength(1)
+    expect(events[0]).toEqual({ kind: 'query-start' })
   })
 
   it('does not emit after close even if messages were buffered', async () => {

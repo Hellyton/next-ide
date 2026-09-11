@@ -60,6 +60,10 @@ export function reduceChat(s: ChatState, e: AgentEvent): ChatState {
   switch (e.kind) {
     case 'status':
       return { ...s, state: e.state }
+    case 'query-start':
+      // A new query (resume, /clear, or a crash-restart) starts its running total from zero;
+      // fold whatever the previous query last reported into the base so it isn't lost.
+      return { ...s, costBaseUsd: s.costBaseUsd + s.lastQueryCostUsd, lastQueryCostUsd: 0 }
     case 'init':
       return { ...s, sessionId: e.sessionId, model: e.model, permissionMode: e.permissionMode, slashCommands: e.slashCommands }
     case 'mode':
@@ -105,11 +109,9 @@ export function reduceChat(s: ChatState, e: AgentEvent): ChatState {
       const i = lastIndexWhere(s, (it) => it.type === 'permission' && it.requestId === e.requestId)
       return i < 0 ? s : replaceAt(s, i, { ...(s.items[i] as PermissionItem), decision: e.decision })
     }
-    case 'stats': {
-      // total_cost_usd is cumulative per query; a drop means a new query started from zero.
-      const costBaseUsd = e.costUsd < s.lastQueryCostUsd ? s.costBaseUsd + s.lastQueryCostUsd : s.costBaseUsd
-      return { ...s, stats: e, costBaseUsd, lastQueryCostUsd: e.costUsd, totalCostUsd: costBaseUsd + e.costUsd }
-    }
+    case 'stats':
+      // total_cost_usd is cumulative per query; `query-start` is what rolls the base forward.
+      return { ...s, stats: e, lastQueryCostUsd: e.costUsd, totalCostUsd: s.costBaseUsd + e.costUsd }
     case 'error': {
       const action = e.action ?? (isMissingConversationError(e.message) ? 'new-session' : undefined)
       return push(s, { type: 'error', id: `err-${s.items.length}`, message: e.message, ...(action ? { action } : {}) })

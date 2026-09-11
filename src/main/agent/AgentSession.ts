@@ -110,6 +110,7 @@ export class AgentSession {
     this.input = input
     this.abort = abort
     this.query = query
+    this.emit({ kind: 'query-start' })
     void this.pump(query)
   }
 

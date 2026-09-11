@@ -66,10 +66,29 @@ describe('reduceChat', () => {
     expect(s.totalCostUsd).toBeCloseTo(0.75)
     expect(s.stats?.costUsd).toBe(0.75)
     expect(s.items.map((i) => i.type)).toEqual(['user', 'thinking', 'error'])
-    // A fresh query (resume/crash/restart) restarts its running total from zero.
-    const next = reduceChat(s, stats(0.1))
-    expect(next.totalCostUsd).toBeCloseTo(0.85)
-    expect(reduceChat(next, stats(0.2)).totalCostUsd).toBeCloseTo(0.95)
+  })
+
+  it('folds the previous query total into the base on query-start, even when the new total is not lower', () => {
+    const stats = (costUsd: number): AgentEvent => ({
+      kind: 'stats',
+      usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
+      costUsd,
+      durationMs: 10,
+    })
+    const s = reduceAll([stats(0.4), { kind: 'query-start' }, stats(0.55)])
+    expect(s.totalCostUsd).toBeCloseTo(0.95)
+    expect(s.lastQueryCostUsd).toBeCloseTo(0.55)
+  })
+
+  it('keeps two stats within the same query additive only to the base, not to each other', () => {
+    const stats = (costUsd: number): AgentEvent => ({
+      kind: 'stats',
+      usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
+      costUsd,
+      durationMs: 10,
+    })
+    const s = reduceAll([stats(0.5), stats(0.75)])
+    expect(s.totalCostUsd).toBeCloseTo(0.75)
   })
 
   it('carries a new-session action on errors, inferring it for missing conversations', () => {

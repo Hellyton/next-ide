@@ -21,6 +21,7 @@ export type ErrorAction = 'new-session'
 
 export type AgentEvent =
   | { kind: 'status'; state: SessionState }
+  | { kind: 'query-start' }
   | { kind: 'init'; sessionId: string; model: string; cwd: string; permissionMode: PermissionMode; slashCommands: string[] }
   | { kind: 'user'; id: string; text: string; images: number }
   | { kind: 'text-delta'; key: string; text: string; parentToolUseId?: string }
