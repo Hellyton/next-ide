@@ -52,7 +52,29 @@ describe('StreamNormalizer (recorded stream)', () => {
       durationMs: 3242,
       contextWindow: 200000,
       contextPct: 11,
+      contextTokens: 21503,
     })
+  })
+})
+
+describe('StreamNormalizer (statusline data)', () => {
+  it('passes the Claude Code version from init', () => {
+    const [init] = run([{ type: 'system', subtype: 'init', session_id: 's', model: 'm', cwd: '/p', claude_code_version: '2.1.3' }])
+    expect(init).toMatchObject({ kind: 'init', version: '2.1.3' })
+  })
+
+  it('maps five-hour and seven-day rate limits to percentages and epoch seconds', () => {
+    expect(run([{ type: 'rate_limit_event', rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', utilization: 0.42, resetsAt: 1_900_000_000 } }])).toEqual([
+      { kind: 'rate-limit', window: 'five_hour', usedPct: 42, resetsAt: 1_900_000_000 },
+    ])
+    expect(run([{ type: 'rate_limit_event', rate_limit_info: { status: 'allowed', rateLimitType: 'seven_day', utilization: 16, resetsAt: 1_900_000_000_000 } }])).toEqual([
+      { kind: 'rate-limit', window: 'seven_day', usedPct: 16, resetsAt: 1_900_000_000 },
+    ])
+  })
+
+  it('ignores other rate limit windows and events without utilization', () => {
+    expect(run([{ type: 'rate_limit_event', rate_limit_info: { status: 'allowed', rateLimitType: 'overage', utilization: 0.1 } }])).toEqual([])
+    expect(run([{ type: 'rate_limit_event', rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour' } }])).toEqual([])
   })
 })
 

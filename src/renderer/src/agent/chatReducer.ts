@@ -27,6 +27,8 @@ export type ChatState = {
   model?: string
   permissionMode?: PermissionMode
   slashCommands: string[]
+  /** Claude Code version reported by the session's init. */
+  version?: string
   stats?: StatsEvent
   /** Displayed cost: costBaseUsd + the running total of the current query. */
   totalCostUsd: number
@@ -65,7 +67,14 @@ export function reduceChat(s: ChatState, e: AgentEvent): ChatState {
       // fold whatever the previous query last reported into the base so it isn't lost.
       return { ...s, costBaseUsd: s.costBaseUsd + s.lastQueryCostUsd, lastQueryCostUsd: 0 }
     case 'init':
-      return { ...s, sessionId: e.sessionId, model: e.model, permissionMode: e.permissionMode, slashCommands: e.slashCommands }
+      return {
+        ...s,
+        sessionId: e.sessionId,
+        model: e.model,
+        permissionMode: e.permissionMode,
+        slashCommands: e.slashCommands,
+        ...(e.version ? { version: e.version } : {}),
+      }
     case 'mode':
       return { ...s, permissionMode: e.permissionMode }
     case 'model':
@@ -112,6 +121,9 @@ export function reduceChat(s: ChatState, e: AgentEvent): ChatState {
     case 'stats':
       // total_cost_usd is cumulative per query; `query-start` is what rolls the base forward.
       return { ...s, stats: e, lastQueryCostUsd: e.costUsd, totalCostUsd: s.costBaseUsd + e.costUsd }
+    case 'rate-limit':
+      // Account-wide, not per chat: kept in the agents store (see handleAgentEvent).
+      return s
     case 'error': {
       const action = e.action ?? (isMissingConversationError(e.message) ? 'new-session' : undefined)
       return push(s, { type: 'error', id: `err-${s.items.length}`, message: e.message, ...(action ? { action } : {}) })

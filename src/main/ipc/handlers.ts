@@ -1,7 +1,7 @@
 import type { StatusLineInput } from '@shared/agent'
 import type { Handlers } from '@shared/ipc-contract'
 import { sanitizeLayout } from '@shared/layout'
-import { DEFAULT_SETTINGS, type GitInfo, type Workspace } from '@shared/models'
+import { DEFAULT_SETTINGS, sanitizeSegments, type GitInfo, type Workspace } from '@shared/models'
 import type { AgentManager } from '../agent/AgentManager'
 import { historyToEvents } from '../agent/normalize'
 import type { SessionStoreApi } from '../agent/sdk'
@@ -13,7 +13,7 @@ import type { Stores } from '../store/stores'
 export type HandlerDeps = {
   stores: Stores
   pty: Pick<PtyManager, 'create' | 'write' | 'resize' | 'kill'>
-  pickFolder: () => Promise<string | null>
+  pickFolders: () => Promise<string[]>
   pickWorkspaceFile: () => Promise<string | null>
   readTextFile: (path: string) => Promise<string>
   gitInfo: (cwd: string) => Promise<GitInfo>
@@ -34,12 +34,13 @@ export function buildHandlers(d: HandlerDeps): Handlers {
     },
     'settings:get': async () => {
       const stored = await d.stores.settings.read()
-      return { ...DEFAULT_SETTINGS, ...stored, statusline: { ...DEFAULT_SETTINGS.statusline, ...stored.statusline } }
+      const statusline = { ...DEFAULT_SETTINGS.statusline, ...stored.statusline }
+      return { ...DEFAULT_SETTINGS, ...stored, statusline: { ...statusline, segments: sanitizeSegments(statusline.segments) } }
     },
     'settings:save': (settings) => d.stores.settings.writeNow(settings),
     'layout:get': async () => sanitizeLayout(await d.stores.layout.read()),
     'layout:save': (layout) => d.stores.layout.schedule(layout),
-    'fs:pickFolder': () => d.pickFolder(),
+    'fs:pickFolder': () => d.pickFolders(),
     'fs:pickWorkspaceFile': async () => {
       const file = await d.pickWorkspaceFile()
       if (!file) return null

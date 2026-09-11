@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell, type MessageBoxSyncOptions } from 'electron'
 import { watch } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { basename, delimiter, join } from 'node:path'
 import type { EventChannel, EventMap } from '@shared/ipc-contract'
 import { projectPaths } from '@shared/workspaces'
 import { AgentManager } from './agent/AgentManager'
@@ -24,6 +24,7 @@ import { spawnShell } from './pty/spawnShell'
 import { runStatusLine } from './statusline/runStatusLine'
 import { createStores } from './store/stores'
 
+app.setName('next-ide')
 if (process.env.NEXT_IDE_USER_DATA) app.setPath('userData', process.env.NEXT_IDE_USER_DATA)
 
 let mainWindow: BrowserWindow | null = null
@@ -101,10 +102,11 @@ const agents = new AgentManager({
   }),
 })
 
-async function pickFolder(): Promise<string | null> {
-  if (process.env.NEXT_IDE_E2E_PICK_FOLDER) return process.env.NEXT_IDE_E2E_PICK_FOLDER
-  const result = await dialog.showOpenDialog(mainWindow!, { properties: ['openDirectory', 'createDirectory'] })
-  return result.canceled ? null : (result.filePaths[0] ?? null)
+async function pickFolders(): Promise<string[]> {
+  const fake = process.env.NEXT_IDE_E2E_PICK_FOLDER
+  if (fake) return fake.split(delimiter).filter(Boolean)
+  const result = await dialog.showOpenDialog(mainWindow!, { properties: ['openDirectory', 'createDirectory', 'multiSelections'] })
+  return result.canceled ? [] : result.filePaths
 }
 
 async function pickWorkspaceFile(): Promise<string | null> {
@@ -121,7 +123,7 @@ registerHandlers(
   buildHandlers({
     stores,
     pty: ptys,
-    pickFolder,
+    pickFolders,
     pickWorkspaceFile,
     readTextFile: (p) => readFile(p, 'utf8'),
     gitInfo,
@@ -188,6 +190,12 @@ function createWindow(): BrowserWindow {
 }
 
 void app.whenReady().then(() => {
+  // Not packaged: the Dock would show the stock Electron icon.
+  try {
+    app.dock?.setIcon(join(__dirname, '../../resources/icon.png'))
+  } catch (err) {
+    console.error('[next-ide] failed to set dock icon', err)
+  }
   installMenu()
   mainWindow = createWindow()
   app.on('activate', () => {

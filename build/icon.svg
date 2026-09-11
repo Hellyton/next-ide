@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f2a27f"/>
+      <stop offset="1" stop-color="#d97757"/>
+    </linearGradient>
+  </defs>
+  <!-- macOS icon grid: 824px body inset 100px -->
+  <rect x="100" y="100" width="824" height="824" rx="184" fill="url(#bg)"/>
+  <rect x="101.5" y="101.5" width="821" height="821" rx="182.5" fill="none" stroke="#3f3f46" stroke-width="3"/>
+  <!-- split panes: one agent pane + two stacked panes -->
+  <rect x="196" y="236" width="340" height="552" rx="40" fill="#141416" stroke="#3f3f46" stroke-width="6"/>
+  <rect x="572" y="236" width="256" height="258" rx="40" fill="#141416" stroke="#3f3f46" stroke-width="6"/>
+  <rect x="572" y="530" width="256" height="258" rx="40" fill="#141416" stroke="#3f3f46" stroke-width="6"/>
+  <!-- prompt -->
+  <path d="M262 420 L356 502 L262 584" fill="none" stroke="url(#accent)" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="384" y="560" width="104" height="44" rx="22" fill="url(#accent)"/>
+  <!-- text lines -->
+  <rect x="612" y="310" width="150" height="24" rx="12" fill="#b1b9f9"/>
+  <rect x="612" y="362" width="104" height="24" rx="12" fill="#52525b"/>
+  <rect x="612" y="414" width="130" height="24" rx="12" fill="#52525b"/>
+  <rect x="612" y="604" width="126" height="24" rx="12" fill="#52525b"/>
+  <rect x="612" y="656" width="170" height="24" rx="12" fill="#6ee7b7"/>
+  <rect x="612" y="708" width="90" height="24" rx="12" fill="#52525b"/>
+</svg>

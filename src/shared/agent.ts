@@ -12,7 +12,13 @@ export type StatsEvent = {
   durationMs: number
   contextWindow?: number
   contextPct?: number
+  /** Prompt size of the latest main-loop call (the context in use). */
+  contextTokens?: number
 }
+
+/** A plan usage window as Claude Code's statusLine JSON shows it (resets_at: epoch seconds). */
+export type RateWindow = { used_percentage: number; resets_at?: number }
+export type RateLimits = { five_hour?: RateWindow; seven_day?: RateWindow }
 
 export type PermissionDecision = 'allow' | 'allow-always' | 'deny'
 
@@ -22,7 +28,8 @@ export type ErrorAction = 'new-session'
 export type AgentEvent =
   | { kind: 'status'; state: SessionState }
   | { kind: 'query-start' }
-  | { kind: 'init'; sessionId: string; model: string; cwd: string; permissionMode: PermissionMode; slashCommands: string[] }
+  | { kind: 'init'; sessionId: string; model: string; cwd: string; permissionMode: PermissionMode; slashCommands: string[]; version?: string }
+  | { kind: 'rate-limit'; window: 'five_hour' | 'seven_day'; usedPct: number; resetsAt?: number }
   | { kind: 'user'; id: string; text: string; images: number }
   | { kind: 'text-delta'; key: string; text: string; parentToolUseId?: string }
   | { kind: 'text'; key: string; text: string; parentToolUseId?: string }
@@ -40,12 +47,18 @@ export type CommandOption = { name: string; description: string; argumentHint: s
 export type ModelOption = { value: string; displayName: string; description: string }
 export type SessionSummary = { sessionId: string; title: string; lastModified: number }
 
-/** Subset of Claude Code's statusLine JSON input that next-ide can provide. */
+/** Claude Code's statusLine JSON input, as far as next-ide can provide it. */
 export type StatusLineInput = {
   session_id: string
   cwd: string
   model: { id: string; display_name: string }
   workspace: { current_dir: string; project_dir: string }
-  cost: { total_cost_usd: number; total_duration_ms: number }
+  version?: string
+  cost: { total_cost_usd: number; total_duration_ms: number; total_lines_added?: number; total_lines_removed?: number }
   context_window?: { context_window_size: number; used_percentage: number; total_input_tokens: number }
+  exceeds_200k_tokens?: boolean
+  rate_limits?: RateLimits
+  effort?: { level: string }
+  thinking?: { enabled: boolean }
+  output_style?: { name: string }
 }

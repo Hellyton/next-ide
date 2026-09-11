@@ -20,6 +20,17 @@ const BY_NAME: Record<string, SupportedLang> = {
   makefile: 'make', 'tsconfig.json': 'jsonc', '.env': 'ini', '.zshrc': 'shellscript', '.bashrc': 'shellscript',
 }
 
+const FENCE_ALIASES: Record<string, SupportedLang> = {
+  shell: 'shellscript', console: 'shellscript', 'c++': 'cpp', makefile: 'make',
+}
+
+/** Language of a markdown code fence (```ts, ```bash, ```python …). */
+export function langForFence(name: string): SupportedLang | 'text' {
+  const n = name.toLowerCase()
+  if ((SUPPORTED_LANGS as readonly string[]).includes(n)) return n as SupportedLang
+  return FENCE_ALIASES[n] ?? BY_EXT[n] ?? 'text'
+}
+
 export function langForPath(path: string): SupportedLang | 'text' {
   const name = path.slice(path.lastIndexOf('/') + 1).toLowerCase()
   const byName = BY_NAME[name]

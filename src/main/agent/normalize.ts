@@ -43,6 +43,8 @@ export class StreamNormalizer {
         return this.toolResults(message.message)
       case 'result':
         return this.result(message)
+      case 'rate_limit_event':
+        return this.rateLimit(message.rate_limit_info)
       default:
         return []
     }
@@ -56,7 +58,18 @@ export class StreamNormalizer {
       cwd: str(m.cwd) ?? '',
       permissionMode: (str(m.permissionMode) ?? 'default') as PermissionMode,
       slashCommands: Array.isArray(m.slash_commands) ? m.slash_commands.filter((c): c is string => typeof c === 'string') : [],
+      ...(str(m.claude_code_version) ? { version: str(m.claude_code_version)! } : {}),
     }
+  }
+
+  /** Plan usage windows (claude.ai subscriptions). `utilization` is a 0–1 fraction; `resetsAt` epoch seconds. */
+  private rateLimit(info: unknown): AgentEvent[] {
+    if (!isRec(info) || typeof info.utilization !== 'number') return []
+    const window = info.rateLimitType
+    if (window !== 'five_hour' && window !== 'seven_day') return []
+    const usedPct = Math.round((info.utilization <= 1 ? info.utilization * 100 : info.utilization) * 10) / 10
+    const reset = typeof info.resetsAt === 'number' ? (info.resetsAt > 1e12 ? Math.round(info.resetsAt / 1000) : info.resetsAt) : undefined
+    return [{ kind: 'rate-limit', window, usedPct, ...(reset !== undefined ? { resetsAt: reset } : {}) }]
   }
 
   private stream(event: unknown, parent: string | undefined): AgentEvent[] {
@@ -151,6 +164,7 @@ export class StreamNormalizer {
         durationMs: num(m.duration_ms),
         ...(contextWindow > 0 ? { contextWindow } : {}),
         ...(pct !== undefined ? { contextPct: pct } : {}),
+        ...(this.contextTokens !== undefined ? { contextTokens: this.contextTokens } : {}),
       },
     ]
     if (m.subtype !== 'success' || m.is_error === true) {

@@ -9,7 +9,7 @@ export type InvokeMap = {
   'settings:save': { args: [settings: Settings]; result: void }
   'layout:get': { args: []; result: LayoutState | null }
   'layout:save': { args: [layout: LayoutState]; result: void }
-  'fs:pickFolder': { args: []; result: string | null }
+  'fs:pickFolder': { args: []; result: string[] }
   'fs:pickWorkspaceFile': { args: []; result: { name: string; paths: string[] } | null }
   'git:info': { args: [projectPath: string]; result: GitInfo }
   'fs:list': { args: [projectPath: string, dir: string]; result: FsEntry[] }

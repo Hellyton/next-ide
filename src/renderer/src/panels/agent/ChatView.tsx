@@ -3,14 +3,14 @@ import type { ChatItem } from '../../agent/chatReducer'
 import { descendantsByTask, isChildItem } from '../../agent/chatTree'
 import { ChatItemView, itemKey } from './cards/ChatItemView'
 
-export function ChatView({ items, panelId }: { items: ChatItem[]; panelId: string }) {
+export function ChatView({ items, panelId, running }: { items: ChatItem[]; panelId: string; running: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
 
   useEffect(() => {
     const el = ref.current
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight
-  }, [items])
+  }, [items, running])
 
   const topLevel = useMemo(() => items.filter((item) => !isChildItem(item)), [items])
   const descendants = useMemo(() => descendantsByTask(items), [items])
@@ -29,6 +29,16 @@ export function ChatView({ items, panelId }: { items: ChatItem[]; panelId: strin
       {topLevel.map((item) => (
         <ChatItemView key={itemKey(item)} item={item} descendants={item.type === 'tool' ? descendants.get(item.id) : undefined} panelId={panelId} />
       ))}
+      {running && (
+        <div data-testid="thinking-indicator" role="status" aria-label="Claude está pensando" className="flex items-center gap-2 text-xs text-[#d97757]">
+          <span>Pensando</span>
+          <span className="thinking-dots" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
+        </div>
+      )}
     </div>
   )
 }

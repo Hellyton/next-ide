@@ -25,6 +25,7 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
     cwd: options.cwd,
     permissionMode: options.permissionMode,
     slash_commands: ['compact', 'review'],
+    claude_code_version: '9.9.9-fake',
   })
   void (async () => {
     for await (const msg of prompt) {
@@ -74,6 +75,10 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
           content: [{ type: 'text', text: reply }],
           usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
         },
+      })
+      out.push({
+        type: 'rate_limit_event',
+        rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', utilization: 0.42, resetsAt: 4_102_444_800 },
       })
       out.push({
         type: 'result',

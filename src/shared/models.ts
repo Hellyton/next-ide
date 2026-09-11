@@ -16,17 +16,12 @@ export type FilePanelParams = { type: 'file'; projectPath: string; filePath: str
 export type PanelParams = AgentPanelParams | TerminalPanelParams | FilePanelParams
 export type PanelType = PanelParams['type']
 
-export type StatusSegmentId =
-  | 'project'
-  | 'branch'
-  | 'model'
-  | 'context'
-  | 'tokens'
-  | 'cost'
-  | 'duration'
-  | 'mode'
-  | 'state'
-  | 'customScript'
+export const STATUS_SEGMENTS = ['project', 'branch', 'model', 'context', 'tokens', 'duration', 'mode'] as const
+export type StatusSegmentId = (typeof STATUS_SEGMENTS)[number] | 'customScript'
+
+/** Drops ids that are no longer offered (e.g. 'cost', 'state' saved by older versions). */
+export const sanitizeSegments = (ids: readonly string[]): StatusSegmentId[] =>
+  ids.filter((id): id is StatusSegmentId => (STATUS_SEGMENTS as readonly string[]).includes(id))
 
 export type Settings = {
   claudePath?: string
@@ -39,7 +34,7 @@ export type Settings = {
 export const DEFAULT_SETTINGS: Settings = {
   defaultPermissionMode: 'default',
   statusline: {
-    segments: ['project', 'branch', 'model', 'context', 'cost', 'duration', 'state'],
+    segments: ['project', 'branch', 'model', 'context', 'duration'],
     customScript: false,
   },
   theme: 'dark',

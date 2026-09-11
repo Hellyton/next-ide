@@ -53,7 +53,9 @@ export function ProjectRow({ project, onRemove }: { project: Project; onRemove: 
         <button
           aria-label={`Remover ${project.name}`}
           className="invisible rounded px-1 text-neutral-500 group-hover:visible hover:text-red-400"
-          onClick={onRemove}
+          onClick={() => {
+            if (window.confirm(`Tem certeza que deseja remover o diretório "${project.name}" do workspace?\n\nOs arquivos no disco não são apagados.`)) onRemove()
+          }}
         >
           ×
         </button>

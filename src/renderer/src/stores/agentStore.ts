@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AgentEvent } from '@shared/agent'
+import type { AgentEvent, RateLimits } from '@shared/agent'
 import type { AgentPanelParams } from '@shared/models'
 import { appendSnippet } from '../agent/mentions'
 import { initialChat, reduceAll, reduceChat, type ChatState } from '../agent/chatReducer'
@@ -9,6 +9,8 @@ import { useSessions } from './sessionsStore'
 
 type AgentsState = {
   chats: Record<string, ChatState>
+  /** Plan usage windows; account-wide, so shared by every panel. */
+  rateLimits: RateLimits
   /** Composer text per panel; lives here so other panels (file viewer) can insert @mentions. */
   drafts: Record<string, string>
   apply(panelId: string, event: AgentEvent): void
@@ -22,6 +24,7 @@ type AgentsState = {
 
 export const useAgents = create<AgentsState>()((set) => ({
   chats: {},
+  rateLimits: {},
   drafts: {},
   apply: (panelId, event) => set((s) => ({ chats: { ...s.chats, [panelId]: reduceChat(s.chats[panelId] ?? initialChat, event) } })),
   load: (panelId, events) => set((s) => ({ chats: { ...s.chats, [panelId]: reduceAll(events, s.chats[panelId] ?? initialChat) } })),
@@ -83,6 +86,11 @@ export function replacePanelParams(panelId: string, params: AgentPanelParams): v
 const pendingSessionId = new Map<string, string>()
 
 export function handleAgentEvent(panelId: string, event: AgentEvent): void {
+  if (event.kind === 'rate-limit') {
+    const window = { used_percentage: event.usedPct, ...(event.resetsAt !== undefined ? { resets_at: event.resetsAt } : {}) }
+    useAgents.setState((s) => ({ rateLimits: { ...s.rateLimits, [event.window]: window } }))
+    return
+  }
   // Late events (e.g. the `exited` from agent:close) can arrive after the panel left the dock;
   // applying them would resurrect a chat entry for a panel that no longer exists.
   if (!useSessions.getState().byId[panelId]) return

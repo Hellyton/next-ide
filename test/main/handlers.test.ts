@@ -20,7 +20,7 @@ function deps(over: Partial<HandlerDeps> = {}): HandlerDeps & { ptyCalls: unknow
       resize: (...a) => void ptyCalls.push(['resize', ...a]),
       kill: (...a) => void ptyCalls.push(['kill', ...a]),
     },
-    pickFolder: async () => '/picked',
+    pickFolders: async () => ['/picked'],
     pickWorkspaceFile: async () => null,
     readTextFile: async () => '{}',
     gitInfo: async () => ({ branch: 'dev' }),
@@ -40,6 +40,15 @@ function deps(over: Partial<HandlerDeps> = {}): HandlerDeps & { ptyCalls: unknow
     ...over,
   }
 }
+
+describe('buildHandlers (settings)', () => {
+  it('settings:get drops status segments that are no longer offered', async () => {
+    const d = deps()
+    await d.stores.settings.writeNow({ ...DEFAULT_SETTINGS, statusline: { segments: ['project', 'cost', 'state', 'model'] as never, customScript: true } })
+    const s = await buildHandlers(d)['settings:get']()
+    expect(s.statusline.segments).toEqual(['project', 'model'])
+  })
+})
 
 describe('buildHandlers', () => {
   it('workspace get/save round-trips after flush', async () => {

@@ -99,7 +99,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
     <div className="relative flex h-full flex-col bg-neutral-950" data-testid="agent-panel">
       <AgentPanelContext.Provider value={panelCtx}>
         <ChatActionsContext.Provider value={actions}>
-          <ChatView items={chat.items} panelId={panelId} />
+          <ChatView items={chat.items} panelId={panelId} running={chat.state === 'running'} />
         </ChatActionsContext.Provider>
       </AgentPanelContext.Provider>
       <Composer panelId={panelId} chat={chat} projectPath={params.projectPath} onSend={send} onLocalCommand={onLocalCommand} />

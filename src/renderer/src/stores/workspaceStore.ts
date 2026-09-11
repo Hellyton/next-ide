@@ -47,8 +47,8 @@ export const useWorkspaces = create<WorkspaceState>()((set, get) => {
     toggle: (id) => commit(toggleWorkspace(get().workspaces, id)),
     addFolder: async (workspaceId) => {
       try {
-        const path = await window.api.invoke('fs:pickFolder')
-        if (path) commit(addProjects(get().workspaces, workspaceId, [path], uuid))
+        const paths = await window.api.invoke('fs:pickFolder')
+        if (paths.length > 0) commit(addProjects(get().workspaces, workspaceId, paths, uuid))
       } catch (err) {
         console.error('[next-ide] failed to pick folder', err)
       }
