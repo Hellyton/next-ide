@@ -48,14 +48,22 @@ const LOADERS: Record<SupportedLang, LangInput> = {
 }
 
 let highlighter: Promise<HighlighterCore> | null = null
-const getHighlighter = () =>
-  (highlighter ??= createHighlighterCore({
-    themes: [import('@shikijs/themes/github-dark')],
-    langs: [],
-    // JS regex engine: no WebAssembly, so the production CSP stays as is. `forgiving` skips the
-    // rare grammar patterns it can't translate instead of throwing.
-    engine: createJavaScriptRegexEngine({ forgiving: true }),
-  }))
+const getHighlighter = () => {
+  if (!highlighter) {
+    highlighter = createHighlighterCore({
+      themes: [import('@shikijs/themes/github-dark')],
+      langs: [],
+      // JS regex engine: no WebAssembly, so the production CSP stays as is. `forgiving` skips the
+      // rare grammar patterns it can't translate instead of throwing.
+      engine: createJavaScriptRegexEngine({ forgiving: true }),
+    }).catch((err: unknown) => {
+      // Don't cache a failed init forever: the next call gets a fresh attempt.
+      highlighter = null
+      throw err
+    })
+  }
+  return highlighter
+}
 
 export async function highlight(code: string, lang: SupportedLang | 'text'): Promise<string> {
   const hl = await getHighlighter()
