@@ -19,7 +19,8 @@ test('aprova permissão inline e troca modo e modelo', async () => {
   await expect(page.getByRole('combobox', { name: 'Modo de permissão' })).toHaveValue('plan')
 
   const model = page.getByRole('combobox', { name: 'Modelo' })
-  await model.click()
+  // Focus (not click): a click opens the native popup, which can swallow the options update.
+  await model.focus()
   await expect(model.locator('option', { hasText: 'Fake Haiku' })).toHaveCount(1)
   await model.selectOption('fake-small')
   await expect(model).toHaveValue('fake-small')

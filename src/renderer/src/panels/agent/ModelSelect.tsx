@@ -18,7 +18,6 @@ export function ModelSelect({ panelId, model }: { panelId: string; model: string
       aria-label="Modelo"
       className="max-w-40 rounded bg-neutral-900 px-1 py-0.5 text-neutral-300 ring-1 ring-neutral-800"
       value={current}
-      onMouseDown={load}
       onFocus={load}
       onChange={(e) => void window.api.invoke('agent:setModel', panelId, e.target.value).catch((err) => console.error('[next-ide] setModel failed', err))}
     >
