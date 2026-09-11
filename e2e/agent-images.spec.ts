@@ -24,3 +24,14 @@ test('anexa imagem, remove, anexa de novo e envia', async () => {
   await expect(page.getByTestId('composer-notice')).toContainText('formato não suportado')
   await app.close()
 })
+
+test('envia só com imagem, sem texto', async () => {
+  const { app, page } = await openAgent()
+  const fileInput = page.getByTestId('image-input')
+  await fileInput.setInputFiles({ name: 'print.png', mimeType: 'image/png', buffer: PNG })
+  await expect(page.getByRole('img', { name: 'print.png' })).toBeVisible()
+  const input = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
+  await input.press('Enter')
+  await expect(page.getByTestId('user-bubble')).toContainText('1 imagem(ns)')
+  await app.close()
+})

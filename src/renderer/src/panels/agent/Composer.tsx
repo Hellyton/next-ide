@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ImageAttachment } from '@shared/agent'
 import type { ChatState } from '../../agent/chatReducer'
 import { composerKeyAction } from '../../agent/composerKeys'
-import { pickImageFiles, readImage, validateImage } from '../../agent/images'
+import { canSend, pickImageFiles, readImage, validateImage } from '../../agent/images'
 import { classifySlash, filterCommands, mergeCommands, slashQuery, type LocalCommand, type SlashItem } from '../../agent/slash'
 import { useDock } from '../../dock/dockStore'
 import { ModelSelect } from './ModelSelect'
@@ -26,6 +26,7 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }:
   const [menuIndex, setMenuIndex] = useState(0)
   const [notice, setNotice] = useState<{ text: string; command: string } | null>(null)
   const [images, setImages] = useState<ImageAttachment[]>([])
+  const [reading, setReading] = useState(0)
   const fileInput = useRef<HTMLInputElement>(null)
   const query = slashQuery(text)
   const menuItems = query === null ? [] : filterCommands(commands ?? mergeCommands([], chat.slashCommands), query)
@@ -58,14 +59,17 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }:
       return !error
     })
     if (errors.length) setNotice({ text: errors.join(' · '), command: '' })
+    if (valid.length === 0) return
+    setReading((n) => n + valid.length)
     void Promise.all(valid.map(readImage))
       .then((read) => setImages((prev) => [...prev, ...read]))
       .catch((err) => setNotice({ text: String(err), command: '' }))
+      .finally(() => setReading((n) => n - valid.length))
   }
 
   const submit = () => {
     const value = text.trim()
-    if (!value && images.length === 0) return
+    if (!canSend({ text: value, images: images.length, reading })) return
     setNotice(null)
     if (images.length === 0) {
       const action = classifySlash(value)
@@ -80,7 +84,7 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }:
       }
     }
     onSend(value, images)
-    history.current.push(value)
+    if (value) history.current.push(value)
     setText('')
     setImages([])
   }
@@ -198,6 +202,7 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }:
             e.target.value = ''
           }}
         />
+        {reading > 0 && <span data-testid="image-reading-hint">carregando imagem…</span>}
         <ModelSelect panelId={panelId} model={chat.model} />
         <ModeSelect panelId={panelId} mode={chat.permissionMode} />
         <span className="flex-1" />
@@ -209,7 +214,7 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }:
           <button
             aria-label="Enviar"
             className="rounded bg-orange-600 px-2 py-1 text-white hover:bg-orange-500 disabled:opacity-40"
-            disabled={!text.trim() && images.length === 0}
+            disabled={!canSend({ text, images: images.length, reading })}
             onClick={submit}
           >
             ↑

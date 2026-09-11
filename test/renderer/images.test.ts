@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_IMAGE_BYTES, stripDataUrl, validateImage } from '@renderer/agent/images'
+import { canSend, MAX_IMAGE_BYTES, stripDataUrl, validateImage } from '@renderer/agent/images'
 
 describe('validateImage', () => {
   it('accepts supported types within the size limit', () => {
@@ -16,5 +16,20 @@ describe('stripDataUrl', () => {
   it('returns the base64 payload', () => {
     expect(stripDataUrl('data:image/png;base64,AAAA')).toBe('AAAA')
     expect(stripDataUrl('AAAA')).toBe('AAAA')
+  })
+})
+
+describe('canSend', () => {
+  it('allows sending text with no images while nothing is reading', () => {
+    expect(canSend({ text: 'oi', images: 0, reading: 0 })).toBe(true)
+  })
+  it('allows sending images with no text while nothing is reading', () => {
+    expect(canSend({ text: '', images: 1, reading: 0 })).toBe(true)
+  })
+  it('blocks sending while an image is still being read', () => {
+    expect(canSend({ text: 'oi', images: 0, reading: 1 })).toBe(false)
+  })
+  it('blocks sending when text is only whitespace and there are no images', () => {
+    expect(canSend({ text: '  ', images: 0, reading: 0 })).toBe(false)
   })
 })

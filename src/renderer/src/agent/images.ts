@@ -18,6 +18,10 @@ export function pickImageFiles(files: ArrayLike<File> | null | undefined): File[
   return files ? Array.from(files).filter((f) => f.type.startsWith('image/')) : []
 }
 
+export function canSend(input: { text: string; images: number; reading: number }): boolean {
+  return input.reading === 0 && (input.text.trim().length > 0 || input.images > 0)
+}
+
 export function readImage(file: File): Promise<ImageAttachment> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
