@@ -28,4 +28,9 @@ describe('runStatusLine', () => {
     expect(await runStatusLine(input, { settingsPath: settings('exit 3'), shell: '/bin/sh' })).toBeNull()
     expect(await runStatusLine(input, { settingsPath: settings('sleep 5'), shell: '/bin/sh', timeoutMs: 200 })).toBeNull()
   })
+  it('survives a command that exits without reading a large stdin', async () => {
+    expect(
+      await runStatusLine({ ...input, cwd: 'x'.repeat(2_000_000) } as never, { settingsPath: settings('exit 3'), shell: '/bin/sh' }),
+    ).toBeNull()
+  })
 })

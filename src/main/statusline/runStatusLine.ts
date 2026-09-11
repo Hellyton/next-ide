@@ -38,6 +38,9 @@ export async function runStatusLine(
       clearTimeout(timer)
       resolve(code === 0 ? out.replace(/\s+$/, '') || null : null)
     })
+    // The command may exit before reading stdin (or without reading it at all); the child's own
+    // 'close' handler above already resolves the promise, so just swallow the resulting EPIPE.
+    child.stdin.on('error', () => {})
     child.stdin.end(JSON.stringify(input))
   })
 }
