@@ -3309,4 +3309,692 @@ const resume = (sessionId: string) => {
 
 - [ ] **Step 10: Commit** — `git add -A && git commit -m "feat: add slash command menu, /resume, /clear and tui-only notice"`
 
-<!-- TASKS 10+ APPENDED BELOW -->
+---
+
+### Task 10: Colar, arrastar e anexar imagens no composer
+
+**Files:**
+- Create: `src/renderer/src/agent/images.ts`
+- Modify: `src/renderer/src/panels/agent/Composer.tsx`
+- Test: `test/renderer/images.test.ts`, `e2e/agent-images.spec.ts`
+
+**Interfaces:**
+- Consumes: `ImageAttachment`, `ImageMediaType` (Task 1), `onSend(text, images)` do Composer (Task 6).
+- Produces: `MAX_IMAGE_BYTES = 5 * 1024 * 1024`, `validateImage(file: { name: string; type: string; size: number }): string | null`, `stripDataUrl(dataUrl: string): string`, `pickImageFiles(files: ArrayLike<File> | null | undefined): File[]`, `readImage(file: File): Promise<ImageAttachment>`.
+
+Regras (spec §6.3): png/jpg/gif/webp, até 5 MB por imagem; miniatura removível antes de enviar; colar texto continua normal (só intercepta quando há arquivos de imagem); pode enviar só imagem, sem texto.
+
+- [ ] **Step 1: Testes falhando**
+
+```ts
+// test/renderer/images.test.ts
+import { describe, expect, it } from 'vitest'
+import { MAX_IMAGE_BYTES, stripDataUrl, validateImage } from '@renderer/agent/images'
+
+describe('validateImage', () => {
+  it('accepts supported types within the size limit', () => {
+    expect(validateImage({ name: 'a.png', type: 'image/png', size: 10 })).toBeNull()
+    expect(validateImage({ name: 'a.webp', type: 'image/webp', size: MAX_IMAGE_BYTES })).toBeNull()
+  })
+  it('rejects unsupported types and oversized files with pt-BR messages', () => {
+    expect(validateImage({ name: 'a.svg', type: 'image/svg+xml', size: 10 })).toBe('a.svg: formato não suportado (use png, jpg, gif ou webp)')
+    expect(validateImage({ name: 'b.png', type: 'image/png', size: MAX_IMAGE_BYTES + 1 })).toBe('b.png: maior que 5 MB')
+  })
+})
+
+describe('stripDataUrl', () => {
+  it('returns the base64 payload', () => {
+    expect(stripDataUrl('data:image/png;base64,AAAA')).toBe('AAAA')
+    expect(stripDataUrl('AAAA')).toBe('AAAA')
+  })
+})
+```
+
+```ts
+// e2e/agent-images.spec.ts
+import { expect, test } from '@playwright/test'
+import { openAgent } from './helpers'
+
+// 1x1 transparent PNG
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64')
+
+test('anexa imagem, remove, anexa de novo e envia', async () => {
+  const { app, page } = await openAgent()
+  const fileInput = page.getByTestId('image-input')
+  await fileInput.setInputFiles({ name: 'print.png', mimeType: 'image/png', buffer: PNG })
+  await expect(page.getByRole('img', { name: 'print.png' })).toBeVisible()
+  await page.getByRole('button', { name: 'Remover imagem print.png' }).click()
+  await expect(page.getByRole('img', { name: 'print.png' })).toHaveCount(0)
+
+  await fileInput.setInputFiles({ name: 'print.png', mimeType: 'image/png', buffer: PNG })
+  const input = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
+  await input.fill('veja')
+  await input.press('Enter')
+  await expect(page.getByTestId('user-bubble')).toContainText('1 imagem(ns)')
+  await expect(page.getByRole('img', { name: 'print.png' })).toHaveCount(0)
+
+  await fileInput.setInputFiles({ name: 'grande.svg', mimeType: 'image/svg+xml', buffer: Buffer.from('<svg/>') })
+  await expect(page.getByTestId('composer-notice')).toContainText('formato não suportado')
+  await app.close()
+})
+```
+
+- [ ] **Step 2: Rodar e ver falhar** — `npx vitest run test/renderer/images.test.ts` → FAIL.
+
+- [ ] **Step 3: Implementar `src/renderer/src/agent/images.ts`**
+
+```ts
+import type { ImageAttachment, ImageMediaType } from '@shared/agent'
+
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const SUPPORTED = new Set<string>(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
+
+export function validateImage(file: { name: string; type: string; size: number }): string | null {
+  if (!SUPPORTED.has(file.type)) return `${file.name}: formato não suportado (use png, jpg, gif ou webp)`
+  if (file.size > MAX_IMAGE_BYTES) return `${file.name}: maior que 5 MB`
+  return null
+}
+
+export function stripDataUrl(dataUrl: string): string {
+  const comma = dataUrl.indexOf(',')
+  return comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
+}
+
+export function pickImageFiles(files: ArrayLike<File> | null | undefined): File[] {
+  return files ? Array.from(files).filter((f) => f.type.startsWith('image/')) : []
+}
+
+export function readImage(file: File): Promise<ImageAttachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(reader.error ?? new Error(`falha ao ler ${file.name}`))
+    reader.onload = () => resolve({ name: file.name, mediaType: file.type as ImageMediaType, data: stripDataUrl(String(reader.result)) })
+    reader.readAsDataURL(file)
+  })
+}
+```
+
+- [ ] **Step 4: Composer** — alterações em `Composer.tsx`:
+
+```tsx
+// estado novo
+const [images, setImages] = useState<ImageAttachment[]>([])
+const fileInput = useRef<HTMLInputElement>(null)
+
+const addFiles = (files: File[]) => {
+  const errors: string[] = []
+  const valid = files.filter((f) => {
+    const error = validateImage(f)
+    if (error) errors.push(error)
+    return !error
+  })
+  if (errors.length) setNotice({ text: errors.join(' · '), command: '' })
+  void Promise.all(valid.map(readImage))
+    .then((read) => setImages((prev) => [...prev, ...read]))
+    .catch((err) => setNotice({ text: String(err), command: '' }))
+}
+
+// submit: permitir envio só com imagem e limpar anexos
+//   const value = text.trim()
+//   if (!value && images.length === 0) return
+//   ... (classifySlash só quando não há imagens)
+//   onSend(value, images); setImages([])
+
+// no container raiz do Composer:
+//   onDragOver={(e) => e.preventDefault()}
+//   onDrop={(e) => { const files = pickImageFiles(e.dataTransfer.files); if (files.length) { e.preventDefault(); addFiles(files) } }}
+// no textarea:
+//   onPaste={(e) => { const files = pickImageFiles(e.clipboardData.files); if (files.length) { e.preventDefault(); addFiles(files) } }}
+
+// acima do textarea, miniaturas:
+{images.length > 0 && (
+  <div className="mb-1 flex flex-wrap gap-2">
+    {images.map((img, i) => (
+      <div key={`${img.name}-${i}`} className="relative">
+        <img alt={img.name} src={`data:${img.mediaType};base64,${img.data}`} className="h-14 w-14 rounded border border-neutral-700 object-cover" />
+        <button
+          aria-label={`Remover imagem ${img.name}`}
+          className="absolute -top-1 -right-1 rounded-full bg-neutral-800 px-1 text-[10px] text-neutral-200"
+          onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
+        >
+          ×
+        </button>
+      </div>
+    ))}
+  </div>
+)}
+
+// na toolbar, antes do ModelSelect:
+<button aria-label="Anexar imagem" className="rounded px-1 hover:bg-neutral-800" onClick={() => fileInput.current?.click()}>
+  +img
+</button>
+<input
+  ref={fileInput}
+  data-testid="image-input"
+  type="file"
+  accept="image/png,image/jpeg,image/gif,image/webp"
+  multiple
+  hidden
+  onChange={(e) => {
+    addFiles(Array.from(e.target.files ?? []))
+    e.target.value = ''
+  }}
+/>
+```
+
+O aviso (`composer-notice`) passa a aceitar `command: ''` — nesse caso o botão "Abrir em terminal" não aparece (`{notice.command && <button …>}`). Imports: `validateImage`, `readImage`, `pickImageFiles`, `type ImageAttachment`. O `accept` inclui só os tipos suportados, mas `addFiles` valida de qualquer jeito (arrastar/colar ignoram `accept`); o teste E2E usa `setInputFiles`, que também ignora `accept`.
+
+- [ ] **Step 5: Verificar** — `npx vitest run test/renderer/images.test.ts && npm run typecheck && npm test && npm run test:e2e` → verde.
+
+- [ ] **Step 6: Commit** — `git add -A && git commit -m "feat: paste, drop and attach images in the agent composer"`
+
+---
+
+### Task 11: StatusLine configurável + script `statusLine` do usuário
+
+**Files:**
+- Create: `src/renderer/src/agent/statusline.ts`, `src/renderer/src/agent/ansi.ts`, `src/renderer/src/stores/settingsStore.ts`, `src/renderer/src/panels/agent/StatusLine.tsx`, `src/main/statusline/runStatusLine.ts`
+- Modify: `src/shared/ipc-contract.ts` (`statusline:run`), `src/main/ipc/handlers.ts` (`statusline:run` + merge profundo de `settings.statusline`), `src/main/index.ts` (deps), `test/main/handlers.test.ts`, `src/renderer/src/panels/agent/AgentPanel.tsx`, `e2e/helpers.ts`
+- Test: `test/renderer/statusline.test.ts`, `test/renderer/ansi.test.ts`, `test/main/runStatusLine.test.ts`, `e2e/agent-statusline.spec.ts`
+
+**Interfaces:**
+- Consumes: `StatusSegmentId`, `Settings`, `DEFAULT_SETTINGS` (Plano 1), `StatusLineInput`, `StatsEvent` (Task 1), `ChatState` (Task 3), `MODE_OPTIONS` (Task 8), `useGitBranch` (Plano 1, `src/renderer/src/sidebar/useGitBranch.ts`).
+- Produces:
+  - `SEGMENT_LABELS: Record<StatusSegmentId, string>`, `type StatusContext`, `buildSegments(ids: StatusSegmentId[], ctx: StatusContext): Array<{ id: StatusSegmentId; text: string }>`, `formatCost(usd: number): string`, `formatDuration(ms: number): string`, `formatTokens(n: number): string`, `buildStatusLineInput(ctx: StatusContext & { sessionId?: string; cwd: string }): StatusLineInput`
+  - `type AnsiSpan = { text: string; color?: string; bold?: boolean; dim?: boolean }`, `ansiToSpans(text: string): AnsiSpan[]`
+  - `useSettings` (zustand): `{ settings: Settings; loaded: boolean; load(): Promise<void>; update(patch: Partial<Settings>): void }`
+  - `runStatusLine(input: StatusLineInput, opts?: { settingsPath?: string; shell?: string; timeoutMs?: number }): Promise<string | null>`
+  - Canal `'statusline:run': { args: [input: StatusLineInput]; result: string | null }`
+  - `<StatusLine panelId projectPath chat configOpen onConfigClose>`
+
+`StatusContext = { projectName: string; branch: string | null; model?: string; contextPct?: number; tokens: number; costUsd: number; durationMs?: number; mode?: PermissionMode; state: SessionState }`. Segmentos sem dado são omitidos (ex.: sem `contextPct` → sem segmento `context`). `customScript` não vira segmento de texto: quando ligado, a saída ANSI do script aparece à direita.
+
+Hermético nos testes: `e2e/helpers.ts` passa `NEXT_IDE_CLAUDE_SETTINGS=<tempdir>/claude-settings.json` (arquivo inexistente) por padrão; o main usa essa variável como `settingsPath` quando definida, senão `~/.claude/settings.json`.
+
+- [ ] **Step 1: Testes falhando**
+
+```ts
+// test/renderer/statusline.test.ts
+import { describe, expect, it } from 'vitest'
+import { buildSegments, buildStatusLineInput, formatCost, formatDuration, formatTokens } from '@renderer/agent/statusline'
+
+const ctx = { projectName: 'api', branch: 'dev', model: 'opus', contextPct: 29, tokens: 288_000, costUsd: 0.4213, durationMs: 73_000, mode: 'plan' as const, state: 'running' as const }
+
+describe('formatters', () => {
+  it('formats cost, duration and tokens', () => {
+    expect(formatCost(0.4213)).toBe('$0.42')
+    expect(formatCost(0)).toBe('$0.00')
+    expect(formatDuration(73_000)).toBe('1m13s')
+    expect(formatDuration(900)).toBe('0.9s')
+    expect(formatTokens(288_000)).toBe('288k')
+    expect(formatTokens(950)).toBe('950')
+  })
+})
+
+describe('buildSegments', () => {
+  it('renders the chosen segments in order and skips missing data', () => {
+    expect(buildSegments(['project', 'branch', 'model', 'context', 'cost', 'duration', 'mode', 'state', 'tokens'], ctx).map((s) => s.text)).toEqual([
+      'api', 'dev', 'opus', 'contexto 29%', '$0.42', '1m13s', 'Plano', 'rodando', '288k tokens',
+    ])
+    expect(buildSegments(['branch', 'context', 'customScript'], { ...ctx, branch: null, contextPct: undefined }).map((s) => s.id)).toEqual([])
+  })
+})
+
+describe('buildStatusLineInput', () => {
+  it('maps to the Claude Code statusLine JSON shape', () => {
+    expect(buildStatusLineInput({ ...ctx, sessionId: 's1', cwd: '/g/api' })).toEqual({
+      session_id: 's1',
+      cwd: '/g/api',
+      model: { id: 'opus', display_name: 'opus' },
+      workspace: { current_dir: '/g/api', project_dir: '/g/api' },
+      cost: { total_cost_usd: 0.4213, total_duration_ms: 73_000 },
+      context_window: { context_window_size: 0, used_percentage: 29, total_input_tokens: 288_000 },
+    })
+  })
+})
+```
+
+```ts
+// test/renderer/ansi.test.ts
+import { describe, expect, it } from 'vitest'
+import { ansiToSpans } from '@renderer/agent/ansi'
+
+describe('ansiToSpans', () => {
+  it('parses basic colors, bold, dim, reset and 24-bit/256 colors', () => {
+    expect(ansiToSpans('\x1b[32mok\x1b[0m done')).toEqual([{ text: 'ok', color: '#4ade80' }, { text: ' done' }])
+    expect(ansiToSpans('\x1b[1;31mX')).toEqual([{ text: 'X', color: '#f87171', bold: true }])
+    expect(ansiToSpans('\x1b[2mdim')).toEqual([{ text: 'dim', dim: true }])
+    expect(ansiToSpans('\x1b[38;2;255;0;128mrgb')).toEqual([{ text: 'rgb', color: 'rgb(255,0,128)' }])
+    expect(ansiToSpans('\x1b[38;5;196mred')).toEqual([{ text: 'red', color: 'rgb(255,0,0)' }])
+    expect(ansiToSpans('plain')).toEqual([{ text: 'plain' }])
+  })
+})
+```
+
+```ts
+// test/main/runStatusLine.test.ts
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { runStatusLine } from '../../src/main/statusline/runStatusLine'
+
+const input = {
+  session_id: 's',
+  cwd: '/p',
+  model: { id: 'm', display_name: 'M' },
+  workspace: { current_dir: '/p', project_dir: '/p' },
+  cost: { total_cost_usd: 0, total_duration_ms: 0 },
+}
+const settings = (command: string) => {
+  const dir = mkdtempSync(join(tmpdir(), 'sl-'))
+  const path = join(dir, 'settings.json')
+  writeFileSync(path, JSON.stringify({ statusLine: { type: 'command', command } }))
+  return path
+}
+
+describe('runStatusLine', () => {
+  it('runs the command with the JSON on stdin and returns trimmed stdout', async () => {
+    const out = await runStatusLine(input, { settingsPath: settings('cat | grep -o "\\"display_name\\":\\"M\\""'), shell: '/bin/sh' })
+    expect(out).toBe('"display_name":"M"')
+  })
+  it('returns null without a configured command, on failure and on timeout', async () => {
+    expect(await runStatusLine(input, { settingsPath: '/nope/settings.json', shell: '/bin/sh' })).toBeNull()
+    expect(await runStatusLine(input, { settingsPath: settings('exit 3'), shell: '/bin/sh' })).toBeNull()
+    expect(await runStatusLine(input, { settingsPath: settings('sleep 5'), shell: '/bin/sh', timeoutMs: 200 })).toBeNull()
+  })
+})
+```
+
+Em `test/main/handlers.test.ts`: adicionar `runStatusLine: async () => 'linha'` ao `deps()` e:
+
+```ts
+it('settings:get deep-merges statusline defaults', async () => {
+  const d = deps()
+  await d.stores.settings.writeNow({ ...DEFAULT_SETTINGS, statusline: { customScript: true } as never })
+  const s = await buildHandlers(d)['settings:get']()
+  expect(s.statusline).toEqual({ segments: DEFAULT_SETTINGS.statusline.segments, customScript: true })
+})
+
+it('statusline:run delegates to the runner', async () => {
+  expect(await buildHandlers(deps())['statusline:run']({} as never)).toBe('linha')
+})
+```
+
+```ts
+// e2e/agent-statusline.spec.ts
+import { expect, test } from '@playwright/test'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { openAgent } from './helpers'
+
+test('statusline mostra modelo, custo e script do usuário', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'claude-settings-'))
+  const settingsPath = join(dir, 'settings.json')
+  writeFileSync(settingsPath, JSON.stringify({ statusLine: { type: 'command', command: "printf '\\033[32mSCRIPT OK\\033[0m'" } }))
+  const { app, page } = await openAgent({ env: { NEXT_IDE_CLAUDE_SETTINGS: settingsPath } })
+  const input = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
+  await input.fill('oi')
+  await input.press('Enter')
+  const bar = page.getByTestId('status-line')
+  await expect(bar).toContainText('fake-model')
+  await expect(bar).toContainText('$0.01')
+
+  await input.fill('/statusline')
+  await input.press('Enter')
+  const config = page.getByRole('dialog', { name: 'Configurar statusline' })
+  await config.getByRole('checkbox', { name: 'custo' }).uncheck()
+  await config.getByRole('checkbox', { name: 'script do ~/.claude (statusLine)' }).check()
+  await config.getByRole('button', { name: 'Fechar' }).click()
+  await expect(bar).not.toContainText('$0.01')
+  await expect(bar.getByText('SCRIPT OK')).toHaveCSS('color', 'rgb(74, 222, 128)')
+  await app.close()
+})
+```
+
+- [ ] **Step 2: Rodar e ver falhar** — `npx vitest run test/renderer/statusline.test.ts test/renderer/ansi.test.ts test/main/runStatusLine.test.ts test/main/handlers.test.ts` → FAIL.
+
+- [ ] **Step 3: Implementar lógica pura**
+
+```ts
+// src/renderer/src/agent/statusline.ts
+import type { StatusLineInput } from '@shared/agent'
+import type { PermissionMode, SessionState, StatusSegmentId } from '@shared/models'
+import { MODE_OPTIONS } from './permissions'
+
+export type StatusContext = {
+  projectName: string
+  branch: string | null
+  model?: string
+  contextPct?: number
+  tokens: number
+  costUsd: number
+  durationMs?: number
+  mode?: PermissionMode
+  state: SessionState
+}
+
+export const SEGMENT_LABELS: Record<StatusSegmentId, string> = {
+  project: 'projeto',
+  branch: 'branch',
+  model: 'modelo',
+  context: 'contexto %',
+  tokens: 'tokens',
+  cost: 'custo',
+  duration: 'duração',
+  mode: 'modo',
+  state: 'estado',
+  customScript: 'script do ~/.claude (statusLine)',
+}
+
+const STATE_LABELS: Record<SessionState, string> = {
+  starting: 'iniciando',
+  idle: 'ocioso',
+  running: 'rodando',
+  awaiting_permission: 'aguardando você',
+  error: 'erro',
+  exited: 'encerrado',
+}
+
+export const formatCost = (usd: number): string => `$${usd.toFixed(2)}`
+export const formatTokens = (n: number): string => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n))
+export function formatDuration(ms: number): string {
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+  const total = Math.round(ms / 1000)
+  return `${Math.floor(total / 60)}m${String(total % 60).padStart(2, '0')}s`
+}
+
+export function buildSegments(ids: StatusSegmentId[], ctx: StatusContext): Array<{ id: StatusSegmentId; text: string }> {
+  const text = (id: StatusSegmentId): string | null => {
+    switch (id) {
+      case 'project':
+        return ctx.projectName
+      case 'branch':
+        return ctx.branch
+      case 'model':
+        return ctx.model ?? null
+      case 'context':
+        return ctx.contextPct === undefined ? null : `contexto ${ctx.contextPct}%`
+      case 'tokens':
+        return ctx.tokens > 0 ? `${formatTokens(ctx.tokens)} tokens` : null
+      case 'cost':
+        return formatCost(ctx.costUsd)
+      case 'duration':
+        return ctx.durationMs === undefined ? null : formatDuration(ctx.durationMs)
+      case 'mode':
+        return ctx.mode ? (MODE_OPTIONS.find((m) => m.value === ctx.mode)?.label ?? ctx.mode) : null
+      case 'state':
+        return STATE_LABELS[ctx.state]
+      case 'customScript':
+        return null
+    }
+  }
+  return ids.flatMap((id) => {
+    const value = text(id)
+    return value ? [{ id, text: value }] : []
+  })
+}
+
+export function buildStatusLineInput(ctx: StatusContext & { sessionId?: string; cwd: string }): StatusLineInput {
+  return {
+    session_id: ctx.sessionId ?? '',
+    cwd: ctx.cwd,
+    model: { id: ctx.model ?? '', display_name: ctx.model ?? '' },
+    workspace: { current_dir: ctx.cwd, project_dir: ctx.cwd },
+    cost: { total_cost_usd: ctx.costUsd, total_duration_ms: ctx.durationMs ?? 0 },
+    ...(ctx.contextPct !== undefined
+      ? { context_window: { context_window_size: 0, used_percentage: ctx.contextPct, total_input_tokens: ctx.tokens } }
+      : {}),
+  }
+}
+```
+
+```ts
+// src/renderer/src/agent/ansi.ts
+export type AnsiSpan = { text: string; color?: string; bold?: boolean; dim?: boolean }
+
+const BASIC = ['#404040', '#f87171', '#4ade80', '#facc15', '#60a5fa', '#c084fc', '#22d3ee', '#e5e5e5']
+const BRIGHT = ['#737373', '#fca5a5', '#86efac', '#fde047', '#93c5fd', '#d8b4fe', '#67e8f9', '#ffffff']
+
+function color256(n: number): string {
+  if (n < 8) return BASIC[n]!
+  if (n < 16) return BRIGHT[n - 8]!
+  if (n < 232) {
+    const i = n - 16
+    const level = (v: number) => (v === 0 ? 0 : 55 + v * 40)
+    return `rgb(${level(Math.floor(i / 36))},${level(Math.floor((i % 36) / 6))},${level(i % 6)})`
+  }
+  const gray = 8 + (n - 232) * 10
+  return `rgb(${gray},${gray},${gray})`
+}
+
+type Style = Omit<AnsiSpan, 'text'>
+
+function applyCodes(style: Style, codes: number[]): Style {
+  let next: Style = { ...style }
+  for (let i = 0; i < codes.length; i++) {
+    const c = codes[i]!
+    if (c === 0) next = {}
+    else if (c === 1) next.bold = true
+    else if (c === 2) next.dim = true
+    else if (c === 22) {
+      delete next.bold
+      delete next.dim
+    } else if (c === 39) delete next.color
+    else if (c >= 30 && c <= 37) next.color = BASIC[c - 30]
+    else if (c >= 90 && c <= 97) next.color = BRIGHT[c - 90]
+    else if (c === 38 && codes[i + 1] === 5 && codes[i + 2] !== undefined) {
+      next.color = color256(codes[i + 2]!)
+      i += 2
+    } else if (c === 38 && codes[i + 1] === 2 && codes[i + 4] !== undefined) {
+      next.color = `rgb(${codes[i + 2]},${codes[i + 3]},${codes[i + 4]})`
+      i += 4
+    }
+  }
+  return next
+}
+
+export function ansiToSpans(text: string): AnsiSpan[] {
+  const spans: AnsiSpan[] = []
+  let style: Style = {}
+  const re = /\x1b\[([0-9;]*)m/g
+  let last = 0
+  let match: RegExpExecArray | null
+  const pushText = (chunk: string) => {
+    if (chunk) spans.push({ text: chunk, ...style })
+  }
+  while ((match = re.exec(text))) {
+    pushText(text.slice(last, match.index))
+    style = applyCodes(style, match[1] ? match[1].split(';').map(Number) : [0])
+    last = re.lastIndex
+  }
+  pushText(text.slice(last))
+  return spans
+}
+```
+
+- [ ] **Step 4: Main — runner, canal e merge profundo**
+
+```ts
+// src/main/statusline/runStatusLine.ts
+import { spawn } from 'node:child_process'
+import { readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import type { StatusLineInput } from '@shared/agent'
+
+async function readCommand(settingsPath: string): Promise<string | null> {
+  try {
+    const parsed = JSON.parse(await readFile(settingsPath, 'utf8')) as { statusLine?: { type?: string; command?: string } }
+    return parsed.statusLine?.type === 'command' && parsed.statusLine.command ? parsed.statusLine.command : null
+  } catch {
+    return null
+  }
+}
+
+/** Runs the user's Claude Code statusLine command with next-ide's JSON on stdin (same contract as the CLI). */
+export async function runStatusLine(
+  input: StatusLineInput,
+  opts: { settingsPath?: string; shell?: string; timeoutMs?: number } = {},
+): Promise<string | null> {
+  const command = await readCommand(opts.settingsPath ?? join(homedir(), '.claude', 'settings.json'))
+  if (!command) return null
+  return new Promise((resolve) => {
+    const child = spawn(opts.shell ?? (process.env.SHELL || '/bin/zsh'), ['-lc', command], { stdio: ['pipe', 'pipe', 'ignore'] })
+    let out = ''
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL')
+      resolve(null)
+    }, opts.timeoutMs ?? 2000)
+    child.stdout.on('data', (chunk: Buffer) => {
+      out += chunk.toString('utf8')
+    })
+    child.on('error', () => {
+      clearTimeout(timer)
+      resolve(null)
+    })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      resolve(code === 0 ? out.replace(/\s+$/, '') || null : null)
+    })
+    child.stdin.end(JSON.stringify(input))
+  })
+}
+```
+
+No contrato: `'statusline:run': { args: [input: StatusLineInput]; result: string | null }` + nome em `INVOKE_CHANNELS`. Em `handlers.ts`: `HandlerDeps.runStatusLine: (input: StatusLineInput) => Promise<string | null>`; handler `'statusline:run': (input) => d.runStatusLine(input)`; e `settings:get` passa a ser
+
+```ts
+    'settings:get': async () => {
+      const stored = await d.stores.settings.read()
+      return { ...DEFAULT_SETTINGS, ...stored, statusline: { ...DEFAULT_SETTINGS.statusline, ...stored.statusline } }
+    },
+```
+
+Em `index.ts`: `runStatusLine: (input) => runStatusLine(input, process.env.NEXT_IDE_CLAUDE_SETTINGS ? { settingsPath: process.env.NEXT_IDE_CLAUDE_SETTINGS } : {})`. Em `e2e/helpers.ts`, o env padrão de `launch` ganha `NEXT_IDE_CLAUDE_SETTINGS: join(<tempdir do launch>, 'claude-settings.json')` (arquivo inexistente; `opts.env` sobrescreve).
+
+- [ ] **Step 5: Settings store e componente**
+
+```ts
+// src/renderer/src/stores/settingsStore.ts
+import { create } from 'zustand'
+import { DEFAULT_SETTINGS, type Settings } from '@shared/models'
+
+type SettingsState = { settings: Settings; loaded: boolean; load(): Promise<void>; update(patch: Partial<Settings>): void }
+
+export const useSettings = create<SettingsState>()((set, get) => ({
+  settings: DEFAULT_SETTINGS,
+  loaded: false,
+  load: async () => {
+    if (get().loaded) return
+    set({ settings: await window.api.invoke('settings:get'), loaded: true })
+  },
+  update: (patch) => {
+    const settings = { ...get().settings, ...patch }
+    set({ settings })
+    void window.api.invoke('settings:save', settings).catch((err) => console.error('[next-ide] failed to save settings', err))
+  },
+}))
+```
+
+```tsx
+// src/renderer/src/panels/agent/StatusLine.tsx
+import { useEffect, useMemo, useState } from 'react'
+import { basename } from '@shared/workspaces'
+import type { StatusSegmentId } from '@shared/models'
+import type { ChatState } from '../../agent/chatReducer'
+import { ansiToSpans } from '../../agent/ansi'
+import { SEGMENT_LABELS, buildSegments, buildStatusLineInput, type StatusContext } from '../../agent/statusline'
+import { useSettings } from '../../stores/settingsStore'
+import { useGitBranch } from '../../sidebar/useGitBranch'
+
+const ALL: StatusSegmentId[] = ['project', 'branch', 'model', 'context', 'tokens', 'cost', 'duration', 'mode', 'state']
+
+type Props = { projectPath: string; chat: ChatState; configOpen: boolean; onConfigClose(): void; onConfigOpen(): void }
+
+export function StatusLine({ projectPath, chat, configOpen, onConfigClose, onConfigOpen }: Props) {
+  const settings = useSettings((s) => s.settings)
+  const branch = useGitBranch(projectPath)
+  const [scriptOut, setScriptOut] = useState<string | null>(null)
+  useEffect(() => void useSettings.getState().load(), [])
+
+  const usage = chat.stats?.usage
+  const ctx: StatusContext = {
+    projectName: basename(projectPath),
+    branch,
+    ...(chat.model ? { model: chat.model } : {}),
+    ...(chat.stats?.contextPct !== undefined ? { contextPct: chat.stats.contextPct } : {}),
+    tokens: usage ? usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheCreationTokens : 0,
+    costUsd: chat.totalCostUsd,
+    ...(chat.stats ? { durationMs: chat.stats.durationMs } : {}),
+    ...(chat.permissionMode ? { mode: chat.permissionMode } : {}),
+    state: chat.state,
+  }
+  const segments = buildSegments(settings.statusline.segments, ctx)
+
+  useEffect(() => {
+    if (!settings.statusline.customScript) return setScriptOut(null)
+    window.api
+      .invoke('statusline:run', buildStatusLineInput({ ...ctx, cwd: projectPath, ...(chat.sessionId ? { sessionId: chat.sessionId } : {}) }))
+      .then(setScriptOut)
+      .catch(() => setScriptOut(null))
+    // Re-run after each turn (stats), on model/mode change, or when the toggle flips.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.statusline.customScript, chat.stats, chat.model, chat.permissionMode])
+
+  const spans = useMemo(() => (scriptOut ? ansiToSpans(scriptOut) : []), [scriptOut])
+  const toggle = (id: StatusSegmentId, on: boolean) => {
+    const current = settings.statusline.segments
+    const segments = on ? ALL.filter((s) => s === id || current.includes(s)) : current.filter((s) => s !== id)
+    useSettings.getState().update({ statusline: { ...settings.statusline, segments } })
+  }
+
+  return (
+    <div className="relative border-t border-neutral-900 px-3 py-1 text-[11px] text-neutral-500" data-testid="status-line">
+      <div className="flex items-center gap-2">
+        <span className="truncate">{segments.map((s) => s.text).join(' · ')}</span>
+        <span className="ml-auto truncate font-mono">
+          {spans.map((s, i) => (
+            <span key={i} style={{ color: s.color, fontWeight: s.bold ? 600 : undefined, opacity: s.dim ? 0.6 : undefined }}>
+              {s.text}
+            </span>
+          ))}
+        </span>
+        <button aria-label="Configurar statusline" className="rounded px-1 hover:bg-neutral-800" onClick={onConfigOpen}>
+          ⚙
+        </button>
+      </div>
+      {configOpen && (
+        <div role="dialog" aria-label="Configurar statusline" className="absolute right-2 bottom-7 z-10 w-64 rounded border border-neutral-700 bg-neutral-900 p-3 text-xs text-neutral-300">
+          {ALL.map((id) => (
+            <label key={id} className="flex items-center gap-2 py-0.5">
+              <input type="checkbox" checked={settings.statusline.segments.includes(id)} onChange={(e) => toggle(id, e.target.checked)} />
+              {SEGMENT_LABELS[id]}
+            </label>
+          ))}
+          <label className="mt-2 flex items-center gap-2 border-t border-neutral-800 pt-2">
+            <input
+              type="checkbox"
+              checked={settings.statusline.customScript}
+              onChange={(e) => useSettings.getState().update({ statusline: { ...settings.statusline, customScript: e.target.checked } })}
+            />
+            {SEGMENT_LABELS.customScript}
+          </label>
+          <button className="mt-2 rounded bg-neutral-800 px-2 py-0.5 hover:bg-neutral-700" onClick={onConfigClose}>
+            Fechar
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+```
+
+Em `AgentPanel.tsx`: estado `const [statusConfig, setStatusConfig] = useState(false)`; `onLocalCommand('statusline')` → `setStatusConfig(true)`; renderizar depois do `Composer`: `<StatusLine projectPath={params.projectPath} chat={chat} configOpen={statusConfig} onConfigOpen={() => setStatusConfig(true)} onConfigClose={() => setStatusConfig(false)} />`.
+
+- [ ] **Step 6: Verificar** — `npx vitest run test/renderer test/main && npm run typecheck && npm test && npm run test:e2e` → verde.
+
+- [ ] **Step 7: Commit** — `git add -A && git commit -m "feat: add configurable statusline with the user's statusLine script"`
+
+<!-- TASKS 12+ APPENDED BELOW -->
