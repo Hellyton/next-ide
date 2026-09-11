@@ -1,5 +1,6 @@
 import type { DiffLine } from '../../../agent/toolView'
 import type { ToolItem } from '../../../agent/chatReducer'
+import { FilePathLink } from './FilePathLink'
 import { ToolStatus } from './GenericToolCard'
 
 const STYLE: Record<DiffLine['kind'], string> = {
@@ -14,7 +15,7 @@ export function DiffCard({ item, filePath, lines }: { item: ToolItem; filePath: 
     <details open className="rounded border border-neutral-800 text-xs" data-testid="diff-card">
       <summary className="flex cursor-pointer items-center gap-2 px-2 py-1">
         <span className="font-medium text-neutral-300">{item.name}</span>
-        <span className="truncate text-neutral-400">{filePath}</span>
+        <FilePathLink path={filePath} className="text-neutral-400" />
         <span className="ml-auto">
           <ToolStatus item={item} />
         </span>

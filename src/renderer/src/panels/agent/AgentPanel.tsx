@@ -6,6 +6,7 @@ import { restartSession } from '../../agent/restartSession'
 import type { LocalCommand } from '../../agent/slash'
 import { currentAgentParams, replacePanelParams, selectChat, useAgents } from '../../stores/agentStore'
 import { useSessions } from '../../stores/sessionsStore'
+import { AgentPanelContext } from './agentPanelContext'
 import { ChatActionsContext, type ChatActions } from './chatActions'
 import { ChatView } from './ChatView'
 import { Composer } from './Composer'
@@ -77,6 +78,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
     newSessionRef.current = () => void restart(base()).catch(fail)
   })
   const actions = useMemo<ChatActions>(() => ({ newSession: () => newSessionRef.current() }), [])
+  const panelCtx = useMemo(() => ({ projectPath: params.projectPath }), [params.projectPath])
 
   const onLocalCommand = (name: LocalCommand) => {
     if (name === 'resume') setResumeOpen(true)
@@ -95,9 +97,11 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
 
   return (
     <div className="relative flex h-full flex-col bg-neutral-950" data-testid="agent-panel">
-      <ChatActionsContext.Provider value={actions}>
-        <ChatView items={chat.items} panelId={panelId} />
-      </ChatActionsContext.Provider>
+      <AgentPanelContext.Provider value={panelCtx}>
+        <ChatActionsContext.Provider value={actions}>
+          <ChatView items={chat.items} panelId={panelId} />
+        </ChatActionsContext.Provider>
+      </AgentPanelContext.Provider>
       <Composer panelId={panelId} chat={chat} projectPath={params.projectPath} onSend={send} onLocalCommand={onLocalCommand} />
       <StatusLine
         projectPath={params.projectPath}

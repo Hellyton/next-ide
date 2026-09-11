@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { openAgent } from './helpers'
 
 test('mostra diff de edição e subagente agrupado', async () => {
-  const { app, page } = await openAgent()
+  const { app, page, name } = await openAgent()
   const input = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
   await input.fill('editar arquivo')
   await input.press('Enter')
@@ -11,6 +11,13 @@ test('mostra diff de edição e subagente agrupado', async () => {
   await expect(diff.locator('[data-kind="del"]')).toContainText('const a = 1')
   await expect(diff.locator('[data-kind="add"]')).toContainText('const a = 2')
 
+  await diff.getByTestId('file-link').click()
+  await expect(page.getByTestId('panel-tab').filter({ hasText: 'exemplo.ts' })).toBeVisible()
+  await expect(page.getByTestId('file-notice')).toContainText('fora das pastas')
+  await expect(diff).toHaveAttribute('open', '')
+
+  // Opening the file panel switched the active tab in the agent's group; switch back before continuing.
+  await page.getByTestId('panel-tab').filter({ hasText: `${name} · claude` }).click()
   await input.fill('rodar subagente')
   await input.press('Enter')
   const task = page.getByTestId('task-card')
