@@ -7,9 +7,10 @@ import {
 import 'dockview-react/dist/styles/dockview.css'
 import { useCallback, type FunctionComponent } from 'react'
 import type { PanelParams } from '@shared/models'
-import { AgentStubPanel } from '../panels/agent/AgentStubPanel'
+import { AgentPanel } from '../panels/agent/AgentPanel'
 import { TerminalPanel } from '../panels/terminal/TerminalPanel'
 import { disposeTerminal } from '../panels/terminal/terminalRegistry'
+import { useAgents } from '../stores/agentStore'
 import { useSessions } from '../stores/sessionsStore'
 import { useDock } from './dockStore'
 import { attachLayoutPersistence, restoreLayout } from './layoutPersistence'
@@ -17,7 +18,7 @@ import { PanelTab } from './PanelTab'
 import { panelTitle } from './panelOptions'
 
 const components = {
-  agent: AgentStubPanel,
+  agent: AgentPanel,
   terminal: TerminalPanel,
 } as unknown as Record<string, FunctionComponent<IDockviewPanelProps>>
 
@@ -29,6 +30,12 @@ export function registerPanelRemovedListener(fn: RemovedListener): void {
 
 registerPanelRemovedListener((panelId, params) => {
   if (params?.type === 'terminal') disposeTerminal(panelId)
+})
+
+registerPanelRemovedListener((panelId, params) => {
+  if (params?.type !== 'agent') return
+  useAgents.getState().remove(panelId)
+  void window.api.invoke('agent:close', panelId).catch((err) => console.error('[next-ide] agent close failed', err))
 })
 
 // Survives StrictMode's double-invoke of onReady: only the persistence listeners attached
