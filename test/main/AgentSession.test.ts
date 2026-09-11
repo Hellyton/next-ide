@@ -6,6 +6,15 @@ import { AgentSession, type QueryFn, type QueryLike, type QueryOptions, type Use
 const tick = () => new Promise((r) => setTimeout(r, 0))
 const INIT = { type: 'system', subtype: 'init', session_id: 'sess-9', model: 'opus', cwd: '/p', permissionMode: 'default', slash_commands: [] }
 const RESULT = { type: 'result', subtype: 'success', is_error: false, usage: {}, total_cost_usd: 0.1, duration_ms: 5, modelUsage: {} }
+const STREAM_START = [
+  { type: 'stream_event', parent_tool_use_id: null, event: { type: 'message_start', message: { id: 'm' } } },
+  { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } },
+]
+const delta = (text: string) => ({
+  type: 'stream_event',
+  parent_tool_use_id: null,
+  event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } },
+})
 
 function fake() {
   const out = new AsyncQueue<unknown>()
@@ -178,6 +187,101 @@ describe('AgentSession', () => {
     const exitedIndex = events.findIndex((e) => e.kind === 'status' && e.state === 'exited')
     expect(exitedIndex).toBeGreaterThanOrEqual(0)
     expect(events.slice(exitedIndex + 1)).toEqual([])
+  })
+
+  it('resyncs the busy counter from queued_turn_count when queued sends coalesce', async () => {
+    const f = fake()
+    const { s } = session(f.fn)
+    s.send('a')
+    s.send('b')
+    f.out.push({ ...RESULT, queued_turn_count: 0 })
+    await tick()
+    expect(s.currentState).toBe('idle')
+  })
+
+  it('keeps decrementing per result when queued_turn_count is absent', async () => {
+    const f = fake()
+    const { s } = session(f.fn)
+    s.send('a')
+    s.send('b')
+    f.out.push(RESULT)
+    await tick()
+    expect(s.currentState).toBe('running')
+    f.out.push(RESULT)
+    await tick()
+    expect(s.currentState).toBe('idle')
+  })
+
+  it('passes allowDangerouslySkipPermissions only when starting in bypass mode', async () => {
+    const plain = fake()
+    session(plain.fn).s.send('oi')
+    expect(plain.calls[0]!.options.allowDangerouslySkipPermissions).toBeUndefined()
+    const bypass = fake()
+    const { s } = session(bypass.fn)
+    await s.setMode('bypassPermissions')
+    s.send('oi')
+    expect(bypass.calls[0]!.options).toMatchObject({ permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true })
+  })
+
+  it('keeps the previous mode and emits nothing when setPermissionMode rejects', async () => {
+    const f = fake()
+    const { s, events } = session(f.fn)
+    s.send('oi')
+    vi.mocked(f.q.setPermissionMode).mockRejectedValueOnce(new Error('nope'))
+    await expect(s.setMode('plan')).rejects.toThrow('nope')
+    expect(events.some((e) => e.kind === 'mode')).toBe(false)
+    f.out.end()
+    await tick()
+    s.send('de novo')
+    expect(f.calls[1]!.options.permissionMode).toBe('default')
+  })
+
+  it('keeps the previous model and emits nothing when setModel rejects', async () => {
+    const f = fake()
+    const { s, events } = session(f.fn, { model: 'opus' })
+    s.send('oi')
+    vi.mocked(f.q.setModel).mockRejectedValueOnce(new Error('nope'))
+    await expect(s.setModel('sonnet')).rejects.toThrow('nope')
+    expect(events.some((e) => e.kind === 'model')).toBe(false)
+    f.out.end()
+    await tick()
+    s.send('de novo')
+    expect(f.calls[1]!.options.model).toBe('opus')
+  })
+
+  it('coalesces text deltas in the batch window and flushes them before the next event', async () => {
+    const f = fake()
+    const { s, events } = session(f.fn)
+    s.send('oi')
+    for (const m of [...STREAM_START, delta('a'), delta('b'), delta('c')]) f.out.push(m)
+    await tick()
+    expect(events.filter((e) => e.kind === 'text-delta')).toEqual([])
+    f.out.push({ type: 'assistant', parent_tool_use_id: null, message: { id: 'm', content: [{ type: 'text', text: 'abc' }] } })
+    await tick()
+    expect(events.filter((e) => e.kind === 'text-delta' || e.kind === 'text')).toEqual([
+      { kind: 'text-delta', key: 'm:0', text: 'abc' },
+      { kind: 'text', key: 'm:0', text: 'abc' },
+    ])
+  })
+
+  it('flushes pending deltas when the batch window elapses', async () => {
+    const f = fake()
+    const { s, events } = session(f.fn)
+    s.send('oi')
+    for (const m of [...STREAM_START, delta('a'), delta('b')]) f.out.push(m)
+    await new Promise((r) => setTimeout(r, 40))
+    expect(events.filter((e) => e.kind === 'text-delta')).toEqual([{ kind: 'text-delta', key: 'm:0', text: 'ab' }])
+  })
+
+  it('flushes pending deltas before reporting exited on close', async () => {
+    const f = fake()
+    const { s, events } = session(f.fn)
+    s.send('oi')
+    for (const m of [...STREAM_START, delta('a')]) f.out.push(m)
+    await tick()
+    s.close()
+    const kinds = events.map((e) => (e.kind === 'status' ? `status:${e.state}` : e.kind))
+    expect(kinds.slice(-2)).toEqual(['text-delta', 'status:exited'])
   })
 
   it('removes the abort listener once the permission is answered', async () => {

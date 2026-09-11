@@ -48,6 +48,9 @@ export type SessionDeps = {
 
 type Pending = { resolve(result: PermissionResultLike): void; input: Record<string, unknown>; suggestions?: unknown[]; dispose(): void }
 
+type TextDelta = Extract<AgentEvent, { kind: 'text-delta' }>
+const DELTA_BATCH_MS = 16
+
 const isResult = (m: unknown): boolean => typeof m === 'object' && m !== null && (m as { type?: unknown }).type === 'result'
 
 export class AgentSession {
@@ -63,6 +66,8 @@ export class AgentSession {
   private mode: PermissionMode
   private sessionId?: string
   private readonly newId: () => string
+  private pendingDelta: TextDelta | null = null
+  private deltaTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(
     private readonly config: SessionConfig,
@@ -115,7 +120,7 @@ export class AgentSession {
       ...images.map((img) => ({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.data } })),
       ...(text ? [{ type: 'text', text }] : []),
     ]
-    this.deps.emit({ kind: 'user', id: this.newId(), text, images: images.length })
+    this.emit({ kind: 'user', id: this.newId(), text, images: images.length })
     this.turnsInFlight++
     this.setState('running')
     this.input?.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null })
@@ -130,7 +135,7 @@ export class AgentSession {
     if (this.query) await this.query.setModel(model)
     if (this.closed) return
     this.model = model
-    this.deps.emit({ kind: 'model', model })
+    this.emit({ kind: 'model', model })
   }
 
   /** Applies to the running query first; state and the event change only if the SDK accepted it. */
@@ -138,7 +143,7 @@ export class AgentSession {
     if (this.query) await this.query.setPermissionMode(mode)
     if (this.closed) return
     this.mode = mode
-    this.deps.emit({ kind: 'mode', permissionMode: mode })
+    this.emit({ kind: 'mode', permissionMode: mode })
   }
 
   async commands(): Promise<CommandOption[]> {
@@ -165,7 +170,7 @@ export class AgentSession {
             ...(decision === 'allow-always' && pending.suggestions ? { updatedPermissions: pending.suggestions } : {}),
           },
     )
-    this.deps.emit({ kind: 'permission-resolved', requestId, decision })
+    this.emit({ kind: 'permission-resolved', requestId, decision })
     if (this.pending.size === 0) this.setState(this.turnsInFlight > 0 ? 'running' : 'idle')
   }
 
@@ -194,7 +199,7 @@ export class AgentSession {
         ...(options.suggestions ? { suggestions: options.suggestions } : {}),
         dispose: () => options.signal.removeEventListener('abort', onAbort),
       })
-      this.deps.emit({
+      this.emit({
         kind: 'permission-request',
         requestId,
         toolName,
@@ -212,7 +217,7 @@ export class AgentSession {
     this.pending.delete(requestId)
     pending.dispose()
     pending.resolve({ behavior: 'deny', message: 'Cancelado.' })
-    this.deps.emit({ kind: 'permission-resolved', requestId, decision: 'cancelled' })
+    this.emit({ kind: 'permission-resolved', requestId, decision: 'cancelled' })
   }
 
   private async pump(query: QueryLike): Promise<void> {
@@ -221,7 +226,7 @@ export class AgentSession {
         if (this.closed) return
         for (const event of this.normalizer.push(message)) {
           if (event.kind === 'init') this.sessionId = event.sessionId
-          this.deps.emit(event)
+          this.emit(event)
         }
         if (isResult(message)) {
           // Queued sends may coalesce into fewer turns, so a per-result decrement can get stuck
@@ -235,7 +240,7 @@ export class AgentSession {
       if (!this.closed) this.reset('idle')
     } catch (err) {
       if (this.closed) return
-      this.deps.emit({ kind: 'error', message: err instanceof Error ? err.message : String(err) })
+      this.emit({ kind: 'error', message: err instanceof Error ? err.message : String(err) })
       this.reset('error')
     }
   }
@@ -251,9 +256,51 @@ export class AgentSession {
     this.setState(state)
   }
 
+  /**
+   * All events go out through here. Consecutive text deltas for the same block are coalesced
+   * for DELTA_BATCH_MS so long answers don't cost one IPC message + React render per token;
+   * any other event flushes the pending delta first, so ordering is preserved.
+   * (OutputBatcher only buffers one untyped string stream, so a keyed batcher lives here.)
+   */
+  private emit(event: AgentEvent): void {
+    if (event.kind === 'text-delta') {
+      this.queueDelta(event)
+      return
+    }
+    this.flushDelta()
+    this.emitNow(event)
+  }
+
+  private queueDelta(event: TextDelta): void {
+    const pending = this.pendingDelta
+    if (pending && pending.key === event.key && pending.parentToolUseId === event.parentToolUseId) {
+      this.pendingDelta = { ...pending, text: pending.text + event.text }
+      return
+    }
+    this.flushDelta()
+    this.pendingDelta = { ...event }
+    this.deltaTimer = setTimeout(() => this.flushDelta(), DELTA_BATCH_MS)
+  }
+
+  private flushDelta(): void {
+    if (this.deltaTimer) {
+      clearTimeout(this.deltaTimer)
+      this.deltaTimer = null
+    }
+    const pending = this.pendingDelta
+    if (!pending) return
+    this.pendingDelta = null
+    this.emitNow(pending)
+  }
+
+  private emitNow(event: AgentEvent): void {
+    const deps = this.deps
+    deps.emit(event)
+  }
+
   private setState(state: SessionState): void {
     if (this.state === state) return
     this.state = state
-    this.deps.emit({ kind: 'status', state })
+    this.emit({ kind: 'status', state })
   }
 }

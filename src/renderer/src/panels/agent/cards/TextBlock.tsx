@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { markdownImageMode, markdownUrlTransform } from '../../../agent/markdownImage'
@@ -38,7 +39,7 @@ const components: Components = {
   td: ({ children }) => <td className="border border-neutral-800 px-2 py-1">{children}</td>,
 }
 
-export function TextBlock({ text, streaming }: { text: string; streaming: boolean }) {
+export const TextBlock = memo(function TextBlock({ text, streaming }: { text: string; streaming: boolean }) {
   return (
     <div className="text-sm text-neutral-200" data-testid="assistant-text">
       <Markdown remarkPlugins={[remarkGfm]} components={components} urlTransform={markdownUrlTransform}>
@@ -47,4 +48,4 @@ export function TextBlock({ text, streaming }: { text: string; streaming: boolea
       {streaming && <span className="inline-block h-3 w-1.5 animate-pulse bg-neutral-400 align-middle" />}
     </div>
   )
-}
+})

@@ -1,4 +1,5 @@
 import type { ChatItem, ToolItem } from '../../../agent/chatReducer'
+import { isTaskTool } from '../../../agent/chatTree'
 import { isQuietTool, toolDiff, toolTodos } from '../../../agent/toolView'
 import { BashCard } from './BashCard'
 import { DiffCard } from './DiffCard'
@@ -6,8 +7,8 @@ import { GenericToolCard } from './GenericToolCard'
 import { TaskCard } from './TaskCard'
 import { TodoCard } from './TodoCard'
 
-export function ToolCard({ item, items, panelId }: { item: ToolItem; items: ChatItem[]; panelId: string }) {
-  if (item.name === 'Task' || item.name === 'Agent') return <TaskCard item={item} items={items} panelId={panelId} />
+export function ToolCard({ item, descendants, panelId }: { item: ToolItem; descendants?: ChatItem[] | undefined; panelId: string }) {
+  if (isTaskTool(item.name)) return <TaskCard item={item} descendants={descendants} panelId={panelId} />
   if (item.name === 'Bash') return <BashCard item={item} />
   const diff = toolDiff(item.name, item.input)
   if (diff) return <DiffCard item={item} filePath={diff.filePath} lines={diff.lines} />

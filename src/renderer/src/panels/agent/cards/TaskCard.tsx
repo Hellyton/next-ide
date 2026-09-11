@@ -1,9 +1,10 @@
 import type { ChatItem, ToolItem } from '../../../agent/chatReducer'
+import { isTaskTool, parentOf } from '../../../agent/chatTree'
 import { ChatItemView, itemKey } from './ChatItemView'
 import { ToolStatus } from './GenericToolCard'
 
-export function TaskCard({ item, items, panelId }: { item: ToolItem; items: ChatItem[]; panelId: string }) {
-  const children = items.filter((c) => (c.type === 'text' || c.type === 'tool') && c.parentToolUseId === item.id)
+export function TaskCard({ item, descendants, panelId }: { item: ToolItem; descendants?: ChatItem[] | undefined; panelId: string }) {
+  const children = (descendants ?? []).filter((c) => parentOf(c) === item.id)
   const description = typeof (item.input as { description?: unknown })?.description === 'string' ? (item.input as { description: string }).description : 'Subagente'
   return (
     <details className="rounded border border-violet-900/60 text-xs" data-testid="task-card">
@@ -17,7 +18,13 @@ export function TaskCard({ item, items, panelId }: { item: ToolItem; items: Chat
       </summary>
       <div className="space-y-2 border-t border-violet-900/40 p-2">
         {children.map((child) => (
-          <ChatItemView key={itemKey(child)} item={child} items={items} panelId={panelId} />
+          <ChatItemView
+            key={itemKey(child)}
+            item={child}
+            // Nested tasks filter their own children out of the same subtree.
+            descendants={child.type === 'tool' && isTaskTool(child.name) ? descendants : undefined}
+            panelId={panelId}
+          />
         ))}
       </div>
     </details>

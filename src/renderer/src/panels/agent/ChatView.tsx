@@ -1,8 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { ChatItem } from '../../agent/chatReducer'
+import { descendantsByTask, isChildItem } from '../../agent/chatTree'
 import { ChatItemView, itemKey } from './cards/ChatItemView'
-
-const isChild = (item: ChatItem) => (item.type === 'text' || item.type === 'tool') && Boolean(item.parentToolUseId)
 
 export function ChatView({ items, panelId }: { items: ChatItem[]; panelId: string }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -13,7 +12,8 @@ export function ChatView({ items, panelId }: { items: ChatItem[]; panelId: strin
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight
   }, [items])
 
-  const topLevel = items.filter((item) => !isChild(item))
+  const topLevel = useMemo(() => items.filter((item) => !isChildItem(item)), [items])
+  const descendants = useMemo(() => descendantsByTask(items), [items])
 
   return (
     <div
@@ -27,7 +27,7 @@ export function ChatView({ items, panelId }: { items: ChatItem[]; panelId: strin
     >
       {topLevel.length === 0 && <div className="pt-10 text-center text-sm text-neutral-600">Pergunte algo ao Claude sobre este projeto.</div>}
       {topLevel.map((item) => (
-        <ChatItemView key={itemKey(item)} item={item} items={items} panelId={panelId} />
+        <ChatItemView key={itemKey(item)} item={item} descendants={item.type === 'tool' ? descendants.get(item.id) : undefined} panelId={panelId} />
       ))}
     </div>
   )
