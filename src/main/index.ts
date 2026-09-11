@@ -131,7 +131,7 @@ void app.whenReady().then(() => {
 let quitting = false
 app.on('before-quit', (event) => {
   if (quitting) return
-  if (mainWindow && !mainWindow.isDestroyed() && agents.hasBusy()) {
+  if (mainWindow && !mainWindow.isDestroyed() && agents.hasBusy() && process.env.NEXT_IDE_E2E_NO_QUIT_CONFIRM !== '1') {
     const choice = dialog.showMessageBoxSync(mainWindow, {
       type: 'warning',
       buttons: ['Sair', 'Cancelar'],

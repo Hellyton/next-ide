@@ -19,6 +19,6 @@ test('Claude real responde pelo SDK', async () => {
   const input = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
   await input.fill('Responda apenas com a palavra: pong')
   await input.press('Enter')
-  await expect(page.getByTestId('chat-view')).toContainText(/pong/i, { timeout: 90_000 })
+  await expect(page.getByTestId('assistant-text').first()).toContainText(/pong/i, { timeout: 90_000 })
   await app.close()
 })

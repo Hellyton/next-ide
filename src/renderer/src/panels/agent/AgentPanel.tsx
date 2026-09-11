@@ -22,10 +22,12 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
         if (useAgents.getState().chats[panelId]) return
         const history = await window.api.invoke('agent:history', params.projectPath, params.sessionId)
         if (!cancelled) useAgents.getState().load(panelId, history)
-      } else {
+      } else if (!cancelled) {
         await window.api.invoke('agent:start', panelId)
       }
-    })().catch(fail)
+    })().catch((err) => {
+      if (!cancelled) fail(err)
+    })
     return () => {
       cancelled = true
     }

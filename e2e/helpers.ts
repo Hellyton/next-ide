@@ -25,6 +25,7 @@ export async function launch(
       NEXT_IDE_USER_DATA: userData,
       ...hermeticZshEnv(),
       NEXT_IDE_FAKE_AGENT: '1',
+      NEXT_IDE_E2E_NO_QUIT_CONFIRM: '1',
       ...opts.env,
     },
   })
