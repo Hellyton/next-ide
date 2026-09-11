@@ -3,6 +3,7 @@ import { subscribeAgentEvents } from './stores/agentStore'
 import { subscribeFileEvents } from './stores/filesStore'
 import { Dock } from './dock/Dock'
 import { useDockShortcuts } from './dock/useDockShortcuts'
+import { QuickOpen } from './quickopen/QuickOpen'
 import { Sidebar } from './sidebar/Sidebar'
 
 export function App() {
@@ -17,6 +18,7 @@ export function App() {
       <main className="min-w-0">
         <Dock />
       </main>
+      <QuickOpen />
     </div>
   )
 }

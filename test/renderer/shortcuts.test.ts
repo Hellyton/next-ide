@@ -30,6 +30,11 @@ describe('matchShortcut', () => {
     expect(matchShortcut(ev({ key: '9', code: 'Digit9' }))).toEqual({ kind: 'focusGroup', index: 8 })
   })
 
+  it('Cmd+P opens quick open, Cmd+Shift+P does not', () => {
+    expect(matchShortcut(ev({ key: 'p', code: 'KeyP' }))).toEqual({ kind: 'quickOpen' })
+    expect(matchShortcut(ev({ key: 'P', code: 'KeyP', shiftKey: true }))).toBeNull()
+  })
+
   it('ignores without Cmd or with Ctrl/Alt', () => {
     expect(matchShortcut(ev({ key: 'w', metaKey: false }))).toBeNull()
     expect(matchShortcut(ev({ key: 'w', ctrlKey: true }))).toBeNull()

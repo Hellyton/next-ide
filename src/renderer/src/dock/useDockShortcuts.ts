@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useQuickOpen } from '../quickopen/quickOpenStore'
 import { useDock } from './dockStore'
 import { matchShortcut } from './shortcuts'
 
@@ -13,6 +14,7 @@ export function useDockShortcuts(): void {
       const dock = useDock.getState()
       if (cmd.kind === 'split') dock.split(cmd.direction)
       else if (cmd.kind === 'close') dock.closeActive()
+      else if (cmd.kind === 'quickOpen') useQuickOpen.getState().show()
       else dock.focusGroup(cmd.index)
     }
     window.addEventListener('keydown', onKey, true)
