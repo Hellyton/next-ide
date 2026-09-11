@@ -49,7 +49,8 @@ export class FilesService {
     const abs = resolve(path)
     const roots = await this.roots()
     if (!roots.some((r) => isInside(abs, r))) return { kind: 'forbidden' }
-    if (!(await resolveInsideRoots(abs, roots))) {
+    const real = await resolveInsideRoots(abs, roots)
+    if (!real) {
       try {
         await lstat(abs)
         return { kind: 'forbidden' } // exists, but resolves outside (symlink escape)
@@ -57,7 +58,7 @@ export class FilesService {
         return { kind: 'missing' }
       }
     }
-    return readViewable(abs)
+    return readViewable(real)
   }
 
   async index(projectPath: string): Promise<string[]> {

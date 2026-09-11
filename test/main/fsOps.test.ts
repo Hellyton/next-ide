@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -40,5 +41,17 @@ describe('readViewable', () => {
     writeFileSync(join(root, 'big.txt'), Buffer.alloc(MAX_VIEW_BYTES + 1, 97))
     expect(await readViewable(join(root, 'big.txt'))).toEqual({ kind: 'too-large', size: MAX_VIEW_BYTES + 1 })
     expect(await readViewable(join(root, 'nope.txt'))).toEqual({ kind: 'missing' })
+  })
+
+  it('treats non-regular files (directories, FIFOs) as binary instead of blocking or throwing', async () => {
+    const root = project()
+    expect(await readViewable(join(root, 'src'))).toEqual({ kind: 'binary', size: expect.any(Number) })
+    const fifo = join(root, 'a.fifo')
+    try {
+      execFileSync('mkfifo', [fifo])
+    } catch {
+      return // mkfifo unavailable on this platform — directory case above still covers the fix
+    }
+    expect(await readViewable(fifo)).toEqual({ kind: 'binary', size: expect.any(Number) })
   })
 })

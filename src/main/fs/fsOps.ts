@@ -50,12 +50,15 @@ export async function listDir(dir: string, root: string, ig: Ignore): Promise<Fs
 }
 
 export async function readViewable(path: string): Promise<FileContent> {
-  let size: number
+  let st: Awaited<ReturnType<typeof stat>>
   try {
-    size = (await stat(path)).size
+    st = await stat(path)
   } catch {
     return { kind: 'missing' }
   }
+  // A directory raises EISDIR; a FIFO would block a libuv thread forever waiting for a writer.
+  if (!st.isFile()) return { kind: 'binary', size: st.size }
+  const size = st.size
   if (size > MAX_VIEW_BYTES) return { kind: 'too-large', size }
   const buf = await readFile(path)
   const mime = IMAGE_TYPES[extname(path).toLowerCase()]
