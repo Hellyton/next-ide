@@ -18,10 +18,11 @@ export function flattenToolOutput(content: unknown): string {
 /**
  * Converts raw SDK messages into AgentEvents. Stateful: text deltas are keyed by
  * `<messageId>:<blockIndex>` and the matching final `assistant` text block reuses that key.
+ * Stream state is partitioned by stream owner (parent_tool_use_id ?? 'root') to prevent
+ * corruption from interleaved streams.
  */
 export class StreamNormalizer {
-  private messageId = ''
-  private readonly blockKeys = new Map<number, string>()
+  private readonly streams = new Map<string, { messageId: string; blockKeys: Map<number, string> }>()
   private readonly pendingText = new Map<string, string[]>()
   private counter = 0
 
@@ -58,19 +59,24 @@ export class StreamNormalizer {
   private stream(event: unknown, parent: string | undefined): AgentEvent[] {
     if (!isRec(event)) return []
     const index = num(event.index)
+    const streamKey = parent ?? 'root'
     if (event.type === 'message_start' && isRec(event.message)) {
-      this.messageId = str(event.message.id) ?? this.messageId
-      this.blockKeys.clear()
+      const messageId = str(event.message.id) ?? ''
+      this.streams.set(streamKey, { messageId, blockKeys: new Map() })
       return []
     }
     if (event.type === 'content_block_start' && isRec(event.content_block) && event.content_block.type === 'text') {
-      const key = `${this.messageId}:${index}`
-      this.blockKeys.set(index, key)
-      this.pendingText.set(this.messageId, [...(this.pendingText.get(this.messageId) ?? []), key])
+      const streamState = this.streams.get(streamKey)
+      if (!streamState) return []
+      const key = `${streamState.messageId}:${index}`
+      streamState.blockKeys.set(index, key)
+      this.pendingText.set(streamState.messageId, [...(this.pendingText.get(streamState.messageId) ?? []), key])
       return []
     }
     if (event.type === 'content_block_delta' && isRec(event.delta) && event.delta.type === 'text_delta') {
-      const key = this.blockKeys.get(index)
+      const streamState = this.streams.get(streamKey)
+      if (!streamState) return []
+      const key = streamState.blockKeys.get(index)
       const text = str(event.delta.text)
       if (!key || !text) return []
       return [{ kind: 'text-delta', key, text, ...(parent ? { parentToolUseId: parent } : {}) }]
@@ -88,7 +94,11 @@ export class StreamNormalizer {
       if (block.type === 'text') {
         const queue = this.pendingText.get(id) ?? []
         const key = queue.shift() ?? `${id}:final:${++this.counter}`
-        this.pendingText.set(id, queue)
+        if (queue.length === 0) {
+          this.pendingText.delete(id)
+        } else {
+          this.pendingText.set(id, queue)
+        }
         out.push({ kind: 'text', key, text: str(block.text) ?? '', ...withParent })
       } else if (block.type === 'thinking') {
         const text = str(block.thinking) ?? ''

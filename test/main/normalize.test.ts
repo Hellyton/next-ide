@@ -68,6 +68,47 @@ describe('StreamNormalizer (edge cases)', () => {
     expect(out.map((e) => e.kind)).toEqual(['stats', 'error'])
     expect(out[1]).toEqual({ kind: 'error', message: 'boom' })
   })
+
+  it('keeps interleaved root and subagent streams apart', () => {
+    const out = run([
+      { type: 'stream_event', parent_tool_use_id: null, event: { type: 'message_start', message: { id: 'mA' } } },
+      { type: 'stream_event', parent_tool_use_id: 't1', event: { type: 'message_start', message: { id: 'mS' } } },
+      { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } },
+      { type: 'stream_event', parent_tool_use_id: 't1', event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } },
+      { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'root ' } } },
+      { type: 'stream_event', parent_tool_use_id: 't1', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'sub ' } } },
+      { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'text' } } },
+      { type: 'stream_event', parent_tool_use_id: 't1', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'text' } } },
+      { type: 'assistant', parent_tool_use_id: null, message: { id: 'mA', content: [{ type: 'text', text: 'root text' }] } },
+      { type: 'assistant', parent_tool_use_id: 't1', message: { id: 'mS', content: [{ type: 'text', text: 'sub text' }] } },
+    ])
+    const deltas = out.filter((e) => e.kind === 'text-delta')
+    const texts = out.filter((e) => e.kind === 'text')
+
+    const rootDeltas = deltas.filter((d) => !d.parentToolUseId)
+    const subDeltas = deltas.filter((d) => d.parentToolUseId === 't1')
+
+    expect(rootDeltas.map((d) => d.key)).toEqual(['mA:0', 'mA:0'])
+    expect(rootDeltas.map((d) => d.text)).toEqual(['root ', 'text'])
+    expect(subDeltas.map((d) => d.key)).toEqual(['mS:0', 'mS:0'])
+    expect(subDeltas.map((d) => d.text)).toEqual(['sub ', 'text'])
+
+    expect(texts).toEqual([
+      { kind: 'text', key: 'mA:0', text: 'root text' },
+      { kind: 'text', key: 'mS:0', text: 'sub text', parentToolUseId: 't1' },
+    ])
+  })
+
+  it('pairs two text blocks of the same message in order', () => {
+    const out = run([
+      { type: 'stream_event', parent_tool_use_id: null, event: { type: 'message_start', message: { id: 'm2' } } },
+      { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } },
+      { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_start', index: 2, content_block: { type: 'text', text: '' } } },
+      { type: 'assistant', parent_tool_use_id: null, message: { id: 'm2', content: [{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }] } },
+    ])
+    const texts = out.filter((e) => e.kind === 'text')
+    expect(texts.map((t) => t.key)).toEqual(['m2:0', 'm2:2'])
+  })
 })
 
 describe('flattenToolOutput', () => {
