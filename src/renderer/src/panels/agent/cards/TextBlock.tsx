@@ -1,7 +1,20 @@
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { markdownImageMode, markdownUrlTransform } from '../../../agent/markdownImage'
 
 const components: Components = {
+  img: ({ src, alt }) => {
+    const url = typeof src === 'string' ? src : undefined
+    if (markdownImageMode(url) === 'inline') return <img src={url} alt={alt ?? ''} className="my-2 max-w-full rounded" />
+    const label = `🖼 ${alt || url || 'imagem'}`
+    return url ? (
+      <a href={url} target="_blank" rel="noreferrer" className="text-sky-400 underline" data-testid="markdown-image-link">
+        {label}
+      </a>
+    ) : (
+      <span className="text-neutral-400">{label}</span>
+    )
+  },
   p: ({ children }) => <p className="my-2 leading-relaxed">{children}</p>,
   a: ({ children, href }) => (
     <a href={href} target="_blank" rel="noreferrer" className="text-sky-400 underline">
@@ -28,7 +41,7 @@ const components: Components = {
 export function TextBlock({ text, streaming }: { text: string; streaming: boolean }) {
   return (
     <div className="text-sm text-neutral-200" data-testid="assistant-text">
-      <Markdown remarkPlugins={[remarkGfm]} components={components}>
+      <Markdown remarkPlugins={[remarkGfm]} components={components} urlTransform={markdownUrlTransform}>
         {text}
       </Markdown>
       {streaming && <span className="inline-block h-3 w-1.5 animate-pulse bg-neutral-400 align-middle" />}
