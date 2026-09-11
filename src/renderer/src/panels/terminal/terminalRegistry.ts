@@ -1,10 +1,11 @@
+import { SearchAddon } from '@xterm/addon-search'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { useSessions } from '../../stores/sessionsStore'
 
-export type TerminalEntry = { term: Terminal; host: HTMLDivElement; fit(): void }
+export type TerminalEntry = { term: Terminal; host: HTMLDivElement; search: SearchAddon; fit(): void; restart(): void }
 
 type InternalEntry = TerminalEntry & { dispose(): void }
 
@@ -29,10 +30,13 @@ export function attachTerminal(panelId: string, cwd: string, container: HTMLElem
     cursorBlink: true,
     scrollback: 10_000,
     theme: { background: '#0a0a0a' },
+    allowProposedApi: true,
   })
   const fitAddon = new FitAddon()
   term.loadAddon(fitAddon)
   term.loadAddon(new WebLinksAddon((_event, uri) => window.open(uri, '_blank')))
+  const search = new SearchAddon()
+  term.loadAddon(search)
   term.open(host)
 
   let cols = term.cols
@@ -67,20 +71,28 @@ export function attachTerminal(panelId: string, cwd: string, container: HTMLElem
         .invoke('pty:write', panelId, data)
         .catch((err) => console.error('[next-ide] pty ipc failed', panelId, err)),
   )
-  window.api
-    .invoke('pty:create', panelId, cwd, cols, rows)
-    .then(() => {
-      if (initialCommand) return window.api.invoke('pty:write', panelId, `${initialCommand}\r`)
-    })
-    .catch((err) => {
-      const message = err instanceof Error ? err.message : String(err)
-      term.write(`\r\n\x1b[31m[falha ao iniciar o terminal: ${message}]\x1b[0m\r\n`)
-      useSessions.getState().setState(panelId, 'error')
-    })
+  const spawn = (command?: string) =>
+    window.api
+      .invoke('pty:create', panelId, cwd, term.cols, term.rows)
+      .then(() => {
+        if (command) return window.api.invoke('pty:write', panelId, `${command}\r`)
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err)
+        term.write(`\r\n\x1b[31m[falha ao iniciar o terminal: ${message}]\x1b[0m\r\n`)
+        useSessions.getState().setState(panelId, 'error')
+      })
+  void spawn(initialCommand)
 
   const entry: InternalEntry = {
     term,
     host,
+    search,
+    restart: () => {
+      term.write('\r\n\x1b[2m[reiniciando…]\x1b[0m\r\n')
+      useSessions.getState().setState(panelId, 'idle')
+      void spawn()
+    },
     fit,
     dispose: () => {
       input.dispose()
