@@ -17,6 +17,6 @@
 {"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"hello "}}}
 {"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"next-ide"}}}
 {"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_stop","index":1}}
-{"type":"assistant","parent_tool_use_id":null,"message":{"id":"msg_B","content":[{"type":"text","text":"hello next-ide"}]}}
+{"type":"assistant","parent_tool_use_id":null,"message":{"id":"msg_B","content":[{"type":"text","text":"hello next-ide"}],"usage":{"input_tokens":3,"output_tokens":212,"cache_read_input_tokens":21000,"cache_creation_input_tokens":500}}}
 {"type":"rate_limit_event"}
 {"type":"result","subtype":"success","is_error":false,"duration_ms":3242,"total_cost_usd":0.0221112,"usage":{"input_tokens":18,"output_tokens":212,"cache_read_input_tokens":34522,"cache_creation_input_tokens":8306},"modelUsage":{"claude-haiku-4-5-20251001":{"contextWindow":200000}},"result":"hello next-ide","session_id":"sess-1"}

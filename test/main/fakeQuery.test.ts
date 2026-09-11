@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent } from '@shared/agent'
-import { AgentSession } from '../../src/main/agent/AgentSession'
+import { AgentSession, type QueryOptions, type UserMessageLike } from '../../src/main/agent/AgentSession'
+import { AsyncQueue } from '../../src/main/agent/AsyncQueue'
 import { fakeQuery, fakeSessions } from '../../src/main/agent/fakeQuery'
 
 const tick = () => new Promise((r) => setTimeout(r, 5))
@@ -38,6 +39,21 @@ describe('fakeQuery', () => {
       name: 'Edit',
       input: { file_path: '/tmp/exemplo.ts', old_string: 'const a = 1', new_string: 'const a = 2' },
     })
+  })
+
+  it('reports cumulative cost and the sends still queued on each result', async () => {
+    const prompt = new AsyncQueue<UserMessageLike>()
+    const msg = (text: string): UserMessageLike => ({ type: 'user', message: { role: 'user', content: [{ type: 'text', text }] }, parent_tool_use_id: null })
+    prompt.push(msg('um'))
+    prompt.push(msg('dois'))
+    prompt.end()
+    const options = { cwd: '/p', permissionMode: 'default', includePartialMessages: true, settingSources: [], abortController: new AbortController(), canUseTool: async () => ({ behavior: 'allow' }) } as unknown as QueryOptions
+    const results: Array<Record<string, unknown>> = []
+    for await (const m of fakeQuery({ prompt, options })) {
+      if ((m as { type?: string }).type === 'result') results.push(m as Record<string, unknown>)
+    }
+    expect(results.map((r) => r.total_cost_usd)).toEqual([0.01, 0.02])
+    expect(results.map((r) => r.queued_turn_count)).toEqual([1, 0])
   })
 
   it('provides a scripted session list and history', async () => {

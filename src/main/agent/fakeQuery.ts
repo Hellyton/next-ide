@@ -65,13 +65,23 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
       out.push({ type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } })
       out.push({ type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: reply.slice(0, half) } } })
       out.push({ type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: reply.slice(half) } } })
-      out.push({ type: 'assistant', parent_tool_use_id: null, message: { id: textId, content: [{ type: 'text', text: reply }] } })
+      out.push({
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          id: textId,
+          model,
+          content: [{ type: 'text', text: reply }],
+          usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+        },
+      })
       out.push({
         type: 'result',
         subtype: 'success',
         is_error: false,
         duration_ms: 42,
-        total_cost_usd: 0.01,
+        // Cumulative within the query, like the real SDK.
+        total_cost_usd: Number((0.01 * turn).toFixed(2)),
         usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
         modelUsage: { [model]: { contextWindow: 200000 } },
         // Sends still waiting in the prompt queue, like the SDK's command-queue count.

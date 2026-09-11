@@ -25,6 +25,9 @@ export class StreamNormalizer {
   private readonly streams = new Map<string, { messageId: string; blockKeys: Map<number, string> }>()
   private readonly pendingText = new Map<string, string[]>()
   private counter = 0
+  /** Prompt size (input + cache read + cache creation) of the latest main-loop API call. */
+  private contextTokens: number | undefined
+  private contextModel: string | undefined
 
   push(message: unknown): AgentEvent[] {
     if (!isRec(message)) return []
@@ -85,7 +88,15 @@ export class StreamNormalizer {
   }
 
   private assistant(message: unknown, parent: string | undefined): AgentEvent[] {
-    if (!isRec(message) || !Array.isArray(message.content)) return []
+    if (!isRec(message)) return []
+    // Context in use = the prompt of the last main-loop call. `result.usage` sums every call of
+    // the turn, so it overstates the context; subagent calls have their own context.
+    if (!parent && isRec(message.usage)) {
+      const u = message.usage
+      this.contextTokens = num(u.input_tokens) + num(u.cache_read_input_tokens) + num(u.cache_creation_input_tokens)
+      this.contextModel = str(message.model) ?? this.contextModel
+    }
+    if (!Array.isArray(message.content)) return []
     const id = str(message.id) ?? `msg-${++this.counter}`
     const withParent = parent ? { parentToolUseId: parent } : {}
     const out: AgentEvent[] = []
@@ -127,16 +138,19 @@ export class StreamNormalizer {
       cacheReadTokens: num(u.cache_read_input_tokens),
       cacheCreationTokens: num(u.cache_creation_input_tokens),
     }
-    const firstModel = isRec(m.modelUsage) ? Object.values(m.modelUsage).find(isRec) : undefined
-    const contextWindow = firstModel ? num(firstModel.contextWindow) : 0
-    const used = usage.inputTokens + usage.cacheReadTokens + usage.cacheCreationTokens
+    const models = isRec(m.modelUsage) ? m.modelUsage : {}
+    const ownModel = this.contextModel ? models[this.contextModel] : undefined
+    const windowModel = isRec(ownModel) ? ownModel : Object.values(models).find(isRec)
+    const contextWindow = windowModel ? num(windowModel.contextWindow) : 0
+    const pct = contextWindow > 0 && this.contextTokens !== undefined ? Math.round((this.contextTokens / contextWindow) * 100) : undefined
     const events: AgentEvent[] = [
       {
         kind: 'stats',
         usage,
         costUsd: num(m.total_cost_usd),
         durationMs: num(m.duration_ms),
-        ...(contextWindow > 0 ? { contextWindow, contextPct: Math.round((used / contextWindow) * 100) } : {}),
+        ...(contextWindow > 0 ? { contextWindow } : {}),
+        ...(pct !== undefined ? { contextPct: pct } : {}),
       },
     ]
     if (m.subtype !== 'success' || m.is_error === true) {

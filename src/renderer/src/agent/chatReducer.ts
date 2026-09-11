@@ -28,10 +28,15 @@ export type ChatState = {
   permissionMode?: PermissionMode
   slashCommands: string[]
   stats?: StatsEvent
+  /** Displayed cost: costBaseUsd + the running total of the current query. */
   totalCostUsd: number
+  /** Running total reported by the current query's last result (cumulative within a query). */
+  lastQueryCostUsd: number
+  /** Final totals of earlier queries of this panel (before a resume/crash/restart reset). */
+  costBaseUsd: number
 }
 
-export const initialChat: ChatState = { items: [], state: 'idle', slashCommands: [], totalCostUsd: 0 }
+export const initialChat: ChatState = { items: [], state: 'idle', slashCommands: [], totalCostUsd: 0, lastQueryCostUsd: 0, costBaseUsd: 0 }
 
 const push = (s: ChatState, item: ChatItem): ChatState => ({ ...s, items: [...s.items, item] })
 const replaceAt = (s: ChatState, index: number, item: ChatItem): ChatState => {
@@ -90,8 +95,11 @@ export function reduceChat(s: ChatState, e: AgentEvent): ChatState {
       const i = indexOf(s, (it) => it.type === 'permission' && it.requestId === e.requestId)
       return i < 0 ? s : replaceAt(s, i, { ...(s.items[i] as PermissionItem), decision: e.decision })
     }
-    case 'stats':
-      return { ...s, stats: e, totalCostUsd: s.totalCostUsd + e.costUsd }
+    case 'stats': {
+      // total_cost_usd is cumulative per query; a drop means a new query started from zero.
+      const costBaseUsd = e.costUsd < s.lastQueryCostUsd ? s.costBaseUsd + s.lastQueryCostUsd : s.costBaseUsd
+      return { ...s, stats: e, costBaseUsd, lastQueryCostUsd: e.costUsd, totalCostUsd: costBaseUsd + e.costUsd }
+    }
     case 'error':
       return push(s, { type: 'error', id: `err-${s.items.length}`, message: e.message })
   }
