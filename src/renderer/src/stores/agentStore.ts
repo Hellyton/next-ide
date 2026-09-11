@@ -19,7 +19,12 @@ export const useAgents = create<AgentsState>()((set) => ({
   chats: {},
   apply: (panelId, event) => set((s) => ({ chats: { ...s.chats, [panelId]: reduceChat(s.chats[panelId] ?? initialChat, event) } })),
   load: (panelId, events) => set((s) => ({ chats: { ...s.chats, [panelId]: reduceAll(events, s.chats[panelId] ?? initialChat) } })),
-  clear: (panelId) => set((s) => ({ chats: { ...s.chats, [panelId]: initialChat } })),
+  clear: (panelId) => {
+    // A restart (e.g. /resume, /clear) clears the chat before swapping to a different session;
+    // a pending sessionId from the old session must not survive to be persisted over the new one.
+    pendingSessionId.delete(panelId)
+    set((s) => ({ chats: { ...s.chats, [panelId]: initialChat } }))
+  },
   remove: (panelId) =>
     set((s) => {
       pendingSessionId.delete(panelId)

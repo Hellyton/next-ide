@@ -4,8 +4,8 @@ import { useDock } from '@renderer/dock/dockStore'
 import { useSessions } from '@renderer/stores/sessionsStore'
 
 /** Minimal fake dockview api so `persistParams` has a panel to update. */
-function fakeDockApi(panelId: string) {
-  const params = { type: 'agent' as const, projectPath: '/p' }
+function fakeDockApi(panelId: string, extraParams: Record<string, unknown> = {}) {
+  const params = { type: 'agent' as const, projectPath: '/p', ...extraParams }
   const updateParameters = vi.fn()
   useDock.setState({
     api: {
@@ -64,6 +64,28 @@ describe('agentStore', () => {
     useSessions.getState().add({ panelId: 'p1', type: 'agent', projectPath: '/p', title: 'p · claude', state: 'idle' })
     handleAgentEvent('p1', { kind: 'user', id: 'u1', text: 'oi', images: 0 })
     expect(updateParameters).not.toHaveBeenCalled()
+  })
+
+  it("clear drops a pending session id so a restart can't persist a stale one", () => {
+    useSessions.getState().add({ panelId: 'p1', type: 'agent', projectPath: '/p', title: 'p · claude', state: 'idle' })
+    fakeDockApi('p1')
+    // sessionA's init arrives before any user message: it's held pending, not persisted.
+    handleAgentEvent('p1', { kind: 'init', sessionId: 'sessionA', model: 'opus', cwd: '/p', permissionMode: 'default', slashCommands: [] })
+
+    // restartSession() clears the chat before swapping to a different session (e.g. /resume).
+    useAgents.getState().clear('p1')
+    // ...then replaces the panel params with the resumed session (sessionB).
+    const updateParameters = fakeDockApi('p1', { sessionId: 'sessionB' })
+
+    // The first local `user` event of the new (resumed) session must not resurrect sessionA's
+    // stale pending entry and overwrite sessionB.
+    handleAgentEvent('p1', { kind: 'user', id: 'u1', text: 'oi', images: 0 })
+    expect(updateParameters).not.toHaveBeenCalled()
+
+    // sessionB's own init (now that the panel has a user item) persists sessionB, not sessionA.
+    handleAgentEvent('p1', { kind: 'init', sessionId: 'sessionB', model: 'opus', cwd: '/p', permissionMode: 'default', slashCommands: [] })
+    expect(updateParameters).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'sessionB' }))
+    expect(updateParameters).not.toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'sessionA' }))
   })
 
   it('loads history, clears and removes', () => {
