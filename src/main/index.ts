@@ -2,12 +2,18 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { EventChannel, EventMap } from '@shared/ipc-contract'
+import { AgentManager } from './agent/AgentManager'
+import type { QueryFn } from './agent/AgentSession'
+import { fakeQuery, fakeSessions } from './agent/fakeQuery'
+import { loadSdk, type SessionStoreApi } from './agent/sdk'
+import { loginShellPath, mergePath, resolveClaudePath } from './env/loginShell'
 import { gitInfo } from './git/gitInfo'
 import { buildHandlers } from './ipc/handlers'
 import { registerHandlers } from './ipc/register'
 import { installMenu } from './menu'
 import { isAllowedNavigation } from './navigation'
 import { PtyManager } from './pty/PtyManager'
+import { shellEnv } from './pty/shellEnv'
 import { spawnShell } from './pty/spawnShell'
 import { createStores } from './store/stores'
 
@@ -23,6 +29,35 @@ const stores = createStores(app.getPath('userData'))
 const ptys = new PtyManager(spawnShell, {
   data: (id, chunk) => send('pty:data', id, chunk),
   exit: (id, code) => send('pty:exit', id, code),
+})
+
+type Sdk = { queryFn: QueryFn } & SessionStoreApi
+const FAKE_AGENT = process.env.NEXT_IDE_FAKE_AGENT === '1'
+let sdk: Sdk | null = null
+let claudePath: string | undefined
+const agentReady: Promise<void> = (async () => {
+  process.env.PATH = mergePath(process.env.PATH, await loginShellPath())
+  if (FAKE_AGENT) {
+    sdk = { queryFn: fakeQuery, ...fakeSessions }
+    return
+  }
+  claudePath = await resolveClaudePath((await stores.settings.read()).claudePath)
+  sdk = await loadSdk()
+})()
+agentReady.catch((err) => console.error('[next-ide] failed to prepare Claude Agent SDK', err))
+
+const requireSdk = (): Sdk => {
+  if (!sdk) throw new Error('O SDK do Claude ainda não carregou.')
+  return sdk
+}
+
+const agents = new AgentManager({
+  emit: (panelId, event) => send('agent:event', panelId, event),
+  runtime: () => ({
+    queryFn: (params) => requireSdk().queryFn(params),
+    env: shellEnv(process.env),
+    ...(claudePath ? { claudePath } : {}),
+  }),
 })
 
 async function pickFolder(): Promise<string | null> {
@@ -49,6 +84,9 @@ registerHandlers(
     pickWorkspaceFile,
     readTextFile: (p) => readFile(p, 'utf8'),
     gitInfo,
+    agents,
+    sessions: { list: (dir) => requireSdk().list(dir), history: (dir, id) => requireSdk().history(dir, id) },
+    agentReady: () => agentReady,
   }),
 )
 
@@ -93,16 +131,33 @@ void app.whenReady().then(() => {
 let quitting = false
 app.on('before-quit', (event) => {
   if (quitting) return
+  if (mainWindow && !mainWindow.isDestroyed() && agents.hasBusy()) {
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: 'warning',
+      buttons: ['Sair', 'Cancelar'],
+      defaultId: 1,
+      cancelId: 1,
+      message: 'Há agentes trabalhando.',
+      detail: 'Sair agora interrompe as sessões em andamento.',
+    })
+    if (choice === 1) {
+      event.preventDefault()
+      return
+    }
+  }
   event.preventDefault()
   quitting = true
+  try {
+    agents.closeAll()
+  } catch (err) {
+    console.error('[next-ide] closeAll failed', err)
+  }
   try {
     ptys.killAll()
   } catch (err) {
     console.error('[next-ide] killAll failed', err)
   }
-  void Promise.allSettled([stores.workspaces.flush(), stores.layout.flush(), stores.settings.flush()]).finally(
-    () => app.quit(),
-  )
+  void Promise.allSettled([stores.workspaces.flush(), stores.layout.flush(), stores.settings.flush()]).finally(() => app.quit())
 })
 
 app.on('window-all-closed', () => {

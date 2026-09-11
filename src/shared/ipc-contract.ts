@@ -1,4 +1,5 @@
-import type { GitInfo, LayoutState, Settings, Workspace } from './models'
+import type { AgentEvent, CommandOption, ImageAttachment, ModelOption, PermissionDecision, SessionSummary } from './agent'
+import type { AgentPanelParams, GitInfo, LayoutState, PermissionMode, Settings, Workspace } from './models'
 
 export type InvokeMap = {
   'workspace:get': { args: []; result: Workspace[] }
@@ -14,11 +15,24 @@ export type InvokeMap = {
   'pty:write': { args: [panelId: string, data: string]; result: void }
   'pty:resize': { args: [panelId: string, cols: number, rows: number]; result: void }
   'pty:kill': { args: [panelId: string]; result: void }
+  'agent:create': { args: [panelId: string, params: AgentPanelParams]; result: void }
+  'agent:start': { args: [panelId: string]; result: void }
+  'agent:send': { args: [panelId: string, text: string, images: ImageAttachment[]]; result: void }
+  'agent:interrupt': { args: [panelId: string]; result: void }
+  'agent:setModel': { args: [panelId: string, model: string]; result: void }
+  'agent:setMode': { args: [panelId: string, mode: PermissionMode]; result: void }
+  'agent:respondPermission': { args: [panelId: string, requestId: string, decision: PermissionDecision]; result: void }
+  'agent:commands': { args: [panelId: string]; result: CommandOption[] }
+  'agent:models': { args: [panelId: string]; result: ModelOption[] }
+  'agent:listSessions': { args: [projectPath: string]; result: SessionSummary[] }
+  'agent:history': { args: [projectPath: string, sessionId: string]; result: AgentEvent[] }
+  'agent:close': { args: [panelId: string]; result: void }
 }
 
 export type EventMap = {
   'pty:data': [panelId: string, chunk: string]
   'pty:exit': [panelId: string, exitCode: number]
+  'agent:event': [panelId: string, event: AgentEvent]
 }
 
 export type InvokeChannel = keyof InvokeMap
@@ -44,9 +58,21 @@ export const INVOKE_CHANNELS = [
   'pty:write',
   'pty:resize',
   'pty:kill',
+  'agent:create',
+  'agent:start',
+  'agent:send',
+  'agent:interrupt',
+  'agent:setModel',
+  'agent:setMode',
+  'agent:respondPermission',
+  'agent:commands',
+  'agent:models',
+  'agent:listSessions',
+  'agent:history',
+  'agent:close',
 ] as const satisfies readonly InvokeChannel[]
 
-export const EVENT_CHANNELS = ['pty:data', 'pty:exit'] as const satisfies readonly EventChannel[]
+export const EVENT_CHANNELS = ['pty:data', 'pty:exit', 'agent:event'] as const satisfies readonly EventChannel[]
 
 // Compile-time guard: every channel in the maps must be listed above.
 type MissingInvoke = Exclude<InvokeChannel, (typeof INVOKE_CHANNELS)[number]>

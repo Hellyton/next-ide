@@ -2,12 +2,16 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import type { AgentEvent } from '@shared/agent'
 import { DEFAULT_SETTINGS } from '@shared/models'
+import { AgentManager } from '../../src/main/agent/AgentManager'
+import { fakeQuery, fakeSessions } from '../../src/main/agent/fakeQuery'
 import { buildHandlers, type HandlerDeps } from '../../src/main/ipc/handlers'
 import { createStores } from '../../src/main/store/stores'
 
-function deps(over: Partial<HandlerDeps> = {}): HandlerDeps & { ptyCalls: unknown[][] } {
+function deps(over: Partial<HandlerDeps> = {}): HandlerDeps & { ptyCalls: unknown[][]; agentEvents: Array<[string, AgentEvent]> } {
   const ptyCalls: unknown[][] = []
+  const agentEvents: Array<[string, AgentEvent]> = []
   return {
     stores: createStores(mkdtempSync(join(tmpdir(), 'handlers-'))),
     pty: {
@@ -20,7 +24,11 @@ function deps(over: Partial<HandlerDeps> = {}): HandlerDeps & { ptyCalls: unknow
     pickWorkspaceFile: async () => null,
     readTextFile: async () => '{}',
     gitInfo: async () => ({ branch: 'dev' }),
+    agents: new AgentManager({ emit: (id, e) => agentEvents.push([id, e]), runtime: () => ({ queryFn: fakeQuery }) }),
+    sessions: fakeSessions,
+    agentReady: async () => undefined,
     ptyCalls,
+    agentEvents,
     ...over,
   }
 }
@@ -78,5 +86,22 @@ describe('buildHandlers', () => {
       ['resize', 't', 90, 30],
       ['kill', 't'],
     ])
+  })
+
+  it('agent channels create, send and close sessions', async () => {
+    const d = deps()
+    const h = buildHandlers(d)
+    await h['agent:create']('p1', { type: 'agent', projectPath: '/proj' })
+    await h['agent:send']('p1', 'oi', [])
+    await new Promise((r) => setTimeout(r, 5))
+    expect(d.agentEvents.some(([id, e]) => id === 'p1' && e.kind === 'text')).toBe(true)
+    expect((await h['agent:commands']('p1')).map((c) => c.name)).toEqual(['compact', 'review'])
+    await h['agent:close']('p1')
+    await expect(Promise.resolve().then(() => h['agent:interrupt']('p1'))).rejects.toThrow('Sessão de agente não encontrada')
+  })
+
+  it('agent:history converts stored messages into events', async () => {
+    const events = await buildHandlers(deps())['agent:history']('/proj', 'fake-old')
+    expect(events.map((e) => e.kind)).toEqual(['user', 'text'])
   })
 })
