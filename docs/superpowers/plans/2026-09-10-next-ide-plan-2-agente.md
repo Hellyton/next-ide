@@ -3997,4 +3997,155 @@ Em `AgentPanel.tsx`: estado `const [statusConfig, setStatusConfig] = useState(fa
 
 - [ ] **Step 7: Commit** — `git add -A && git commit -m "feat: add configurable statusline with the user's statusLine script"`
 
-<!-- TASKS 12+ APPENDED BELOW -->
+---
+
+### Task 12: Confirmar ao fechar agente ativo e restaurar painel de agente
+
+**Files:**
+- Create: `src/renderer/src/dock/closeGuard.ts`
+- Modify: `src/renderer/src/dock/dockStore.ts` (`requestClose`, `closeActive` usa `requestClose`), `src/renderer/src/dock/PanelTab.tsx` (× usa `requestClose`)
+- Test: `test/renderer/closeGuard.test.ts`, `e2e/agent-close.spec.ts`, `e2e/agent-restore.spec.ts`
+
+**Interfaces:**
+- Consumes: `useSessions` (Plano 1), `useDock` (Plano 1), `fakeSessions` via agente fake (Task 5), histórico preguiçoso do `AgentPanel` (Task 6).
+- Produces: `needsCloseConfirm(type: PanelType | undefined, state: SessionState | undefined): boolean`, `CLOSE_CONFIRM_MESSAGE: string`, `useDock.requestClose(panelId: string): void`.
+
+Spec §8: `Cmd+W` e o × pedem confirmação se o agente está `running` ou `awaiting_permission`. Fechar nega permissões pendentes e encerra a sessão (já feito pelo listener de remoção da Task 6 + `AgentSession.close`). Spec §12: painel de agente restaurado mostra o histórico e só sobe o processo no primeiro envio.
+
+- [ ] **Step 1: Testes falhando**
+
+```ts
+// test/renderer/closeGuard.test.ts
+import { describe, expect, it } from 'vitest'
+import { CLOSE_CONFIRM_MESSAGE, needsCloseConfirm } from '@renderer/dock/closeGuard'
+
+describe('needsCloseConfirm', () => {
+  it('asks only for busy agent panels', () => {
+    expect(needsCloseConfirm('agent', 'running')).toBe(true)
+    expect(needsCloseConfirm('agent', 'awaiting_permission')).toBe(true)
+    expect(needsCloseConfirm('agent', 'idle')).toBe(false)
+    expect(needsCloseConfirm('terminal', 'running')).toBe(false)
+    expect(needsCloseConfirm(undefined, undefined)).toBe(false)
+    expect(CLOSE_CONFIRM_MESSAGE).toBe('O agente está trabalhando. Fechar mesmo assim?')
+  })
+})
+```
+
+```ts
+// e2e/agent-close.spec.ts
+import { expect, test } from '@playwright/test'
+import { openAgent } from './helpers'
+
+test('fechar agente aguardando permissão pede confirmação', async () => {
+  const { app, page, name } = await openAgent()
+  const input = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
+  await input.fill('teste de permissão')
+  await input.press('Enter')
+  await expect(page.getByTestId('permission-card')).toBeVisible()
+
+  page.once('dialog', (d) => void d.dismiss())
+  await page.getByRole('button', { name: `Fechar ${name} · claude` }).click()
+  await expect(page.getByTestId('panel-tab').filter({ hasText: `${name} · claude` })).toBeVisible()
+
+  page.once('dialog', (d) => void d.accept())
+  await page.getByRole('button', { name: `Fechar ${name} · claude` }).click()
+  await expect(page.getByTestId('panel-tab').filter({ hasText: `${name} · claude` })).toHaveCount(0)
+  await expect(page.getByTestId('active-sessions')).not.toContainText(`${name} · claude`)
+  await app.close()
+})
+```
+
+```ts
+// e2e/agent-restore.spec.ts
+import { expect, test } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { launch, openAgent } from './helpers'
+
+test('painel de agente restaurado mostra histórico e continua a sessão', async () => {
+  const first = await openAgent()
+  const input = first.page.getByRole('textbox', { name: 'Mensagem para o Claude' })
+  await input.fill('oi')
+  await input.press('Enter')
+  await expect(first.page.getByTestId('chat-view')).toContainText('Você disse: oi')
+  await expect
+    .poll(() => {
+      try {
+        return readFileSync(join(first.userData, 'layout.json'), 'utf8')
+      } catch {
+        return ''
+      }
+    })
+    .toContain('fake-session')
+  await first.app.close()
+
+  const second = await launch({ userData: first.userData, env: { NEXT_IDE_E2E_PICK_FOLDER: first.folder } })
+  await expect(second.page.getByTestId('panel-tab').filter({ hasText: `${first.name} · claude` })).toBeVisible()
+  await expect(second.page.getByTestId('chat-view')).toContainText('resposta antiga')
+  const again = second.page.getByRole('textbox', { name: 'Mensagem para o Claude' })
+  await again.fill('continuando')
+  await again.press('Enter')
+  await expect(second.page.getByTestId('chat-view')).toContainText('Você disse: continuando')
+  await second.app.close()
+})
+```
+
+- [ ] **Step 2: Rodar e ver falhar** — `npx vitest run test/renderer/closeGuard.test.ts` → FAIL; `npm run test:e2e -- e2e/agent-close.spec.ts` → FAIL (fecha sem confirmar).
+
+- [ ] **Step 3: Implementar**
+
+```ts
+// src/renderer/src/dock/closeGuard.ts
+import type { PanelType, SessionState } from '@shared/models'
+
+export const CLOSE_CONFIRM_MESSAGE = 'O agente está trabalhando. Fechar mesmo assim?'
+
+export function needsCloseConfirm(type: PanelType | undefined, state: SessionState | undefined): boolean {
+  return type === 'agent' && (state === 'running' || state === 'awaiting_permission')
+}
+```
+
+Em `dockStore.ts`: adicionar ao tipo `requestClose(panelId: string): void` e à store
+
+```ts
+  requestClose: (panelId) => {
+    const panel = get().api?.getPanel(panelId)
+    if (!panel) return
+    const params = panel.params as PanelParams | undefined
+    const state = useSessions.getState().byId[panelId]?.state
+    if (needsCloseConfirm(params?.type, state) && !window.confirm(CLOSE_CONFIRM_MESSAGE)) return
+    panel.api.close()
+  },
+  closeActive: () => {
+    const id = get().api?.activePanel?.id
+    if (id) get().requestClose(id)
+  },
+```
+
+(imports: `useSessions` de `../stores/sessionsStore`, `needsCloseConfirm`, `CLOSE_CONFIRM_MESSAGE` de `./closeGuard`). Em `PanelTab.tsx`, o `onClick` do × passa a chamar `useDock.getState().requestClose(api.id)` (import de `./dockStore`) em vez de `api.close()`.
+
+- [ ] **Step 4: Verificar** — `npx vitest run test/renderer && npm run typecheck && npm test && npm run test:e2e` → verde, incluindo `agent-restore.spec.ts` (se ele falhar, é defeito real da restauração preguiçosa da Task 6 — investigar e corrigir no app, não no teste).
+
+- [ ] **Step 5: Verificação real** — `NEXT_IDE_REAL_AGENT=1 npx playwright test e2e/agent-real.spec.ts` uma vez no fim do plano; anotar resultado no relatório.
+
+- [ ] **Step 6: Commit** — `git add -A && git commit -m "feat: confirm before closing a busy agent and restore agent panels lazily"`
+
+---
+
+## Cobertura da spec neste plano
+
+| Seção da spec | Task |
+|---|---|
+| §6.1 ciclo de vida, estados, restaurado sem processo | 4, 5, 6, 12 |
+| §6.2 ChatView: markdown com streaming, thinking, Read/Grep recolhidos, Bash, diff, Todo, subagente, permissão, erro | 6, 7, 8 |
+| §6.2 caminho clicável abre FilePanel | Plano 3 (FileViewer) |
+| §6.3 composer: Enter/Shift+Enter, colar seguro, imagens 5 MB, fila, Esc, ↑, modelo, modo | 6, 8, 10 |
+| §6.3 `@` autocomplete de arquivos | Plano 3 (depende do índice de arquivos) |
+| §6.4 comandos `/` (SDK + locais), `/resume`, `/clear`, `/model`, `/statusline`, TUI-only → terminal | 9, 11 |
+| §6.5 permissões inline, "sempre", cancelar ao abortar, negar ao fechar | 4, 8, 12 |
+| §6.6 statusline com segmentos e script do usuário | 11 |
+| §8 confirmação ao fechar agente ativo | 12 |
+| §11 IPC `agent:*`, `AgentEvent` normalizado, `AgentAdapter` (sessão isolada do SDK) | 1, 2, 5 |
+| §12 restauração com `getSessionMessages` e resume no primeiro envio | 5, 6, 12 |
+| §13 erros: binário/SDK ausente, processo morto → retomar, erro de API como cartão, sair com agentes rodando | 4, 5, 6 |
+| CSP (pendência do Plano 1) | 1 |
