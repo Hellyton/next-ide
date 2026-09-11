@@ -2,6 +2,8 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import type { ImageAttachment } from '@shared/agent'
 import type { ChatState } from '../../agent/chatReducer'
 import { composerKeyAction } from '../../agent/composerKeys'
+import { ModelSelect } from './ModelSelect'
+import { ModeSelect } from './ModeSelect'
 
 type Props = { panelId: string; chat: ChatState; onSend(text: string, images: ImageAttachment[]): void }
 
@@ -54,6 +56,8 @@ export function Composer({ panelId, chat, onSend }: Props) {
         }}
       />
       <div className="mt-1 flex items-center gap-2 text-xs text-neutral-500" data-testid="composer-toolbar">
+        <ModelSelect panelId={panelId} model={chat.model} />
+        <ModeSelect panelId={panelId} mode={chat.permissionMode} />
         <span className="flex-1" />
         {busy ? (
           <button aria-label="Parar" className="rounded bg-neutral-800 px-2 py-1 text-neutral-200 hover:bg-neutral-700" onClick={interrupt}>

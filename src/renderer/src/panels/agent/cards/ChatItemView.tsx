@@ -1,5 +1,6 @@
 import type { ChatItem } from '../../../agent/chatReducer'
 import { ErrorCard } from './ErrorCard'
+import { PermissionCard } from './PermissionCard'
 import { TextBlock } from './TextBlock'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCard } from './ToolCard'
@@ -32,6 +33,6 @@ export function ChatItemView({ item, items, panelId }: { item: ChatItem; items: 
     case 'error':
       return <ErrorCard message={item.message} />
     case 'permission':
-      return <div className="text-xs text-orange-400">Permissão pendente: {item.toolName}</div>
+      return <PermissionCard item={item} panelId={panelId} />
   }
 }
