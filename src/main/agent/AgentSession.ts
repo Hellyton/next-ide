@@ -44,7 +44,7 @@ export type SessionDeps = {
   newId?: () => string
 }
 
-type Pending = { resolve(result: PermissionResultLike): void; input: Record<string, unknown>; suggestions?: unknown[] }
+type Pending = { resolve(result: PermissionResultLike): void; input: Record<string, unknown>; suggestions?: unknown[]; dispose(): void }
 
 const isResult = (m: unknown): boolean => typeof m === 'object' && m !== null && (m as { type?: unknown }).type === 'result'
 
@@ -148,6 +148,7 @@ export class AgentSession {
     const pending = this.pending.get(requestId)
     if (!pending) return
     this.pending.delete(requestId)
+    pending.dispose()
     pending.resolve(
       decision === 'deny'
         ? { behavior: 'deny', message: 'O usuário negou esta ação.' }
@@ -178,8 +179,14 @@ export class AgentSession {
   ): Promise<PermissionResultLike> {
     const requestId = this.newId()
     return new Promise((resolve) => {
-      this.pending.set(requestId, { resolve, input, ...(options.suggestions ? { suggestions: options.suggestions } : {}) })
-      options.signal.addEventListener('abort', () => this.cancelPermission(requestId), { once: true })
+      const onAbort = () => this.cancelPermission(requestId)
+      options.signal.addEventListener('abort', onAbort, { once: true })
+      this.pending.set(requestId, {
+        resolve,
+        input,
+        ...(options.suggestions ? { suggestions: options.suggestions } : {}),
+        dispose: () => options.signal.removeEventListener('abort', onAbort),
+      })
       this.deps.emit({
         kind: 'permission-request',
         requestId,
@@ -196,6 +203,7 @@ export class AgentSession {
     const pending = this.pending.get(requestId)
     if (!pending) return
     this.pending.delete(requestId)
+    pending.dispose()
     pending.resolve({ behavior: 'deny', message: 'Cancelado.' })
     this.deps.emit({ kind: 'permission-resolved', requestId, decision: 'cancelled' })
   }
@@ -203,6 +211,7 @@ export class AgentSession {
   private async pump(query: QueryLike): Promise<void> {
     try {
       for await (const message of query) {
+        if (this.closed) return
         for (const event of this.normalizer.push(message)) {
           if (event.kind === 'init') this.sessionId = event.sessionId
           this.deps.emit(event)

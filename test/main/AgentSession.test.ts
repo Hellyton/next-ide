@@ -167,4 +167,28 @@ describe('AgentSession', () => {
     s.send('de novo')
     expect(calls[1]).toMatchObject({ resume: 'sess-9' })
   })
+
+  it('does not emit after close even if messages were buffered', async () => {
+    const f = fake()
+    const { s, events } = session(f.fn)
+    s.send('x')
+    f.out.push(INIT)
+    s.close()
+    await tick()
+    const exitedIndex = events.findIndex((e) => e.kind === 'status' && e.state === 'exited')
+    expect(exitedIndex).toBeGreaterThanOrEqual(0)
+    expect(events.slice(exitedIndex + 1)).toEqual([])
+  })
+
+  it('removes the abort listener once the permission is answered', async () => {
+    const f = fake()
+    const { s } = session(f.fn)
+    s.send('x')
+    const ac = new AbortController()
+    const spy = vi.spyOn(ac.signal, 'removeEventListener')
+    const decision = f.calls[0]!.options.canUseTool('Bash', {}, { signal: ac.signal })
+    s.respondPermission('id2', 'allow')
+    await expect(decision).resolves.toMatchObject({ behavior: 'allow' })
+    expect(spy).toHaveBeenCalledWith('abort', expect.any(Function))
+  })
 })
