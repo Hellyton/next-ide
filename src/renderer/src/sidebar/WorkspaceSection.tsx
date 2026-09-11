@@ -3,11 +3,14 @@ import type { Workspace } from '@shared/models'
 import { useWorkspaces } from '../stores/workspaceStore'
 import { ProjectRow } from './ProjectRow'
 
-export function WorkspaceSection({ workspace }: { workspace: Workspace }) {
-  const { toggle, rename, remove, addFolder, removeProject } = useWorkspaces.getState()
+const DRAG_TYPE = 'application/x-next-ide-workspace'
+
+export function WorkspaceSection({ workspace, draggable }: { workspace: Workspace; draggable: boolean }) {
+  const { toggle, rename, remove, addFolder, removeProject, move } = useWorkspaces.getState()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(workspace.name)
   const [confirmRemove, setConfirmRemove] = useState(false)
+  const [dropTarget, setDropTarget] = useState(false)
 
   useEffect(() => {
     if (!confirmRemove) return
@@ -17,7 +20,29 @@ export function WorkspaceSection({ workspace }: { workspace: Workspace }) {
 
   return (
     <div className="pb-1">
-      <div data-testid="workspace-header" className="group flex items-center gap-1 rounded px-2 py-1 hover:bg-neutral-800/50">
+      <div
+        data-testid="workspace-header"
+        draggable={draggable && !editing}
+        onDragStart={(e) => {
+          e.dataTransfer.setData(DRAG_TYPE, workspace.id)
+          e.dataTransfer.effectAllowed = 'move'
+        }}
+        onDragOver={(e) => {
+          if (!e.dataTransfer.types.includes(DRAG_TYPE)) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'move'
+          setDropTarget(true)
+        }}
+        onDragLeave={() => setDropTarget(false)}
+        onDrop={(e) => {
+          setDropTarget(false)
+          const id = e.dataTransfer.getData(DRAG_TYPE)
+          if (!id || id === workspace.id) return
+          e.preventDefault()
+          move(id, workspace.id)
+        }}
+        className={`group flex items-center gap-1 rounded px-2 py-1 hover:bg-neutral-800/50 ${dropTarget ? 'ring-1 ring-orange-500/60' : ''}`}
+      >
         <button
           aria-label={workspace.collapsed ? `Expandir ${workspace.name}` : `Recolher ${workspace.name}`}
           className="w-4 text-xs text-neutral-500"

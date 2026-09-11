@@ -69,7 +69,7 @@ export function Sidebar() {
           />
         )}
         {visible.map((w) => (
-          <WorkspaceSection key={w.id} workspace={w} />
+          <WorkspaceSection key={w.id} workspace={w} draggable={!query.trim()} />
         ))}
       </section>
     </div>

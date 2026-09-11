@@ -3,6 +3,7 @@ import type { Workspace } from '@shared/models'
 import {
   addProjects,
   addWorkspace,
+  moveWorkspaceById,
   removeProject,
   removeWorkspace,
   renameWorkspace,
@@ -22,6 +23,7 @@ type WorkspaceState = {
   addFolder(workspaceId: string): Promise<void>
   importCodeWorkspace(): Promise<void>
   removeProject(workspaceId: string, projectId: string): void
+  move(id: string, targetId: string): void
 }
 
 const uuid = () => crypto.randomUUID()
@@ -63,5 +65,6 @@ export const useWorkspaces = create<WorkspaceState>()((set, get) => {
       }
     },
     removeProject: (workspaceId, projectId) => commit(removeProject(get().workspaces, workspaceId, projectId)),
+    move: (id, targetId) => commit(moveWorkspaceById(get().workspaces, id, targetId)),
   }
 })
