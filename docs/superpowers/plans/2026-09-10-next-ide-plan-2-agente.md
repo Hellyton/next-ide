@@ -1901,18 +1901,14 @@ describe('agentStore', () => {
 
 - [ ] **Step 2: E2E falhando** — em `e2e/helpers.ts`, dentro de `launch`, o env passa a incluir `NEXT_IDE_FAKE_AGENT: '1'` junto com o ZDOTDIR hermético (antes de `opts.env`, para que um teste possa sobrescrever com `'0'`). Todos os specs existentes que abrem Claude passam a usar o agente fake.
 
-```ts
-// e2e/agent.spec.ts
-import { expect, test } from '@playwright/test'
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
-import { launch } from './helpers'
+Também em `e2e/helpers.ts`, exportar o helper usado por todos os specs de agente (Playwright não deve importar um spec de outro):
 
-export async function openAgent() {
+```ts
+// e2e/helpers.ts — acrescentar (mkdtempSync/tmpdir/join já importados; importar basename de node:path)
+export async function openAgent(opts: { env?: Record<string, string> } = {}) {
   const folder = mkdtempSync(join(tmpdir(), 'proj-agent-'))
   const name = basename(folder)
-  const { app, page, userData } = await launch({ env: { NEXT_IDE_E2E_PICK_FOLDER: folder } })
+  const { app, page, userData } = await launch({ env: { NEXT_IDE_E2E_PICK_FOLDER: folder, ...opts.env } })
   await page.getByRole('button', { name: 'Novo workspace' }).click()
   await page.getByPlaceholder('Nome do workspace').fill('ws')
   await page.getByPlaceholder('Nome do workspace').press('Enter')
@@ -1920,6 +1916,12 @@ export async function openAgent() {
   await page.getByRole('button', { name: `Abrir Claude em ${name}` }).click()
   return { app, page, name, folder, userData }
 }
+```
+
+```ts
+// e2e/agent.spec.ts
+import { expect, test } from '@playwright/test'
+import { openAgent } from './helpers'
 
 test('envia mensagem e recebe resposta em streaming', async () => {
   const { app, page } = await openAgent()
@@ -2388,4 +2390,923 @@ Expected: unitários e E2E verdes (inclui `agent.spec.ts` e os specs antigos, ag
 
 - [ ] **Step 9: Commit** — `git add -A && git commit -m "feat: add agent chat panel with streaming and native composer"` (conferir `git status --short`).
 
-<!-- TASKS 7+ APPENDED BELOW -->
+---
+
+### Task 7: Cartões de ferramentas (Bash, diff de edição, Todo, subagentes)
+
+**Files:**
+- Create: `src/renderer/src/agent/toolView.ts`, `src/renderer/src/panels/agent/cards/BashCard.tsx`, `cards/DiffCard.tsx`, `cards/TodoCard.tsx`, `cards/TaskCard.tsx`, `cards/ToolCard.tsx`
+- Modify: `src/renderer/src/panels/agent/cards/ChatItemView.tsx` (tool → `ToolCard`)
+- Modify: `src/main/agent/fakeQuery.ts` (subagente roteirizado com "subagente")
+- Test: `test/renderer/toolView.test.ts`, `e2e/agent-tools.spec.ts`
+
+**Interfaces:**
+- Consumes: `ToolItem`, `ChatItem` (Task 3), `GenericToolCard`, `ToolStatus`, `toolSummary`, `ChatItemView`, `itemKey` (Task 6), `diffLines` do pacote `diff` (Task 1).
+- Produces:
+  - `type DiffLine = { kind: 'add' | 'del' | 'ctx'; text: string }`
+  - `editDiff(oldText: string, newText: string): DiffLine[]`
+  - `toolDiff(name: string, input: unknown): { filePath: string; lines: DiffLine[] } | null` (Edit, MultiEdit, Write)
+  - `toolTodos(input: unknown): Array<{ content: string; status: 'pending' | 'in_progress' | 'completed' }> | null` (TodoWrite)
+  - `isQuietTool(name: string): boolean` (Read, Grep, Glob, LS, NotebookRead, WebFetch, WebSearch → linha única recolhida)
+  - `<ToolCard item items panelId>` escolhe o cartão certo; `TaskCard` mostra os itens filhos (`parentToolUseId === item.id`) dentro do cartão.
+
+- [ ] **Step 1: Testes falhando**
+
+```ts
+// test/renderer/toolView.test.ts
+import { describe, expect, it } from 'vitest'
+import { editDiff, isQuietTool, toolDiff, toolTodos } from '@renderer/agent/toolView'
+
+describe('editDiff', () => {
+  it('marks removed and added lines and keeps context', () => {
+    expect(editDiff('a\nb\nc\n', 'a\nB\nc\n')).toEqual([
+      { kind: 'ctx', text: 'a' },
+      { kind: 'del', text: 'b' },
+      { kind: 'add', text: 'B' },
+      { kind: 'ctx', text: 'c' },
+    ])
+  })
+})
+
+describe('toolDiff', () => {
+  it('handles Edit, MultiEdit and Write', () => {
+    expect(toolDiff('Edit', { file_path: '/a.ts', old_string: 'x', new_string: 'y' })).toEqual({
+      filePath: '/a.ts',
+      lines: [
+        { kind: 'del', text: 'x' },
+        { kind: 'add', text: 'y' },
+      ],
+    })
+    const multi = toolDiff('MultiEdit', { file_path: '/a.ts', edits: [{ old_string: 'a', new_string: 'b' }, { old_string: 'c', new_string: 'd' }] })
+    expect(multi?.lines).toEqual([
+      { kind: 'del', text: 'a' },
+      { kind: 'add', text: 'b' },
+      { kind: 'ctx', text: '⋯' },
+      { kind: 'del', text: 'c' },
+      { kind: 'add', text: 'd' },
+    ])
+    expect(toolDiff('Write', { file_path: '/n.ts', content: 'l1\nl2' })?.lines).toEqual([
+      { kind: 'add', text: 'l1' },
+      { kind: 'add', text: 'l2' },
+    ])
+  })
+  it('returns null for other tools or malformed input', () => {
+    expect(toolDiff('Bash', { command: 'ls' })).toBeNull()
+    expect(toolDiff('Edit', { file_path: '/a.ts' })).toBeNull()
+  })
+})
+
+describe('toolTodos', () => {
+  it('reads TodoWrite todos and rejects malformed input', () => {
+    expect(toolTodos({ todos: [{ content: 'fazer', status: 'in_progress', activeForm: 'fazendo' }] })).toEqual([{ content: 'fazer', status: 'in_progress' }])
+    expect(toolTodos({ todos: 'x' })).toBeNull()
+  })
+})
+
+describe('isQuietTool', () => {
+  it('collapses read-only tools', () => {
+    expect(isQuietTool('Read')).toBe(true)
+    expect(isQuietTool('Grep')).toBe(true)
+    expect(isQuietTool('Bash')).toBe(false)
+  })
+})
+```
+
+```ts
+// e2e/agent-tools.spec.ts
+import { expect, test } from '@playwright/test'
+import { openAgent } from './helpers'
+
+test('mostra diff de edição e subagente agrupado', async () => {
+  const { app, page } = await openAgent()
+  const input = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
+  await input.fill('editar arquivo')
+  await input.press('Enter')
+  const diff = page.getByTestId('diff-card')
+  await expect(diff).toContainText('/tmp/exemplo.ts')
+  await expect(diff.locator('[data-kind="del"]')).toContainText('const a = 1')
+  await expect(diff.locator('[data-kind="add"]')).toContainText('const a = 2')
+
+  await input.fill('rodar subagente')
+  await input.press('Enter')
+  const task = page.getByTestId('task-card')
+  await expect(task).toContainText('Explorar o projeto')
+  await task.locator('summary').click()
+  await expect(task).toContainText('Resposta do subagente')
+  await app.close()
+})
+```
+
+(`openAgent` já existe em `e2e/helpers.ts` desde a Task 6 — o import correto é `import { openAgent } from './helpers'`.)
+
+- [ ] **Step 2: Rodar e ver falhar** — `npx vitest run test/renderer/toolView.test.ts` → FAIL (import).
+
+- [ ] **Step 3: Implementar `src/renderer/src/agent/toolView.ts`**
+
+```ts
+import { diffLines } from 'diff'
+
+export type DiffLine = { kind: 'add' | 'del' | 'ctx'; text: string }
+export type Todo = { content: string; status: 'pending' | 'in_progress' | 'completed' }
+
+type Rec = Record<string, unknown>
+const isRec = (v: unknown): v is Rec => typeof v === 'object' && v !== null
+const splitLines = (value: string): string[] => {
+  const lines = value.split('\n')
+  if (lines.at(-1) === '') lines.pop()
+  return lines
+}
+
+export function editDiff(oldText: string, newText: string): DiffLine[] {
+  return diffLines(oldText, newText).flatMap((part) =>
+    splitLines(part.value).map((text): DiffLine => ({ kind: part.added ? 'add' : part.removed ? 'del' : 'ctx', text })),
+  )
+}
+
+export function toolDiff(name: string, input: unknown): { filePath: string; lines: DiffLine[] } | null {
+  if (!isRec(input) || typeof input.file_path !== 'string') return null
+  const filePath = input.file_path
+  if (name === 'Edit' && typeof input.old_string === 'string' && typeof input.new_string === 'string') {
+    return { filePath, lines: editDiff(input.old_string, input.new_string) }
+  }
+  if (name === 'MultiEdit' && Array.isArray(input.edits)) {
+    const chunks = input.edits
+      .filter((e): e is Rec => isRec(e) && typeof e.old_string === 'string' && typeof e.new_string === 'string')
+      .map((e) => editDiff(e.old_string as string, e.new_string as string))
+    return { filePath, lines: chunks.flatMap((chunk, i) => (i === 0 ? chunk : [{ kind: 'ctx' as const, text: '⋯' }, ...chunk])) }
+  }
+  if (name === 'Write' && typeof input.content === 'string') {
+    return { filePath, lines: splitLines(input.content).map((text) => ({ kind: 'add' as const, text })) }
+  }
+  return null
+}
+
+export function toolTodos(input: unknown): Todo[] | null {
+  if (!isRec(input) || !Array.isArray(input.todos)) return null
+  return input.todos
+    .filter((t): t is Rec => isRec(t) && typeof t.content === 'string')
+    .map((t) => ({
+      content: t.content as string,
+      status: t.status === 'completed' || t.status === 'in_progress' ? t.status : 'pending',
+    }))
+}
+
+const QUIET = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'WebFetch', 'WebSearch'])
+export const isQuietTool = (name: string): boolean => QUIET.has(name)
+```
+
+- [ ] **Step 4: Cartões**
+
+```tsx
+// src/renderer/src/panels/agent/cards/BashCard.tsx
+import type { ToolItem } from '../../../agent/chatReducer'
+import { ToolStatus } from './GenericToolCard'
+
+export function BashCard({ item }: { item: ToolItem }) {
+  const command = typeof (item.input as { command?: unknown })?.command === 'string' ? (item.input as { command: string }).command : ''
+  return (
+    <details open className="rounded border border-neutral-800 text-xs" data-testid="bash-card">
+      <summary className="flex cursor-pointer items-center gap-2 px-2 py-1">
+        <span className="font-medium text-neutral-300">Bash</span>
+        <code className="truncate text-neutral-400">{command}</code>
+        <span className="ml-auto">
+          <ToolStatus item={item} />
+        </span>
+      </summary>
+      {item.output !== undefined && (
+        <pre className={`max-h-72 overflow-auto border-t border-neutral-800 bg-black/40 p-2 font-mono whitespace-pre-wrap ${item.isError ? 'text-red-300' : 'text-neutral-300'}`}>
+          {item.output || '(sem saída)'}
+        </pre>
+      )}
+    </details>
+  )
+}
+```
+
+```tsx
+// src/renderer/src/panels/agent/cards/DiffCard.tsx
+import type { DiffLine } from '../../../agent/toolView'
+import type { ToolItem } from '../../../agent/chatReducer'
+import { ToolStatus } from './GenericToolCard'
+
+const STYLE: Record<DiffLine['kind'], string> = {
+  add: 'bg-emerald-950/60 text-emerald-300',
+  del: 'bg-red-950/60 text-red-300',
+  ctx: 'text-neutral-500',
+}
+const SIGN: Record<DiffLine['kind'], string> = { add: '+', del: '-', ctx: ' ' }
+
+export function DiffCard({ item, filePath, lines }: { item: ToolItem; filePath: string; lines: DiffLine[] }) {
+  return (
+    <details open className="rounded border border-neutral-800 text-xs" data-testid="diff-card">
+      <summary className="flex cursor-pointer items-center gap-2 px-2 py-1">
+        <span className="font-medium text-neutral-300">{item.name}</span>
+        <span className="truncate text-neutral-400">{filePath}</span>
+        <span className="ml-auto">
+          <ToolStatus item={item} />
+        </span>
+      </summary>
+      <div className="max-h-96 overflow-auto border-t border-neutral-800 font-mono">
+        {lines.map((line, i) => (
+          <div key={i} data-kind={line.kind} className={`px-2 whitespace-pre ${STYLE[line.kind]}`}>
+            {SIGN[line.kind]} {line.text}
+          </div>
+        ))}
+      </div>
+      {item.isError && item.output && <div className="border-t border-neutral-800 p-2 text-red-300">{item.output}</div>}
+    </details>
+  )
+}
+```
+
+```tsx
+// src/renderer/src/panels/agent/cards/TodoCard.tsx
+import type { Todo } from '../../../agent/toolView'
+
+const ICON: Record<Todo['status'], string> = { pending: '☐', in_progress: '◐', completed: '☑' }
+
+export function TodoCard({ todos }: { todos: Todo[] }) {
+  return (
+    <div className="rounded border border-neutral-800 px-3 py-2 text-xs" data-testid="todo-card">
+      <div className="mb-1 font-medium text-neutral-300">Tarefas</div>
+      <ul className="space-y-0.5">
+        {todos.map((t, i) => (
+          <li key={i} className={t.status === 'completed' ? 'text-neutral-500 line-through' : t.status === 'in_progress' ? 'text-sky-300' : 'text-neutral-300'}>
+            {ICON[t.status]} {t.content}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+```
+
+```tsx
+// src/renderer/src/panels/agent/cards/TaskCard.tsx
+import type { ChatItem, ToolItem } from '../../../agent/chatReducer'
+import { ChatItemView, itemKey } from './ChatItemView'
+import { ToolStatus } from './GenericToolCard'
+
+export function TaskCard({ item, items, panelId }: { item: ToolItem; items: ChatItem[]; panelId: string }) {
+  const children = items.filter((c) => (c.type === 'text' || c.type === 'tool') && c.parentToolUseId === item.id)
+  const description = typeof (item.input as { description?: unknown })?.description === 'string' ? (item.input as { description: string }).description : 'Subagente'
+  return (
+    <details className="rounded border border-violet-900/60 text-xs" data-testid="task-card">
+      <summary className="flex cursor-pointer items-center gap-2 px-2 py-1">
+        <span className="font-medium text-violet-300">Subagente</span>
+        <span className="truncate text-neutral-400">{description}</span>
+        <span className="text-neutral-600">({children.length})</span>
+        <span className="ml-auto">
+          <ToolStatus item={item} />
+        </span>
+      </summary>
+      <div className="space-y-2 border-t border-violet-900/40 p-2">
+        {children.map((child) => (
+          <ChatItemView key={itemKey(child)} item={child} items={items} panelId={panelId} />
+        ))}
+      </div>
+    </details>
+  )
+}
+```
+
+```tsx
+// src/renderer/src/panels/agent/cards/ToolCard.tsx
+import type { ChatItem, ToolItem } from '../../../agent/chatReducer'
+import { isQuietTool, toolDiff, toolTodos } from '../../../agent/toolView'
+import { BashCard } from './BashCard'
+import { DiffCard } from './DiffCard'
+import { GenericToolCard } from './GenericToolCard'
+import { TaskCard } from './TaskCard'
+import { TodoCard } from './TodoCard'
+
+export function ToolCard({ item, items, panelId }: { item: ToolItem; items: ChatItem[]; panelId: string }) {
+  if (item.name === 'Task' || item.name === 'Agent') return <TaskCard item={item} items={items} panelId={panelId} />
+  if (item.name === 'Bash') return <BashCard item={item} />
+  const diff = toolDiff(item.name, item.input)
+  if (diff) return <DiffCard item={item} filePath={diff.filePath} lines={diff.lines} />
+  const todos = item.name === 'TodoWrite' ? toolTodos(item.input) : null
+  if (todos) return <TodoCard todos={todos} />
+  if (isQuietTool(item.name)) return <GenericToolCard item={item} />
+  return <GenericToolCard item={item} />
+}
+```
+
+Em `ChatItemView.tsx`, trocar o ramo `tool` para `return <ToolCard item={item} items={items} panelId={panelId} />` (import de `./ToolCard`), recebendo `items` e `panelId` das props.
+
+- [ ] **Step 5: Subagente no fake** — em `src/main/agent/fakeQuery.ts`, dentro do loop, antes da resposta final, acrescentar:
+
+```ts
+      if (text.includes('subagente')) {
+        const taskId = `fake_task_${turn}`
+        out.push({ type: 'assistant', parent_tool_use_id: null, message: { id, content: [{ type: 'tool_use', id: taskId, name: 'Task', input: { description: 'Explorar o projeto', prompt: 'explore' } }] } })
+        out.push({ type: 'assistant', parent_tool_use_id: taskId, message: { id: `${id}_sub`, content: [{ type: 'text', text: 'Resposta do subagente' }] } })
+        out.push({ type: 'user', parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: taskId, content: 'feito' }] } })
+      }
+```
+
+- [ ] **Step 6: Verificar** — `npx vitest run test/renderer/toolView.test.ts && npm run typecheck && npm test && npm run test:e2e` → verde (inclui `agent-tools.spec.ts`).
+
+- [ ] **Step 7: Commit** — `git add -A && git commit -m "feat: add tool cards for bash, edit diffs, todos and subagents"`
+
+---
+
+### Task 8: Permissões inline, modo de permissão e seletor de modelo
+
+**Files:**
+- Create: `src/renderer/src/agent/permissions.ts`, `src/renderer/src/panels/agent/cards/PermissionCard.tsx`, `src/renderer/src/panels/agent/ModelSelect.tsx`, `src/renderer/src/panels/agent/ModeSelect.tsx`
+- Modify: `src/renderer/src/panels/agent/cards/ChatItemView.tsx` (permission → `PermissionCard`), `src/renderer/src/panels/agent/Composer.tsx` (toolbar)
+- Test: `test/renderer/permissions.test.ts`, `e2e/agent-permissions.spec.ts`
+
+**Interfaces:**
+- Consumes: `PermissionItem`, `ChatState` (Task 3), canais `agent:respondPermission`, `agent:setMode`, `agent:setModel`, `agent:models` (Task 5), `ModelOption` (Task 1).
+- Produces: `MODE_OPTIONS: Array<{ value: PermissionMode; label: string }>`, `permissionSummary(toolName: string, input: unknown): string`, `decisionLabel(decision: PermissionDecision | 'cancelled'): string`; componentes `<PermissionCard item panelId>`, `<ModeSelect panelId mode>`, `<ModelSelect panelId model>`.
+
+- [ ] **Step 1: Testes falhando**
+
+```ts
+// test/renderer/permissions.test.ts
+import { describe, expect, it } from 'vitest'
+import { MODE_OPTIONS, decisionLabel, permissionSummary } from '@renderer/agent/permissions'
+
+describe('permissions view helpers', () => {
+  it('summarizes the most relevant input field', () => {
+    expect(permissionSummary('Bash', { command: 'rm -rf dist' })).toBe('rm -rf dist')
+    expect(permissionSummary('Write', { file_path: '/a.ts', content: 'x' })).toBe('/a.ts')
+    expect(permissionSummary('WebFetch', { url: 'https://x.dev' })).toBe('https://x.dev')
+    expect(permissionSummary('mcp__db__query', { sql: 'select 1' })).toBe('{"sql":"select 1"}')
+  })
+
+  it('labels decisions and lists modes in pt-BR', () => {
+    expect(decisionLabel('allow')).toBe('Permitido')
+    expect(decisionLabel('allow-always')).toBe('Sempre permitido')
+    expect(decisionLabel('deny')).toBe('Negado')
+    expect(decisionLabel('cancelled')).toBe('Cancelado')
+    expect(MODE_OPTIONS.map((m) => m.value)).toEqual(['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'])
+  })
+})
+```
+
+```ts
+// e2e/agent-permissions.spec.ts
+import { expect, test } from '@playwright/test'
+import { openAgent } from './helpers'
+
+test('aprova permissão inline e troca modo e modelo', async () => {
+  const { app, page } = await openAgent()
+  const input = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
+  await input.fill('teste de permissão')
+  await input.press('Enter')
+
+  const card = page.getByTestId('permission-card')
+  await expect(card).toContainText('Bash')
+  await expect(card).toContainText('rm -rf dist')
+  await expect(page.getByTestId('active-sessions')).toBeVisible()
+  await card.getByRole('button', { name: 'Permitir', exact: true }).click()
+  await expect(card).toContainText('Permitido')
+  await expect(page.getByTestId('bash-card')).toContainText('removido')
+
+  await page.getByRole('combobox', { name: 'Modo de permissão' }).selectOption('plan')
+  await expect(page.getByRole('combobox', { name: 'Modo de permissão' })).toHaveValue('plan')
+
+  const model = page.getByRole('combobox', { name: 'Modelo' })
+  await model.click()
+  await expect(model.locator('option', { hasText: 'Fake Haiku' })).toHaveCount(1)
+  await model.selectOption('fake-small')
+  await expect(model).toHaveValue('fake-small')
+  await app.close()
+})
+```
+
+- [ ] **Step 2: Rodar e ver falhar** — `npx vitest run test/renderer/permissions.test.ts` → FAIL.
+
+- [ ] **Step 3: Implementar**
+
+```ts
+// src/renderer/src/agent/permissions.ts
+import type { PermissionDecision } from '@shared/agent'
+import type { PermissionMode } from '@shared/models'
+
+export const MODE_OPTIONS: Array<{ value: PermissionMode; label: string }> = [
+  { value: 'default', label: 'Perguntar' },
+  { value: 'acceptEdits', label: 'Aceitar edições' },
+  { value: 'plan', label: 'Plano' },
+  { value: 'auto', label: 'Auto' },
+  { value: 'bypassPermissions', label: 'Sem permissões' },
+]
+
+export function permissionSummary(_toolName: string, input: unknown): string {
+  if (typeof input !== 'object' || input === null) return ''
+  const rec = input as Record<string, unknown>
+  for (const key of ['command', 'file_path', 'path', 'url', 'pattern']) {
+    if (typeof rec[key] === 'string') return rec[key] as string
+  }
+  return JSON.stringify(input)
+}
+
+const LABELS: Record<PermissionDecision | 'cancelled', string> = {
+  allow: 'Permitido',
+  'allow-always': 'Sempre permitido',
+  deny: 'Negado',
+  cancelled: 'Cancelado',
+}
+export const decisionLabel = (decision: PermissionDecision | 'cancelled'): string => LABELS[decision]
+```
+
+```tsx
+// src/renderer/src/panels/agent/cards/PermissionCard.tsx
+import type { PermissionDecision } from '@shared/agent'
+import type { PermissionItem } from '../../../agent/chatReducer'
+import { decisionLabel, permissionSummary } from '../../../agent/permissions'
+
+export function PermissionCard({ item, panelId }: { item: PermissionItem; panelId: string }) {
+  const respond = (decision: PermissionDecision) =>
+    void window.api.invoke('agent:respondPermission', panelId, item.requestId, decision).catch((err) => console.error('[next-ide] permission reply failed', err))
+  return (
+    <div data-testid="permission-card" className={`rounded border px-3 py-2 text-xs ${item.decision ? 'border-neutral-800 text-neutral-500' : 'border-orange-700 bg-orange-950/30 text-neutral-200'}`}>
+      <div className="font-medium">
+        {item.decision ? '' : '⚠ '}
+        {item.title ?? `Permitir ${item.toolName}?`}
+      </div>
+      <code className="mt-1 block truncate text-neutral-400">
+        {item.toolName}: {permissionSummary(item.toolName, item.input)}
+      </code>
+      {item.decision ? (
+        <div className="mt-1">{decisionLabel(item.decision)}</div>
+      ) : (
+        <div className="mt-2 flex gap-2">
+          <button className="rounded bg-emerald-700 px-2 py-1 text-white hover:bg-emerald-600" onClick={() => respond('allow')}>
+            Permitir
+          </button>
+          {item.canAlwaysAllow && (
+            <button className="rounded bg-neutral-700 px-2 py-1 hover:bg-neutral-600" onClick={() => respond('allow-always')}>
+              Sempre neste projeto
+            </button>
+          )}
+          <button className="rounded bg-red-800 px-2 py-1 text-white hover:bg-red-700" onClick={() => respond('deny')}>
+            Negar
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+```
+
+```tsx
+// src/renderer/src/panels/agent/ModeSelect.tsx
+import type { PermissionMode } from '@shared/models'
+import { MODE_OPTIONS } from '../../agent/permissions'
+
+export function ModeSelect({ panelId, mode }: { panelId: string; mode: PermissionMode | undefined }) {
+  return (
+    <select
+      aria-label="Modo de permissão"
+      className="rounded bg-neutral-900 px-1 py-0.5 text-neutral-300 ring-1 ring-neutral-800"
+      value={mode ?? 'default'}
+      onChange={(e) =>
+        void window.api.invoke('agent:setMode', panelId, e.target.value as PermissionMode).catch((err) => console.error('[next-ide] setMode failed', err))
+      }
+    >
+      {MODE_OPTIONS.map((m) => (
+        <option key={m.value} value={m.value}>
+          {m.label}
+        </option>
+      ))}
+    </select>
+  )
+}
+```
+
+```tsx
+// src/renderer/src/panels/agent/ModelSelect.tsx
+import { useState } from 'react'
+import type { ModelOption } from '@shared/agent'
+
+export function ModelSelect({ panelId, model }: { panelId: string; model: string | undefined }) {
+  const [options, setOptions] = useState<ModelOption[] | null>(null)
+  const load = () => {
+    if (options) return
+    void window.api
+      .invoke('agent:models', panelId)
+      .then(setOptions)
+      .catch((err) => console.error('[next-ide] models failed', err))
+  }
+  const list = options ?? []
+  const current = model ?? ''
+  return (
+    <select
+      aria-label="Modelo"
+      className="max-w-40 rounded bg-neutral-900 px-1 py-0.5 text-neutral-300 ring-1 ring-neutral-800"
+      value={current}
+      onMouseDown={load}
+      onFocus={load}
+      onChange={(e) => void window.api.invoke('agent:setModel', panelId, e.target.value).catch((err) => console.error('[next-ide] setModel failed', err))}
+    >
+      {!list.some((o) => o.value === current) && <option value={current}>{current || 'modelo padrão'}</option>}
+      {list.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.displayName}
+        </option>
+      ))}
+    </select>
+  )
+}
+```
+
+Em `Composer.tsx`, no `composer-toolbar`, antes do `<span className="flex-1" />`: `<ModelSelect panelId={panelId} model={chat.model} />` e `<ModeSelect panelId={panelId} mode={chat.permissionMode} />`. Em `ChatItemView.tsx`, ramo `permission`: `return <PermissionCard item={item} panelId={panelId} />`.
+
+- [ ] **Step 4: Verificar** — `npx vitest run test/renderer/permissions.test.ts && npm run typecheck && npm test && npm run test:e2e` → verde.
+
+- [ ] **Step 5: Commit** — `git add -A && git commit -m "feat: add inline permission cards and model/mode selectors"`
+
+---
+
+### Task 9: Comandos `/`, `/resume`, `/clear` e comandos só da TUI
+
+**Files:**
+- Create: `src/renderer/src/agent/slash.ts`, `src/renderer/src/panels/agent/SlashMenu.tsx`, `src/renderer/src/panels/agent/ResumeModal.tsx`
+- Modify: `src/shared/models.ts` (`TerminalPanelParams.initialCommand?`), `src/renderer/src/panels/terminal/terminalRegistry.ts` + `TerminalPanel.tsx` (roda `initialCommand`), `src/renderer/src/stores/agentStore.ts` (`replacePanelParams`, `currentAgentParams`), `src/renderer/src/panels/agent/Composer.tsx`, `src/renderer/src/panels/agent/AgentPanel.tsx`, `src/renderer/src/panels/agent/ModelSelect.tsx` (id para foco)
+- Test: `test/renderer/slash.test.ts`, `e2e/agent-slash.spec.ts`
+
+**Interfaces:**
+- Consumes: `CommandOption` (Task 1), canais `agent:commands`, `agent:listSessions`, `agent:history`, `agent:close`, `agent:create`, `agent:start` (Task 5), `useAgents` (Task 6), `useDock.open` (Plano 1).
+- Produces:
+  - `type SlashItem = { name: string; description: string; argumentHint: string; local: boolean }`, `LOCAL_COMMANDS: SlashItem[]`, `slashQuery(text: string): string | null`, `mergeCommands(sdk: CommandOption[], initNames: string[]): SlashItem[]`, `filterCommands(items: SlashItem[], query: string): SlashItem[]`, `type SlashAction`, `classifySlash(text: string): SlashAction`
+  - `replacePanelParams(panelId: string, params: AgentPanelParams): void`, `currentAgentParams(panelId: string): AgentPanelParams | undefined`
+  - `<SlashMenu items activeIndex onPick>`, `<ResumeModal projectPath onPick onClose>`
+  - Composer ganha props `onLocalCommand(name: 'resume' | 'clear' | 'model' | 'statusline'): void` e `projectPath: string`.
+
+Regras: `/resume`, `/clear`, `/model`, `/statusline` são locais (UI). `/login`, `/logout`, `/mcp`, `/config`, `/usage`, `/doctor`, `/permissions`, `/hooks`, `/agents`, `/ide`, `/vim`, `/terminal-setup`, `/upgrade`, `/status`, `/bug` são só da TUI → aviso no composer com botão "Abrir em terminal" que abre um painel zsh no projeto rodando `claude /<cmd>`. Qualquer outro `/x` é enviado ao agente como texto (skills, comandos custom, `/compact`).
+
+- [ ] **Step 1: Testes falhando**
+
+```ts
+// test/renderer/slash.test.ts
+import { describe, expect, it } from 'vitest'
+import { LOCAL_COMMANDS, classifySlash, filterCommands, mergeCommands, slashQuery } from '@renderer/agent/slash'
+
+describe('slashQuery', () => {
+  it('returns the partial command while typing a single slash word', () => {
+    expect(slashQuery('/')).toBe('')
+    expect(slashQuery('/com')).toBe('com')
+    expect(slashQuery('/compact agora')).toBeNull()
+    expect(slashQuery('oi /x')).toBeNull()
+  })
+})
+
+describe('mergeCommands / filterCommands', () => {
+  const merged = mergeCommands([{ name: 'compact', description: 'Compacta', argumentHint: '' }, { name: 'clear', description: 'dup', argumentHint: '' }], ['review', 'compact'])
+  it('puts local commands first, dedupes, and appends init-only names', () => {
+    expect(merged.slice(0, LOCAL_COMMANDS.length).every((c) => c.local)).toBe(true)
+    expect(merged.filter((c) => c.name === 'clear')).toHaveLength(1)
+    expect(merged.map((c) => c.name)).toEqual(['resume', 'clear', 'model', 'statusline', 'compact', 'review'])
+  })
+  it('ranks prefix matches first and caps at 8', () => {
+    expect(filterCommands(merged, 're').map((c) => c.name)).toEqual(['resume', 'review'])
+    expect(filterCommands(merged, '').length).toBeLessThanOrEqual(8)
+  })
+})
+
+describe('classifySlash', () => {
+  it('routes local, tui-only and pass-through commands', () => {
+    expect(classifySlash('/resume')).toEqual({ kind: 'local', name: 'resume' })
+    expect(classifySlash('  /clear  ')).toEqual({ kind: 'local', name: 'clear' })
+    expect(classifySlash('/login')).toEqual({ kind: 'tui', name: 'login' })
+    expect(classifySlash('/compact foco em testes')).toEqual({ kind: 'send' })
+    expect(classifySlash('oi')).toEqual({ kind: 'send' })
+  })
+})
+```
+
+```ts
+// e2e/agent-slash.spec.ts
+import { expect, test } from '@playwright/test'
+import { openAgent } from './helpers'
+
+test('autocomplete de /, /resume, /clear e aviso de comando da TUI', async () => {
+  const { app, page, name } = await openAgent()
+  const input = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
+
+  await input.fill('/')
+  const menu = page.getByRole('listbox', { name: 'Comandos' })
+  await expect(menu).toContainText('resume')
+  await expect(menu).toContainText('compact')
+  await input.fill('/comp')
+  await input.press('Tab')
+  await expect(input).toHaveValue('/compact ')
+
+  await input.fill('/resume')
+  await input.press('Enter')
+  await page.getByRole('button', { name: /Sessão antiga de teste/ }).click()
+  await expect(page.getByTestId('chat-view')).toContainText('pergunta antiga')
+  await expect(page.getByTestId('chat-view')).toContainText('resposta antiga')
+
+  await input.fill('/clear')
+  await input.press('Enter')
+  await expect(page.getByTestId('chat-view')).not.toContainText('pergunta antiga')
+
+  await input.fill('/login')
+  await input.press('Enter')
+  await expect(page.getByTestId('composer-notice')).toContainText('/login')
+  await page.getByRole('button', { name: 'Abrir em terminal' }).click()
+  await expect(page.getByTestId('panel-tab').filter({ hasText: `${name} · zsh` })).toBeVisible()
+  await app.close()
+})
+```
+
+- [ ] **Step 2: Rodar e ver falhar** — `npx vitest run test/renderer/slash.test.ts` → FAIL.
+
+- [ ] **Step 3: Implementar `src/renderer/src/agent/slash.ts`**
+
+```ts
+import type { CommandOption } from '@shared/agent'
+
+export type SlashItem = { name: string; description: string; argumentHint: string; local: boolean }
+export type LocalCommand = 'resume' | 'clear' | 'model' | 'statusline'
+export type SlashAction = { kind: 'local'; name: LocalCommand } | { kind: 'tui'; name: string } | { kind: 'send' }
+
+export const LOCAL_COMMANDS: SlashItem[] = [
+  { name: 'resume', description: 'Retomar uma sessão anterior deste projeto', argumentHint: '', local: true },
+  { name: 'clear', description: 'Começar uma conversa nova neste painel', argumentHint: '', local: true },
+  { name: 'model', description: 'Trocar o modelo', argumentHint: '', local: true },
+  { name: 'statusline', description: 'Configurar a barra de status', argumentHint: '', local: true },
+]
+
+const LOCAL_NAMES = new Set<string>(LOCAL_COMMANDS.map((c) => c.name))
+const TUI_ONLY = new Set([
+  'login', 'logout', 'mcp', 'config', 'usage', 'doctor', 'permissions', 'hooks',
+  'agents', 'ide', 'vim', 'terminal-setup', 'upgrade', 'status', 'bug',
+])
+
+export function slashQuery(text: string): string | null {
+  const match = /^\/(\S*)$/.exec(text)
+  return match ? match[1]! : null
+}
+
+export function mergeCommands(sdk: CommandOption[], initNames: string[]): SlashItem[] {
+  const seen = new Set(LOCAL_NAMES)
+  const out: SlashItem[] = [...LOCAL_COMMANDS]
+  for (const c of sdk) {
+    if (seen.has(c.name)) continue
+    seen.add(c.name)
+    out.push({ ...c, local: false })
+  }
+  for (const name of initNames) {
+    if (seen.has(name)) continue
+    seen.add(name)
+    out.push({ name, description: '', argumentHint: '', local: false })
+  }
+  return out
+}
+
+export function filterCommands(items: SlashItem[], query: string): SlashItem[] {
+  const q = query.toLowerCase()
+  const prefix = items.filter((c) => c.name.toLowerCase().startsWith(q))
+  const rest = items.filter((c) => !c.name.toLowerCase().startsWith(q) && c.name.toLowerCase().includes(q))
+  return [...prefix, ...rest].slice(0, 8)
+}
+
+export function classifySlash(text: string): SlashAction {
+  const match = /^\/(\S+)$/.exec(text.trim())
+  if (!match) return { kind: 'send' }
+  const name = match[1]!
+  if (LOCAL_NAMES.has(name)) return { kind: 'local', name: name as LocalCommand }
+  if (TUI_ONLY.has(name)) return { kind: 'tui', name }
+  return { kind: 'send' }
+}
+```
+
+- [ ] **Step 4: Terminal com comando inicial** — em `src/shared/models.ts`: `export type TerminalPanelParams = { type: 'terminal'; projectPath: string; initialCommand?: string }`. Em `terminalRegistry.ts`, `attachTerminal(panelId, cwd, container, initialCommand?: string)`: trocar a chamada de `pty:create` por
+
+```ts
+  void window.api
+    .invoke('pty:create', panelId, cwd, cols, rows)
+    .then(() => {
+      if (initialCommand) return window.api.invoke('pty:write', panelId, `${initialCommand}\r`)
+    })
+    .catch((err) => {
+      // keep the existing red "[falha ao iniciar o terminal: …]" handling here unchanged
+    })
+```
+
+(mantendo o corpo do `.catch` que já existe). Em `TerminalPanel.tsx`, passar `params.initialCommand` como 4º argumento de `attachTerminal`.
+
+- [ ] **Step 5: Store helpers** — em `agentStore.ts`, exportar:
+
+```ts
+export function currentAgentParams(panelId: string): AgentPanelParams | undefined {
+  const params = useDock.getState().api?.getPanel(panelId)?.params as AgentPanelParams | undefined
+  return params?.type === 'agent' ? params : undefined
+}
+
+export function replacePanelParams(panelId: string, params: AgentPanelParams): void {
+  useDock.getState().api?.getPanel(panelId)?.api.updateParameters(params)
+}
+```
+
+- [ ] **Step 6: SlashMenu e ResumeModal**
+
+```tsx
+// src/renderer/src/panels/agent/SlashMenu.tsx
+import type { SlashItem } from '../../agent/slash'
+
+export function SlashMenu({ items, activeIndex, onPick }: { items: SlashItem[]; activeIndex: number; onPick(item: SlashItem): void }) {
+  if (items.length === 0) return null
+  return (
+    <ul role="listbox" aria-label="Comandos" className="mb-1 max-h-60 overflow-auto rounded border border-neutral-800 bg-neutral-900 py-1 text-xs">
+      {items.map((item, i) => (
+        <li
+          key={item.name}
+          role="option"
+          aria-selected={i === activeIndex}
+          className={`flex cursor-pointer gap-2 px-3 py-1 ${i === activeIndex ? 'bg-neutral-800' : ''}`}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            onPick(item)
+          }}
+        >
+          <span className="text-neutral-100">/{item.name}</span>
+          {item.argumentHint && <span className="text-neutral-500">{item.argumentHint}</span>}
+          <span className="truncate text-neutral-500">{item.description}</span>
+          {item.local && <span className="ml-auto text-neutral-600">ide</span>}
+        </li>
+      ))}
+    </ul>
+  )
+}
+```
+
+```tsx
+// src/renderer/src/panels/agent/ResumeModal.tsx
+import { useEffect, useState } from 'react'
+import type { SessionSummary } from '@shared/agent'
+
+const when = (ms: number) => new Date(ms).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+
+export function ResumeModal({ projectPath, onPick, onClose }: { projectPath: string; onPick(sessionId: string): void; onClose(): void }) {
+  const [sessions, setSessions] = useState<SessionSummary[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    window.api
+      .invoke('agent:listSessions', projectPath)
+      .then(setSessions)
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+  }, [projectPath])
+  return (
+    <div className="absolute inset-0 z-10 flex items-start justify-center bg-black/60 pt-16" onMouseDown={onClose}>
+      <div role="dialog" aria-label="Retomar sessão" className="w-[min(520px,90%)] rounded border border-neutral-700 bg-neutral-900 p-3 text-sm" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="mb-2 font-medium">Retomar sessão</div>
+        {error && <div className="text-red-400">{error}</div>}
+        {!sessions && !error && <div className="text-neutral-500">Carregando…</div>}
+        {sessions?.length === 0 && <div className="text-neutral-500">Nenhuma sessão anterior neste projeto.</div>}
+        <div className="max-h-80 space-y-1 overflow-auto">
+          {sessions?.map((s) => (
+            <button key={s.sessionId} className="block w-full rounded px-2 py-1 text-left hover:bg-neutral-800" onClick={() => onPick(s.sessionId)}>
+              <div className="truncate text-neutral-100">{s.title}</div>
+              <div className="text-xs text-neutral-500">{when(s.lastModified)}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+```
+
+- [ ] **Step 7: Composer com menu, comandos locais e aviso** — alterações em `Composer.tsx`:
+
+```tsx
+// novas props: projectPath: string; onLocalCommand(name: LocalCommand): void
+// novo estado:
+const [commands, setCommands] = useState<SlashItem[] | null>(null)
+const [menuIndex, setMenuIndex] = useState(0)
+const [notice, setNotice] = useState<{ text: string; command: string } | null>(null)
+const query = slashQuery(text)
+const menuItems = query === null ? [] : filterCommands(commands ?? mergeCommands([], chat.slashCommands), query)
+
+useEffect(() => {
+  if (query === null || commands) return
+  window.api
+    .invoke('agent:commands', panelId)
+    .then((sdk) => setCommands(mergeCommands(sdk, chat.slashCommands)))
+    .catch(() => setCommands(mergeCommands([], chat.slashCommands)))
+}, [query === null, commands, panelId, chat.slashCommands])
+
+const pick = (item: SlashItem) => {
+  setText(`/${item.name} `)
+  setMenuIndex(0)
+}
+
+// submit passa a classificar antes de enviar:
+const submit = () => {
+  const value = text.trim()
+  if (!value) return
+  const action = classifySlash(value)
+  setNotice(null)
+  if (action.kind === 'local') {
+    setText('')
+    onLocalCommand(action.name)
+    return
+  }
+  if (action.kind === 'tui') {
+    setNotice({ text: `/${action.name} só funciona no terminal do Claude Code.`, command: `claude /${action.name}` })
+    return
+  }
+  onSend(value, [])
+  history.current.push(value)
+  setText('')
+}
+
+// no onKeyDown, ANTES de composerKeyAction:
+if (menuItems.length > 0) {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault()
+    setMenuIndex((i) => (i + (e.key === 'ArrowDown' ? 1 : menuItems.length - 1)) % menuItems.length)
+    return
+  }
+  if (e.key === 'Tab') {
+    e.preventDefault()
+    pick(menuItems[Math.min(menuIndex, menuItems.length - 1)]!)
+    return
+  }
+  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+    const chosen = menuItems[Math.min(menuIndex, menuItems.length - 1)]!
+    if (`/${chosen.name}` !== text.trim()) {
+      e.preventDefault()
+      pick(chosen)
+      return
+    }
+  }
+}
+
+// no JSX, acima do textarea:
+<SlashMenu items={menuItems} activeIndex={Math.min(menuIndex, Math.max(menuItems.length - 1, 0))} onPick={pick} />
+{notice && (
+  <div data-testid="composer-notice" className="mb-1 flex items-center gap-2 rounded border border-amber-800 bg-amber-950/30 px-2 py-1 text-xs text-amber-200">
+    <span className="flex-1">{notice.text}</span>
+    <button
+      className="rounded bg-neutral-800 px-2 py-0.5 text-neutral-100 hover:bg-neutral-700"
+      onClick={() => {
+        useDock.getState().open({ type: 'terminal', projectPath, initialCommand: notice.command })
+        setNotice(null)
+      }}
+    >
+      Abrir em terminal
+    </button>
+  </div>
+)}
+```
+
+(imports: `useEffect`, `SlashMenu`, `classifySlash`, `filterCommands`, `mergeCommands`, `slashQuery`, `type LocalCommand`, `type SlashItem`, `useDock`). Em `ModelSelect.tsx`, dar `id={\`model-select-${panelId}\`}` ao `<select>`.
+
+- [ ] **Step 8: AgentPanel trata os comandos locais**
+
+```tsx
+// em AgentPanel.tsx
+import { useState } from 'react'
+import type { AgentEvent } from '@shared/agent'
+import { currentAgentParams, replacePanelParams } from '../../stores/agentStore'
+import type { LocalCommand } from '../../agent/slash'
+import { ResumeModal } from './ResumeModal'
+
+// dentro do componente:
+const [resumeOpen, setResumeOpen] = useState(false)
+
+const restart = async (next: AgentPanelParams, history: AgentEvent[] = []) => {
+  await window.api.invoke('agent:close', panelId)
+  useAgents.getState().clear(panelId)
+  if (history.length > 0) useAgents.getState().load(panelId, history)
+  replacePanelParams(panelId, next)
+  await window.api.invoke('agent:create', panelId, next)
+  if (!next.sessionId) await window.api.invoke('agent:start', panelId)
+}
+
+const base = (): AgentPanelParams => {
+  const p = currentAgentParams(panelId) ?? params
+  return { type: 'agent', projectPath: p.projectPath, ...(p.model ? { model: p.model } : {}), ...(p.permissionMode ? { permissionMode: p.permissionMode } : {}) }
+}
+
+const onLocalCommand = (name: LocalCommand) => {
+  if (name === 'resume') setResumeOpen(true)
+  else if (name === 'clear') void restart(base()).catch(fail)
+  else if (name === 'model') document.getElementById(`model-select-${panelId}`)?.focus()
+  // 'statusline' is handled in Task 11
+}
+
+const resume = (sessionId: string) => {
+  setResumeOpen(false)
+  void (async () => {
+    const history = await window.api.invoke('agent:history', params.projectPath, sessionId)
+    await restart({ ...base(), sessionId }, history)
+  })().catch(fail)
+}
+```
+
+(`fail` passa a ser uma função do componente: `const fail = (err: unknown) => useAgents.getState().apply(panelId, { kind: 'error', message: errorText(err) })`.) O container raiz ganha `relative`; renderizar `{resumeOpen && <ResumeModal projectPath={params.projectPath} onPick={resume} onClose={() => setResumeOpen(false)} />}` e passar `projectPath={params.projectPath}` e `onLocalCommand={onLocalCommand}` ao `Composer`.
+
+- [ ] **Step 9: Verificar** — `npx vitest run test/renderer/slash.test.ts && npm run typecheck && npm test && npm run test:e2e` → verde.
+
+- [ ] **Step 10: Commit** — `git add -A && git commit -m "feat: add slash command menu, /resume, /clear and tui-only notice"`
+
+<!-- TASKS 10+ APPENDED BELOW -->
