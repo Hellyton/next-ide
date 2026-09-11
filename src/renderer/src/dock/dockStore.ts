@@ -4,12 +4,16 @@ import type { FilePanelParams, PanelParams } from '@shared/models'
 import { useSessions } from '../stores/sessionsStore'
 import { CLOSE_CONFIRM_MESSAGE, needsCloseConfirm } from './closeGuard'
 import { buildAddPanelOptions, newPanelId } from './panelOptions'
+import { replacementPatch } from './panelParams'
 
 type DockState = {
   api: DockviewApi | null
+  /** projectPath → id of the agent panel most recently active in that project. */
+  lastAgent: Record<string, string>
   setApi(api: DockviewApi): void
-  open(params: PanelParams): void
+  open(params: PanelParams): string | null
   openFile(params: FilePanelParams): void
+  noteActive(panelId: string): void
   split(direction: 'right' | 'below'): void
   requestClose(panelId: string): void
   closeActive(): void
@@ -19,14 +23,33 @@ type DockState = {
 
 export const useDock = create<DockState>()((set, get) => ({
   api: null,
+  lastAgent: {},
   setApi: (api) => set({ api }),
   open: (params) => {
     const api = get().api
-    if (!api) return
-    api.addPanel(buildAddPanelOptions(params, newPanelId(params.type), { kind: 'activeGroup', groupId: api.activeGroup?.id }))
+    if (!api) return null
+    const id = newPanelId(params.type)
+    api.addPanel(buildAddPanelOptions(params, id, { kind: 'activeGroup', groupId: api.activeGroup?.id }))
+    return id
   },
-  // TODO(task 5): focus an already-open panel for this file instead of always opening a new one.
-  openFile: (params) => get().open(params),
+  openFile: (params) => {
+    const api = get().api
+    if (!api) return
+    const existing = api.panels.find((p) => {
+      const q = p.params as PanelParams | undefined
+      return q?.type === 'file' && q.filePath === params.filePath
+    })
+    if (!existing) {
+      get().open(params)
+      return
+    }
+    existing.api.updateParameters(replacementPatch(existing.params, params))
+    existing.api.setActive()
+  },
+  noteActive: (panelId) => {
+    const params = get().api?.getPanel(panelId)?.params as PanelParams | undefined
+    if (params?.type === 'agent') set((s) => ({ lastAgent: { ...s.lastAgent, [params.projectPath]: panelId } }))
+  },
   split: (direction) => {
     const api = get().api
     const active = api?.activePanel

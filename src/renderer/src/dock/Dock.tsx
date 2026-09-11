@@ -8,6 +8,7 @@ import 'dockview-react/dist/styles/dockview.css'
 import { useCallback, type FunctionComponent } from 'react'
 import type { PanelParams } from '@shared/models'
 import { AgentPanel } from '../panels/agent/AgentPanel'
+import { FilePanel } from '../panels/file/FilePanel'
 import { TerminalPanel } from '../panels/terminal/TerminalPanel'
 import { disposeTerminal } from '../panels/terminal/terminalRegistry'
 import { useAgents } from '../stores/agentStore'
@@ -20,6 +21,7 @@ import { panelTitle } from './panelOptions'
 const components = {
   agent: AgentPanel,
   terminal: TerminalPanel,
+  file: FilePanel,
 } as unknown as Record<string, FunctionComponent<IDockviewPanelProps>>
 
 type RemovedListener = (panelId: string, params: PanelParams | undefined) => void
@@ -36,6 +38,7 @@ registerPanelRemovedListener((panelId, params) => {
   if (params?.type !== 'agent') return
   useAgents.getState().remove(panelId)
   void window.api.invoke('agent:close', panelId).catch((err) => console.error('[next-ide] agent close failed', err))
+  useDock.setState((s) => ({ lastAgent: Object.fromEntries(Object.entries(s.lastAgent).filter(([, id]) => id !== panelId)) }))
 })
 
 // Survives StrictMode's double-invoke of onReady: only the persistence listeners attached
@@ -68,6 +71,9 @@ export function Dock() {
     api.onDidRemovePanel((panel) => {
       useSessions.getState().remove(panel.id)
       for (const fn of removedListeners) fn(panel.id, panel.params as PanelParams | undefined)
+    })
+    api.onDidActivePanelChange(({ panel }) => {
+      if (panel) useDock.getState().noteActive(panel.id)
     })
     const isCurrent = () => useDock.getState().api === api
     void restoreLayout(api, isCurrent).then((ok) => {
