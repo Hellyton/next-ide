@@ -17,6 +17,8 @@ export type QueryOptions = {
   cwd: string
   model?: string
   permissionMode: PermissionMode
+  /** Required by the SDK for permissionMode 'bypassPermissions'. */
+  allowDangerouslySkipPermissions?: boolean
   resume?: string
   includePartialMessages: true
   canUseTool: CanUseToolLike
@@ -89,6 +91,7 @@ export class AgentSession {
       options: {
         cwd: this.config.cwd,
         permissionMode: this.mode,
+        ...(this.mode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
         includePartialMessages: true,
         settingSources: ['user', 'project', 'local'],
         abortController: abort,
@@ -122,15 +125,19 @@ export class AgentSession {
     await this.query?.interrupt()
   }
 
+  /** Applies to the running query first; state and the event change only if the SDK accepted it. */
   async setModel(model: string): Promise<void> {
-    this.model = model
     if (this.query) await this.query.setModel(model)
+    if (this.closed) return
+    this.model = model
     this.deps.emit({ kind: 'model', model })
   }
 
+  /** Applies to the running query first; state and the event change only if the SDK accepted it. */
   async setMode(mode: PermissionMode): Promise<void> {
-    this.mode = mode
     if (this.query) await this.query.setPermissionMode(mode)
+    if (this.closed) return
+    this.mode = mode
     this.deps.emit({ kind: 'mode', permissionMode: mode })
   }
 
