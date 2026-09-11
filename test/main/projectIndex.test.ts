@@ -45,4 +45,13 @@ describe('gitStatus', () => {
     git(root, 'init', '-q', '-b', 'main')
     expect(await gitStatus(root)).toMatchObject({ 'src/a.ts': 'U', 'README.md': 'U' })
   })
+
+  it('returns pkg-relative paths for a project that is a subfolder of the repo', async () => {
+    const repo = mkdtempSync(join(tmpdir(), 'repo-'))
+    git(repo, 'init', '-q', '-b', 'main')
+    writeFileSync(join(repo, 'root-file.txt'), 'r')
+    mkdirSync(join(repo, 'pkg'))
+    writeFileSync(join(repo, 'pkg', 'a.ts'), 'a')
+    expect(await gitStatus(join(repo, 'pkg'))).toEqual({ 'a.ts': 'U' })
+  })
 })

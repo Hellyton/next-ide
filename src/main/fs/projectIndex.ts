@@ -55,14 +55,35 @@ export function parsePorcelainZ(out: string): Record<string, GitFileStatus> {
   return result
 }
 
+/** '' at the repo root, e.g. 'pkg/' when `root` is a subfolder of the repo. */
+async function gitPrefix(root: string): Promise<string> {
+  try {
+    const { stdout } = await exec('git', ['--no-optional-locks', 'rev-parse', '--show-prefix'], { cwd: root, timeout: 10_000 })
+    return stdout.trim()
+  } catch {
+    return ''
+  }
+}
+
 export async function gitStatus(root: string): Promise<Record<string, GitFileStatus>> {
   try {
-    const { stdout } = await exec('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'], {
-      cwd: root,
-      timeout: 10_000,
-      maxBuffer: 16 * 1024 * 1024,
-    })
-    return parsePorcelainZ(stdout)
+    const [{ stdout }, prefix] = await Promise.all([
+      // --no-optional-locks: never takes the index lock or rewrites .git/index.
+      exec('git', ['--no-optional-locks', 'status', '--porcelain=v1', '-z', '--untracked-files=all'], {
+        cwd: root,
+        timeout: 10_000,
+        maxBuffer: 16 * 1024 * 1024,
+      }),
+      gitPrefix(root),
+    ])
+    const all = parsePorcelainZ(stdout)
+    if (!prefix) return all
+    // Porcelain paths are repo-relative; keep only this project's files, stripped to project-relative.
+    const result: Record<string, GitFileStatus> = {}
+    for (const [path, status] of Object.entries(all)) {
+      if (path.startsWith(prefix)) result[path.slice(prefix.length)] = status
+    }
+    return result
   } catch {
     return {}
   }
