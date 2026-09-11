@@ -7,7 +7,7 @@ vi.stubGlobal('window', { api: { invoke, on: vi.fn(() => () => undefined) } })
 describe('filesStore', () => {
   beforeEach(() => {
     invoke.mockReset()
-    useFiles.setState({ expanded: {}, children: {}, errors: {}, status: {}, indexes: {} })
+    useFiles.setState({ expanded: {}, children: {}, errors: {}, status: {}, indexes: {}, staleIndexes: {} })
   })
 
   it('expanding a project root loads its children and git status', async () => {
@@ -30,14 +30,29 @@ describe('filesStore', () => {
     expect(useFiles.getState().errors['/p']).toContain('Pasta fora do projeto.')
   })
 
-  it('ensureIndex caches and shares the in-flight request; fs changes drop the cache', async () => {
+  it('ensureIndex caches and shares the in-flight request; fs changes mark it stale, keeping the old list until a refetch', async () => {
     invoke.mockResolvedValue(['a.ts'])
     const [a, b] = await Promise.all([useFiles.getState().ensureIndex('/p'), useFiles.getState().ensureIndex('/p')])
     expect(a).toEqual(['a.ts'])
     expect(b).toEqual(['a.ts'])
     expect(invoke).toHaveBeenCalledTimes(1)
+
     useFiles.getState().handleFsChanged('/p', ['/p/b.ts'])
-    expect(useFiles.getState().indexes['/p']).toBeUndefined()
+    expect(useFiles.getState().indexes['/p']).toEqual(['a.ts'])
+    expect(useFiles.getState().staleIndexes['/p']).toBe(true)
+
+    invoke.mockResolvedValue(['a.ts', 'b.ts'])
+    const refreshed = await useFiles.getState().ensureIndex('/p')
+    expect(refreshed).toEqual(['a.ts', 'b.ts'])
+    expect(invoke).toHaveBeenCalledTimes(2)
+    expect(useFiles.getState().staleIndexes['/p']).toBeUndefined()
+  })
+
+  it('ensureIndex does not refetch a non-stale cached index', async () => {
+    useFiles.setState({ indexes: { '/p': ['a.ts'] } })
+    const result = await useFiles.getState().ensureIndex('/p')
+    expect(result).toEqual(['a.ts'])
+    expect(invoke).not.toHaveBeenCalled()
   })
 
   it('fs changes reload only loaded parent dirs', async () => {
@@ -55,5 +70,22 @@ describe('filesStore', () => {
     expect(invoke).not.toHaveBeenCalled()
     useFiles.getState().handleGitChanged('/p')
     await vi.waitFor(() => expect(useFiles.getState().status['/p']).toEqual({ 'x.ts': 'M' }))
+  })
+
+  it('single-flights refreshStatus: 3 rapid git changes make exactly 2 invokes, ending on the last result', async () => {
+    useFiles.setState({ status: { '/p': {} } })
+    const results = [{ a: 'M' }, { b: 'A' }]
+    let call = 0
+    invoke.mockImplementation(async () => {
+      const result = results[Math.min(call, results.length - 1)]
+      call++
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      return result
+    })
+    useFiles.getState().handleGitChanged('/p')
+    useFiles.getState().handleGitChanged('/p')
+    useFiles.getState().handleGitChanged('/p')
+    await vi.waitFor(() => expect(useFiles.getState().status['/p']).toEqual({ b: 'A' }))
+    expect(invoke).toHaveBeenCalledTimes(2)
   })
 })

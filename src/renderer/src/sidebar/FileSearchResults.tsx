@@ -6,8 +6,8 @@ import { useFiles } from '../stores/filesStore'
 export function FileSearchResults({ projectPath, query }: { projectPath: string; query: string }) {
   const index = useFiles((s) => s.indexes[projectPath])
   useEffect(() => {
-    if (!index) void useFiles.getState().ensureIndex(projectPath)
-  }, [index, projectPath])
+    void useFiles.getState().ensureIndex(projectPath)
+  }, [projectPath])
   const hits = useMemo(() => fuzzyFilter(query.trim(), index ?? [], (s) => s, 50), [query, index])
   if (!index) return <div className="py-0.5 pl-8 text-xs text-neutral-600">indexando…</div>
   if (hits.length === 0) return <div className="py-0.5 pl-8 text-xs text-neutral-600">nenhum arquivo</div>

@@ -8,6 +8,7 @@ type FilesState = {
   errors: Record<string, string>
   status: Record<string, Record<string, GitFileStatus>>
   indexes: Record<string, string[]>
+  staleIndexes: Record<string, true>
   toggleDir(projectPath: string, dir: string): void
   loadDir(projectPath: string, dir: string): Promise<void>
   refreshStatus(projectPath: string): Promise<void>
@@ -22,6 +23,9 @@ const without = <T,>(rec: Record<string, T>, key: string): Record<string, T> => 
 }
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
 const inflightIndex = new Map<string, Promise<string[]>>()
+// Single-flight per project: at most one refreshStatus in flight plus one pending rerun.
+const statusInflight = new Set<string>()
+const statusPending = new Set<string>()
 
 export const useFiles = create<FilesState>()((set, get) => ({
   expanded: {},
@@ -29,6 +33,7 @@ export const useFiles = create<FilesState>()((set, get) => ({
   errors: {},
   status: {},
   indexes: {},
+  staleIndexes: {},
   toggleDir: (projectPath, dir) => {
     if (get().expanded[dir]) {
       set((s) => ({ expanded: without(s.expanded, dir) }))
@@ -47,22 +52,30 @@ export const useFiles = create<FilesState>()((set, get) => ({
     }
   },
   refreshStatus: async (projectPath) => {
+    if (statusInflight.has(projectPath)) {
+      statusPending.add(projectPath)
+      return
+    }
+    statusInflight.add(projectPath)
     try {
       const status = await window.api.invoke('git:status', projectPath)
       set((s) => ({ status: { ...s.status, [projectPath]: status } }))
     } catch (err) {
       console.error('[next-ide] git status failed', projectPath, err)
+    } finally {
+      statusInflight.delete(projectPath)
+      if (statusPending.delete(projectPath)) void get().refreshStatus(projectPath)
     }
   },
   ensureIndex: (projectPath) => {
     const cached = get().indexes[projectPath]
-    if (cached) return Promise.resolve(cached)
+    if (cached && !get().staleIndexes[projectPath]) return Promise.resolve(cached)
     let pending = inflightIndex.get(projectPath)
     if (!pending) {
       pending = window.api
         .invoke('fs:index', projectPath)
         .then((index) => {
-          set((s) => ({ indexes: { ...s.indexes, [projectPath]: index } }))
+          set((s) => ({ indexes: { ...s.indexes, [projectPath]: index }, staleIndexes: without(s.staleIndexes, projectPath) }))
           return index
         })
         .catch((err) => {
@@ -75,7 +88,9 @@ export const useFiles = create<FilesState>()((set, get) => ({
     return pending
   },
   handleFsChanged: (projectPath, paths) => {
-    set((s) => ({ indexes: without(s.indexes, projectPath) }))
+    // Mark stale instead of deleting: Quick Open / sidebar filter / @ mentions keep showing the
+    // old list (rather than going blank) until the next ensureIndex refetches it.
+    set((s) => ({ staleIndexes: { ...s.staleIndexes, [projectPath]: true } }))
     for (const dir of dirsToReload(projectPath, Object.keys(get().children), paths)) void get().loadDir(projectPath, dir)
   },
   handleGitChanged: (projectPath) => {
