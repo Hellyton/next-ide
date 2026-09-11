@@ -296,6 +296,51 @@ describe('AgentSession', () => {
     expect(kinds.slice(-2)).toEqual(['text-delta', 'status:exited'])
   })
 
+  it('wakes from idle when a queued turn starts running without a queued_turn_count bump', async () => {
+    const f = fake()
+    const { s } = session(f.fn)
+    s.send('a')
+    f.out.push({ ...RESULT, queued_turn_count: 0 })
+    await tick()
+    expect(s.currentState).toBe('idle')
+    // The CLI hadn't read a second queued send yet when it produced that result; the next
+    // turn's stream now starts even though the panel is showing idle.
+    f.out.push({ type: 'stream_event', parent_tool_use_id: null, event: { type: 'message_start', message: { id: 'm2' } } })
+    await tick()
+    expect(s.currentState).toBe('running')
+    f.out.push({ ...RESULT, queued_turn_count: 0 })
+    await tick()
+    expect(s.currentState).toBe('idle')
+  })
+
+  it('does not wake from idle for a subagent message', async () => {
+    const f = fake()
+    const { s } = session(f.fn)
+    s.send('a')
+    f.out.push({ ...RESULT, queued_turn_count: 0 })
+    await tick()
+    expect(s.currentState).toBe('idle')
+    f.out.push({
+      type: 'assistant',
+      parent_tool_use_id: 'task1',
+      message: { id: 'sub1', content: [{ type: 'text', text: 'from subagent' }] },
+    })
+    await tick()
+    expect(s.currentState).toBe('idle')
+  })
+
+  it('wakes from idle on a main-loop assistant message even without a preceding stream_event', async () => {
+    const f = fake()
+    const { s } = session(f.fn)
+    s.send('a')
+    f.out.push({ ...RESULT, queued_turn_count: 0 })
+    await tick()
+    expect(s.currentState).toBe('idle')
+    f.out.push({ type: 'assistant', parent_tool_use_id: null, message: { id: 'm3', content: [{ type: 'text', text: 'oi' }] } })
+    await tick()
+    expect(s.currentState).toBe('running')
+  })
+
   it('removes the abort listener once the permission is answered', async () => {
     const f = fake()
     const { s } = session(f.fn)

@@ -51,7 +51,14 @@ type Pending = { resolve(result: PermissionResultLike): void; input: Record<stri
 type TextDelta = Extract<AgentEvent, { kind: 'text-delta' }>
 const DELTA_BATCH_MS = 16
 
-const isResult = (m: unknown): boolean => typeof m === 'object' && m !== null && (m as { type?: unknown }).type === 'result'
+const isRec = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
+const isResult = (m: unknown): boolean => isRec(m) && m.type === 'result'
+/** Main-loop message (no `parent_tool_use_id`) that means a turn is actively running. */
+const isMainLoopActivity = (m: unknown): boolean => {
+  if (!isRec(m) || m.parent_tool_use_id) return false
+  if (m.type === 'assistant') return true
+  return m.type === 'stream_event' && isRec(m.event) && m.event.type === 'message_start'
+}
 
 export class AgentSession {
   private query: QueryLike | null = null
@@ -225,6 +232,12 @@ export class AgentSession {
     try {
       for await (const message of query) {
         if (this.closed) return
+        // A queued send may not have bumped `queued_turn_count` on the previous result (the CLI
+        // hadn't read it yet), leaving the panel idle while the next turn's stream already runs.
+        if (this.state === 'idle' && isMainLoopActivity(message)) {
+          this.turnsInFlight = Math.max(this.turnsInFlight, 1)
+          this.setState('running')
+        }
         for (const event of this.normalizer.push(message)) {
           if (event.kind === 'init') this.sessionId = event.sessionId
           this.emit(event)
