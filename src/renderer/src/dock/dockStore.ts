@@ -1,6 +1,8 @@
 import type { DockviewApi } from 'dockview-react'
 import { create } from 'zustand'
 import type { PanelParams } from '@shared/models'
+import { useSessions } from '../stores/sessionsStore'
+import { CLOSE_CONFIRM_MESSAGE, needsCloseConfirm } from './closeGuard'
 import { buildAddPanelOptions, newPanelId } from './panelOptions'
 
 type DockState = {
@@ -8,6 +10,7 @@ type DockState = {
   setApi(api: DockviewApi): void
   open(params: PanelParams): void
   split(direction: 'right' | 'below'): void
+  requestClose(panelId: string): void
   closeActive(): void
   focus(panelId: string): void
   focusGroup(index: number): void
@@ -29,7 +32,18 @@ export const useDock = create<DockState>()((set, get) => ({
     const next: PanelParams = params.type === 'agent' ? { type: 'agent', projectPath: params.projectPath } : params
     api.addPanel(buildAddPanelOptions(next, newPanelId(next.type), { kind: 'split', referencePanelId: active.id, direction }))
   },
-  closeActive: () => get().api?.activePanel?.api.close(),
+  requestClose: (panelId) => {
+    const panel = get().api?.getPanel(panelId)
+    if (!panel) return
+    const params = panel.params as PanelParams | undefined
+    const state = useSessions.getState().byId[panelId]?.state
+    if (needsCloseConfirm(params?.type, state) && !window.confirm(CLOSE_CONFIRM_MESSAGE)) return
+    panel.api.close()
+  },
+  closeActive: () => {
+    const id = get().api?.activePanel?.id
+    if (id) get().requestClose(id)
+  },
   focus: (panelId) => get().api?.getPanel(panelId)?.api.setActive(),
   focusGroup: (index) => get().api?.groups[index]?.activePanel?.api.setActive(),
 }))

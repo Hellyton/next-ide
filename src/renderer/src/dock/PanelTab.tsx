@@ -2,6 +2,7 @@ import type { IDockviewPanelHeaderProps } from 'dockview-react'
 import type { PanelParams } from '@shared/models'
 import { projectColor } from '@shared/projectColor'
 import { useSessions } from '../stores/sessionsStore'
+import { useDock } from './dockStore'
 import { stateDotClass } from './stateStyle'
 
 export function PanelTab({ api, params }: IDockviewPanelHeaderProps<PanelParams>) {
@@ -20,7 +21,7 @@ export function PanelTab({ api, params }: IDockviewPanelHeaderProps<PanelParams>
         className="rounded px-1 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"
         onClick={(e) => {
           e.stopPropagation()
-          api.close()
+          useDock.getState().requestClose(api.id)
         }}
       >
         ×
