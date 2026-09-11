@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ImageAttachment } from '@shared/agent'
 import type { ChatState } from '../../agent/chatReducer'
 import { composerKeyAction } from '../../agent/composerKeys'
+import { pickImageFiles, readImage, validateImage } from '../../agent/images'
 import { classifySlash, filterCommands, mergeCommands, slashQuery, type LocalCommand, type SlashItem } from '../../agent/slash'
 import { useDock } from '../../dock/dockStore'
 import { ModelSelect } from './ModelSelect'
@@ -24,6 +25,8 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }:
   const [commands, setCommands] = useState<SlashItem[] | null>(null)
   const [menuIndex, setMenuIndex] = useState(0)
   const [notice, setNotice] = useState<{ text: string; command: string } | null>(null)
+  const [images, setImages] = useState<ImageAttachment[]>([])
+  const fileInput = useRef<HTMLInputElement>(null)
   const query = slashQuery(text)
   const menuItems = query === null ? [] : filterCommands(commands ?? mergeCommands([], chat.slashCommands), query)
 
@@ -47,28 +50,54 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }:
     setMenuIndex(0)
   }
 
+  const addFiles = (files: File[]) => {
+    const errors: string[] = []
+    const valid = files.filter((f) => {
+      const error = validateImage(f)
+      if (error) errors.push(error)
+      return !error
+    })
+    if (errors.length) setNotice({ text: errors.join(' · '), command: '' })
+    void Promise.all(valid.map(readImage))
+      .then((read) => setImages((prev) => [...prev, ...read]))
+      .catch((err) => setNotice({ text: String(err), command: '' }))
+  }
+
   const submit = () => {
     const value = text.trim()
-    if (!value) return
-    const action = classifySlash(value)
+    if (!value && images.length === 0) return
     setNotice(null)
-    if (action.kind === 'local') {
-      setText('')
-      onLocalCommand(action.name)
-      return
+    if (images.length === 0) {
+      const action = classifySlash(value)
+      if (action.kind === 'local') {
+        setText('')
+        onLocalCommand(action.name)
+        return
+      }
+      if (action.kind === 'tui') {
+        setNotice({ text: `/${action.name} só funciona no terminal do Claude Code.`, command: `claude /${action.name}` })
+        return
+      }
     }
-    if (action.kind === 'tui') {
-      setNotice({ text: `/${action.name} só funciona no terminal do Claude Code.`, command: `claude /${action.name}` })
-      return
-    }
-    onSend(value, [])
+    onSend(value, images)
     history.current.push(value)
     setText('')
+    setImages([])
   }
   const interrupt = () => void window.api.invoke('agent:interrupt', panelId).catch((err) => console.error('[next-ide] interrupt failed', err))
 
   return (
-    <div className="border-t border-neutral-800 p-2">
+    <div
+      className="border-t border-neutral-800 p-2"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        const files = pickImageFiles(e.dataTransfer.files)
+        if (files.length) {
+          e.preventDefault()
+          addFiles(files)
+        }
+      }}
+    >
       <SlashMenu items={menuItems} activeIndex={Math.min(menuIndex, Math.max(menuItems.length - 1, 0))} onPick={pick} />
       {notice && (
         <div data-testid="composer-notice" className="mb-1 flex items-center gap-2 rounded border border-amber-800 bg-amber-950/30 px-2 py-1 text-xs text-amber-200">
@@ -86,6 +115,22 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }:
           )}
         </div>
       )}
+      {images.length > 0 && (
+        <div className="mb-1 flex flex-wrap gap-2">
+          {images.map((img, i) => (
+            <div key={`${img.name}-${i}`} className="relative">
+              <img alt={img.name} src={`data:${img.mediaType};base64,${img.data}`} className="h-14 w-14 rounded border border-neutral-700 object-cover" />
+              <button
+                aria-label={`Remover imagem ${img.name}`}
+                className="absolute -top-1 -right-1 rounded-full bg-neutral-800 px-1 text-[10px] text-neutral-200"
+                onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <textarea
         ref={textarea}
         aria-label="Mensagem para o Claude"
@@ -94,6 +139,13 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }:
         className="w-full resize-none rounded bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none ring-1 ring-neutral-800 focus:ring-neutral-600"
         value={text}
         onChange={(e) => setText(e.target.value)}
+        onPaste={(e) => {
+          const files = pickImageFiles(e.clipboardData.files)
+          if (files.length) {
+            e.preventDefault()
+            addFiles(files)
+          }
+        }}
         onKeyDown={(e) => {
           if (menuItems.length > 0) {
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -131,6 +183,21 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }:
         }}
       />
       <div className="mt-1 flex items-center gap-2 text-xs text-neutral-500" data-testid="composer-toolbar">
+        <button aria-label="Anexar imagem" className="rounded px-1 hover:bg-neutral-800" onClick={() => fileInput.current?.click()}>
+          +img
+        </button>
+        <input
+          ref={fileInput}
+          data-testid="image-input"
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/webp"
+          multiple
+          hidden
+          onChange={(e) => {
+            addFiles(Array.from(e.target.files ?? []))
+            e.target.value = ''
+          }}
+        />
         <ModelSelect panelId={panelId} model={chat.model} />
         <ModeSelect panelId={panelId} mode={chat.permissionMode} />
         <span className="flex-1" />
@@ -139,7 +206,12 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }:
             ■
           </button>
         ) : (
-          <button aria-label="Enviar" className="rounded bg-orange-600 px-2 py-1 text-white hover:bg-orange-500 disabled:opacity-40" disabled={!text.trim()} onClick={submit}>
+          <button
+            aria-label="Enviar"
+            className="rounded bg-orange-600 px-2 py-1 text-white hover:bg-orange-500 disabled:opacity-40"
+            disabled={!text.trim() && images.length === 0}
+            onClick={submit}
+          >
             ↑
           </button>
         )}
