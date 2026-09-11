@@ -10,6 +10,7 @@ import { fakeQuery, fakeSessions } from './agent/fakeQuery'
 import { loadSdk, type SessionStoreApi } from './agent/sdk'
 import { loginShellPath, mergePath, resolveClaudePath } from './env/loginShell'
 import { FilesService } from './fs/FilesService'
+import { validRoots } from './fs/validRoots'
 import { WatcherManager, type WatchFn } from './fs/WatcherManager'
 import { gitInfo } from './git/gitInfo'
 import { buildHandlers } from './ipc/handlers'
@@ -62,8 +63,8 @@ const watchers = new WatcherManager(watchFs, {
 })
 
 function setProjects(paths: string[]): void {
-  roots = paths
-  watchers.sync(paths)
+  roots = validRoots(paths)
+  watchers.sync(roots)
 }
 
 rootsReady = stores.workspaces

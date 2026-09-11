@@ -269,6 +269,8 @@ Contrato único em `src/shared/ipc-contract.ts`, usado por main, preload e rende
   `agent:models(panelId)`, `agent:close(panelId)`
 - `pty:create`, `pty:write`, `pty:resize`, `pty:kill`
 - `fs:list(dir)`, `fs:read(path)`, `fs:index(projectPath)`, `fs:pickFolder`, `fs:pickWorkspaceFile`
+  (o guard de arquivos do processo main protege contra caminhos malformados vindos do renderer ou
+  do agente, não contra um renderer comprometido — que já tem acesso ao pty)
 - `git:info(projectPath)`
 - `workspace:get/save`, `layout:get/save`, `settings:get/save`
 
