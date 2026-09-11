@@ -9,10 +9,12 @@ export function useGitBranch(projectPath: string): string | null {
         if (alive) setBranch(info.branch)
       })
     refresh()
-    window.addEventListener('focus', refresh)
+    const off = window.api.on('git:changed', (changed) => {
+      if (changed === projectPath) refresh()
+    })
     return () => {
       alive = false
-      window.removeEventListener('focus', refresh)
+      off()
     }
   }, [projectPath])
   return branch

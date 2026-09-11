@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { filterWorkspaces } from '@shared/workspaces'
+import { useFiles } from '../stores/filesStore'
 import { useWorkspaces } from '../stores/workspaceStore'
 import { ActiveSessions } from './ActiveSessions'
 import { WorkspaceSection } from './WorkspaceSection'
@@ -7,6 +8,7 @@ import { WorkspaceSection } from './WorkspaceSection'
 export function Sidebar() {
   const workspaces = useWorkspaces((s) => s.workspaces)
   const query = useWorkspaces((s) => s.query)
+  const expanded = useFiles((s) => s.expanded)
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
 
@@ -14,7 +16,7 @@ export function Sidebar() {
     void useWorkspaces.getState().load()
   }, [])
 
-  const visible = filterWorkspaces(workspaces, query)
+  const visible = filterWorkspaces(workspaces, query, (p) => expanded[p.path] === true)
 
   return (
     <div className="flex h-full flex-col">

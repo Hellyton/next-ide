@@ -88,6 +88,12 @@ describe('workspaces', () => {
     const list = sample()
     expect(filterWorkspaces(list, '  ')).toBe(list)
   })
+
+  it('filterWorkspaces keeps projects accepted by keep() even when the name does not match', () => {
+    const out = filterWorkspaces(sample(), 'zzz', (p) => p.id === 'p2')
+    expect(out).toHaveLength(1)
+    expect(out[0]!.projects.map((p) => p.id)).toEqual(['p2'])
+  })
 })
 
 describe('project helpers', () => {

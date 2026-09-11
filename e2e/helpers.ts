@@ -1,5 +1,6 @@
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
@@ -47,4 +48,16 @@ export async function openAgent(
   await page.getByRole('button', { name: 'Adicionar pasta em ws' }).click()
   await page.getByRole('button', { name: `Abrir Claude em ${name}` }).click()
   return { app, page, name, folder, userData }
+}
+
+export function fixtureProject(prefix = 'proj-files-'): { folder: string; name: string } {
+  const folder = mkdtempSync(join(tmpdir(), prefix))
+  mkdirSync(join(folder, 'src'))
+  mkdirSync(join(folder, 'dist'))
+  writeFileSync(join(folder, '.gitignore'), 'dist/\n')
+  writeFileSync(join(folder, 'README.md'), '# fixture\n')
+  writeFileSync(join(folder, 'dist', 'out.js'), 'x')
+  writeFileSync(join(folder, 'src', 'app.ts'), Array.from({ length: 80 }, (_, i) => `export const v${i + 1} = ${i + 1}`).join('\n'))
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: folder })
+  return { folder, name: basename(folder) }
 }

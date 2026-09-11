@@ -1,6 +1,6 @@
 import type { DockviewApi } from 'dockview-react'
 import { create } from 'zustand'
-import type { PanelParams } from '@shared/models'
+import type { FilePanelParams, PanelParams } from '@shared/models'
 import { useSessions } from '../stores/sessionsStore'
 import { CLOSE_CONFIRM_MESSAGE, needsCloseConfirm } from './closeGuard'
 import { buildAddPanelOptions, newPanelId } from './panelOptions'
@@ -9,6 +9,7 @@ type DockState = {
   api: DockviewApi | null
   setApi(api: DockviewApi): void
   open(params: PanelParams): void
+  openFile(params: FilePanelParams): void
   split(direction: 'right' | 'below'): void
   requestClose(panelId: string): void
   closeActive(): void
@@ -24,6 +25,8 @@ export const useDock = create<DockState>()((set, get) => ({
     if (!api) return
     api.addPanel(buildAddPanelOptions(params, newPanelId(params.type), { kind: 'activeGroup', groupId: api.activeGroup?.id }))
   },
+  // TODO(task 5): focus an already-open panel for this file instead of always opening a new one.
+  openFile: (params) => get().open(params),
   split: (direction) => {
     const api = get().api
     const active = api?.activePanel

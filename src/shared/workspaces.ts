@@ -72,12 +72,16 @@ export function moveWorkspaceById(list: Workspace[], id: string, targetId: strin
   return moveWorkspace(list, list.findIndex((w) => w.id === id), list.findIndex((w) => w.id === targetId))
 }
 
-export function filterWorkspaces(list: Workspace[], query: string): Workspace[] {
+export function filterWorkspaces(
+  list: Workspace[],
+  query: string,
+  keep: (p: Project) => boolean = () => false,
+): Workspace[] {
   const q = query.trim().toLowerCase()
   if (!q) return list
   return list.flatMap((w) => {
     if (w.name.toLowerCase().includes(q)) return [{ ...w, collapsed: false }]
-    const projects = w.projects.filter((p) => p.name.toLowerCase().includes(q))
+    const projects = w.projects.filter((p) => keep(p) || p.name.toLowerCase().includes(q))
     return projects.length ? [{ ...w, projects, collapsed: false }] : []
   })
 }
