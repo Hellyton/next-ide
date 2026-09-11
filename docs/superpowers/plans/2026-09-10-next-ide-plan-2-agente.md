@@ -1,0 +1,2391 @@
+# next-ide — Plano 2: Painel Agente (Claude Agent SDK)
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Substituir o placeholder do painel de agente por um chat próprio sobre o Claude Agent SDK: streaming, cartões de ferramentas (Bash, diff de edição, Todo, subagentes), permissões inline, modelo/modo, comandos `/`, `/resume`, imagens coladas, statusline e confirmação ao fechar.
+
+**Architecture:** O main process roda uma `AgentSession` por painel sobre `query()` do SDK (streaming input via `AsyncQueue`), apontando para o binário `claude` instalado. Um `StreamNormalizer` puro converte mensagens do SDK em `AgentEvent`s (`src/shared/agent.ts`), enviados ao renderer por `agent:event`. No renderer, um reducer puro (`reduceChat`) monta o estado do chat por painel; componentes React só renderizam esse estado. E2E usa um `fakeQuery` roteirizado (`NEXT_IDE_FAKE_AGENT=1`); o SDK real é exercitado por um smoke opcional.
+
+**Tech Stack:** Base do Plano 1 + `@anthropic-ai/claude-agent-sdk@0.3.268` (runtime), `react-markdown@10.1.0`, `remark-gfm@4.0.1`, `diff@9.0.0` (tipos embutidos).
+
+**Spec:** `docs/superpowers/specs/2026-09-10-next-ide-mvp-design.md` (§6 Painel Agente, §8 fechar com confirmação, §11 IPC, §12 restauração, §13 erros)
+
+## Global Constraints
+
+- Tudo do Plano 1 continua valendo: renderer sandboxed (`contextIsolation`, `sandbox`, sem `nodeIntegration`), renderer só fala com main via `window.api`, preload expõe só canais listados em `INVOKE_CHANNELS`/`EVENT_CHANNELS`, `CONTRACT_COMPLETE` precisa continuar `true`.
+- `@anthropic-ai/claude-agent-sdk` e `node-pty` são as únicas `dependencies`; o resto em `devDependencies`.
+- O SDK é ESM: o main carrega com `await import('@anthropic-ai/claude-agent-sdk')` dentro de `src/main/agent/sdk.ts` (único arquivo que importa o SDK). Testes nunca importam o SDK, `electron` nem `node-pty`.
+- O renderer nunca importa tipos do SDK; só `@shared/agent`.
+- Binário: `Settings.claudePath` → senão `~/.local/bin/claude` se existir → senão `command -v claude` no shell de login. PATH do shell de login é resolvido uma vez no startup e usado pelo SDK, git e pty.
+- `settingSources: ['user', 'project', 'local']` (herda skills, hooks, MCP, CLAUDE.md do usuário).
+- Textos de UI em pt-BR; código, identificadores e comentários em inglês.
+- E2E usa `NEXT_IDE_FAKE_AGENT=1` (sem chamadas reais). Smoke real só com `NEXT_IDE_REAL_AGENT=1`.
+- Todo commit termina com:
+  ```
+  Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+  Claude-Session: https://claude.ai/code/session_01DsUojN9FpXJWNDWbykQTCs
+  ```
+
+## Fatos verificados do SDK 0.3.268 (usar exatamente)
+
+- `query({ prompt: AsyncIterable<SDKUserMessage>, options })` retorna `Query` (AsyncGenerator de mensagens) com `interrupt()`, `setModel(model?)`, `setPermissionMode(mode)`, `supportedCommands(): Promise<{ name, description, argumentHint }[]>`, `supportedModels(): Promise<{ value, displayName, description }[]>`, `close()`.
+- Options usadas: `cwd`, `model`, `permissionMode`, `resume`, `includePartialMessages`, `canUseTool`, `pathToClaudeCodeExecutable`, `env`, `settingSources`, `abortController`.
+- `SDKUserMessage = { type: 'user'; message: MessageParam; parent_tool_use_id: string | null }` (sem `session_id` obrigatório).
+- `canUseTool(toolName, input, { signal, suggestions?, title?, displayName?, decisionReason? })` → `{ behavior: 'allow', updatedInput?, updatedPermissions? } | { behavior: 'deny', message }`.
+- `listSessions({ dir })` → `{ sessionId, summary, lastModified, customTitle?, firstPrompt? }[]`; `getSessionMessages(sessionId, { dir })` → `{ type: 'user'|'assistant'|'system', uuid, message, parent_tool_use_id }[]`.
+- Stream real gravado (haiku, Read em arquivo): `system/init` (session_id, model, cwd, permissionMode, slash_commands); por mensagem, `stream_event` `message_start` (id) → `content_block_start` (thinking | text | tool_use, com `index`) → `content_block_delta` (`text_delta` / `thinking_delta` vazio / `input_json_delta`) → `content_block_stop`; mensagens `assistant` chegam **uma por bloco**, com o mesmo `message.id`; `user` traz `tool_result` (`tool_use_id`, `content` string); `result` traz `total_cost_usd`, `duration_ms`, `usage`, `modelUsage[model].contextWindow`. Blocos de thinking chegam com texto vazio.
+
+## File Structure
+
+```
+build/csp.ts                         CSP de produção + injectCsp(html)
+src/shared/agent.ts                  AgentEvent, ImageAttachment, Usage, opções, SessionSummary
+src/shared/ipc-contract.ts           (modificar) canais agent:*, statusline:run, evento agent:event
+src/main/agent/AsyncQueue.ts         fila async iterável (prompt do SDK)
+src/main/agent/normalize.ts          StreamNormalizer, historyToEvents, flattenToolOutput
+src/main/agent/AgentSession.ts       uma sessão por painel (query, fila, permissões, estado)
+src/main/agent/AgentManager.ts       Map<panelId, AgentSession>
+src/main/agent/sdk.ts                import dinâmico do SDK real → QueryFn + histórico
+src/main/agent/fakeQuery.ts          QueryFn roteirizada para E2E
+src/main/env/loginShell.ts           PATH do shell de login + resolveClaudePath
+src/main/statusline/runStatusLine.ts executa statusLine.command do ~/.claude/settings.json
+src/renderer/src/agent/chatReducer.ts   ChatState + reduceChat (puro)
+src/renderer/src/agent/diffLines.ts     linhas de diff para cartões Edit/Write (puro)
+src/renderer/src/agent/slash.ts         filtro/merge de comandos / (puro)
+src/renderer/src/agent/images.ts        validação e leitura de imagens (puro + FileReader)
+src/renderer/src/stores/agentStore.ts   chats por painel + assinatura agent:event
+src/renderer/src/panels/agent/AgentPanel.tsx   (substitui AgentStubPanel)
+src/renderer/src/panels/agent/ChatView.tsx
+src/renderer/src/panels/agent/Composer.tsx
+src/renderer/src/panels/agent/StatusLine.tsx
+src/renderer/src/panels/agent/ResumeModal.tsx
+src/renderer/src/panels/agent/cards/*.tsx      Text, Thinking, Tool (Bash, Edit, Todo, Task, Generic), Permission, User, Error
+test/fixtures/stream-read.jsonl       stream real reduzido
+test/... (Vitest)   e2e/agent*.spec.ts (Playwright)
+```
+
+---
+
+### Task 1: Dependências, CSP de produção, tipos do agente e AsyncQueue
+
+**Files:**
+- Modify: `package.json` (deps), `electron.vite.config.ts`, `tsconfig.json` (incluir `build`)
+- Create: `build/csp.ts`, `src/shared/agent.ts`, `src/main/agent/AsyncQueue.ts`
+- Test: `test/build/csp.test.ts`, `test/main/AsyncQueue.test.ts`
+
+**Interfaces:**
+- Produces: `PRODUCTION_CSP: string`, `injectCsp(html: string): string`; tipos de `@shared/agent` (abaixo); `class AsyncQueue<T> implements AsyncIterable<T> { push(item: T): void; end(): void; readonly size: number }`.
+
+- [ ] **Step 1: Instalar dependências**
+
+```bash
+npm install -E @anthropic-ai/claude-agent-sdk@0.3.268
+npm install -D -E react-markdown@10.1.0 remark-gfm@4.0.1 diff@9.0.0
+```
+
+Expected: `package.json` `dependencies` = `node-pty` + `@anthropic-ai/claude-agent-sdk`. Se o `postinstall` do Plano 1 rodar, ok.
+
+- [ ] **Step 2: Testes falhando**
+
+```ts
+// test/build/csp.test.ts
+import { describe, expect, it } from 'vitest'
+import { PRODUCTION_CSP, injectCsp } from '../../build/csp'
+
+describe('injectCsp', () => {
+  it('adds the CSP meta right after <head>', () => {
+    const out = injectCsp('<html><head><title>x</title></head></html>')
+    expect(out).toContain(`<head>\n    <meta http-equiv="Content-Security-Policy" content="${PRODUCTION_CSP}" />`)
+  })
+
+  it('blocks remote scripts and objects', () => {
+    expect(PRODUCTION_CSP).toContain("script-src 'self'")
+    expect(PRODUCTION_CSP).toContain("object-src 'none'")
+    expect(PRODUCTION_CSP).not.toContain('unsafe-eval')
+  })
+})
+```
+
+```ts
+// test/main/AsyncQueue.test.ts
+import { describe, expect, it } from 'vitest'
+import { AsyncQueue } from '../../src/main/agent/AsyncQueue'
+
+describe('AsyncQueue', () => {
+  it('yields pushed items in order, including items pushed while waiting', async () => {
+    const q = new AsyncQueue<number>()
+    q.push(1)
+    const seen: number[] = []
+    const done = (async () => {
+      for await (const n of q) seen.push(n)
+    })()
+    q.push(2)
+    await Promise.resolve()
+    q.push(3)
+    q.end()
+    await done
+    expect(seen).toEqual([1, 2, 3])
+  })
+
+  it('ignores pushes after end and reports size', () => {
+    const q = new AsyncQueue<string>()
+    q.push('a')
+    expect(q.size).toBe(1)
+    q.end()
+    q.push('b')
+    expect(q.size).toBe(1)
+  })
+})
+```
+
+- [ ] **Step 3: Rodar e ver falhar** — `npx vitest run test/build/csp.test.ts test/main/AsyncQueue.test.ts` → FAIL (imports).
+
+- [ ] **Step 4: Implementar**
+
+```ts
+// build/csp.ts
+// Production-only CSP: dev (Vite HMR) needs inline scripts, so this is injected at build time.
+export const PRODUCTION_CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+].join('; ')
+
+export function injectCsp(html: string): string {
+  return html.replace('<head>', `<head>\n    <meta http-equiv="Content-Security-Policy" content="${PRODUCTION_CSP}" />`)
+}
+```
+
+```ts
+// electron.vite.config.ts — adicionar o plugin ao renderer
+import { resolve } from 'node:path'
+import { defineConfig } from 'electron-vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+import type { Plugin } from 'vite'
+import { injectCsp } from './build/csp'
+
+const shared = { '@shared': resolve('src/shared') }
+
+function productionCsp(): Plugin {
+  return { name: 'next-ide-csp', apply: 'build', transformIndexHtml: (html) => injectCsp(html) }
+}
+
+export default defineConfig({
+  main: { resolve: { alias: shared } },
+  preload: { resolve: { alias: shared } },
+  renderer: {
+    resolve: { alias: { ...shared, '@renderer': resolve('src/renderer/src') } },
+    plugins: [react(), tailwindcss(), productionCsp()],
+  },
+})
+```
+
+Em `tsconfig.json`, acrescentar `"build"` ao array `include`.
+
+```ts
+// src/shared/agent.ts
+import type { PermissionMode, SessionState } from './models'
+
+export type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
+export type ImageAttachment = { name: string; mediaType: ImageMediaType; data: string /* base64, no data: prefix */ }
+
+export type Usage = { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }
+
+export type StatsEvent = {
+  kind: 'stats'
+  usage: Usage
+  costUsd: number
+  durationMs: number
+  contextWindow?: number
+  contextPct?: number
+}
+
+export type PermissionDecision = 'allow' | 'allow-always' | 'deny'
+
+export type AgentEvent =
+  | { kind: 'status'; state: SessionState }
+  | { kind: 'init'; sessionId: string; model: string; cwd: string; permissionMode: PermissionMode; slashCommands: string[] }
+  | { kind: 'user'; id: string; text: string; images: number }
+  | { kind: 'text-delta'; key: string; text: string; parentToolUseId?: string }
+  | { kind: 'text'; key: string; text: string; parentToolUseId?: string }
+  | { kind: 'thinking'; key: string; text: string }
+  | { kind: 'tool-start'; id: string; name: string; input: unknown; parentToolUseId?: string }
+  | { kind: 'tool-result'; id: string; output: string; isError: boolean }
+  | { kind: 'permission-request'; requestId: string; toolName: string; input: unknown; title?: string; canAlwaysAllow: boolean }
+  | { kind: 'permission-resolved'; requestId: string; decision: PermissionDecision | 'cancelled' }
+  | { kind: 'mode'; permissionMode: PermissionMode }
+  | { kind: 'model'; model: string }
+  | StatsEvent
+  | { kind: 'error'; message: string }
+
+export type CommandOption = { name: string; description: string; argumentHint: string }
+export type ModelOption = { value: string; displayName: string; description: string }
+export type SessionSummary = { sessionId: string; title: string; lastModified: number }
+
+/** Subset of Claude Code's statusLine JSON input that next-ide can provide. */
+export type StatusLineInput = {
+  session_id: string
+  cwd: string
+  model: { id: string; display_name: string }
+  workspace: { current_dir: string; project_dir: string }
+  cost: { total_cost_usd: number; total_duration_ms: number }
+  context_window?: { context_window_size: number; used_percentage: number; total_input_tokens: number }
+}
+```
+
+```ts
+// src/main/agent/AsyncQueue.ts
+export class AsyncQueue<T> implements AsyncIterable<T> {
+  private readonly items: T[] = []
+  private readonly waiters: Array<(result: IteratorResult<T>) => void> = []
+  private ended = false
+
+  get size(): number {
+    return this.items.length
+  }
+
+  push(item: T): void {
+    if (this.ended) return
+    const waiter = this.waiters.shift()
+    if (waiter) waiter({ value: item, done: false })
+    else this.items.push(item)
+  }
+
+  end(): void {
+    this.ended = true
+    for (const waiter of this.waiters.splice(0)) waiter({ value: undefined, done: true })
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<T> {
+    return {
+      next: () => {
+        if (this.items.length > 0) return Promise.resolve({ value: this.items.shift() as T, done: false })
+        if (this.ended) return Promise.resolve({ value: undefined, done: true })
+        return new Promise((resolve) => this.waiters.push(resolve))
+      },
+    }
+  }
+}
+```
+
+- [ ] **Step 5: Verificar** — `npx vitest run test/build/csp.test.ts test/main/AsyncQueue.test.ts && npm run typecheck && npm run build && grep -c "Content-Security-Policy" out/renderer/index.html` → testes verdes, typecheck limpo, `1`. Rodar `npm run test:e2e` (tudo do Plano 1 continua verde com CSP).
+
+- [ ] **Step 6: Commit** — `git add package.json package-lock.json electron.vite.config.ts tsconfig.json build src/shared/agent.ts src/main/agent/AsyncQueue.ts test/build test/main/AsyncQueue.test.ts && git commit -m "feat: add agent types, async queue and production CSP"`
+
+---
+
+### Task 2: StreamNormalizer e histórico (SDK → AgentEvent)
+
+**Files:**
+- Create: `src/main/agent/normalize.ts`, `test/fixtures/stream-read.jsonl`
+- Test: `test/main/normalize.test.ts`
+
+**Interfaces:**
+- Consumes: `AgentEvent`, `Usage` (Task 1).
+- Produces: `class StreamNormalizer { push(message: unknown): AgentEvent[] }`, `historyToEvents(messages: unknown[]): AgentEvent[]`, `flattenToolOutput(content: unknown): string`.
+
+- [ ] **Step 1: Criar a fixture (stream real reduzido)**
+
+```jsonl
+{"type":"system","subtype":"init","session_id":"sess-1","model":"claude-haiku-4-5-20251001","cwd":"/tmp/fixture","permissionMode":"default","slash_commands":["compact","review"]}
+{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"message_start","message":{"id":"msg_A"}}}
+{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}}
+{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}}}
+{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_stop","index":0}}
+{"type":"assistant","parent_tool_use_id":null,"message":{"id":"msg_A","content":[{"type":"thinking","thinking":""}]}}
+{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"Read","input":{}}}}
+{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"file_path\": \"/tmp/fixture/hello.txt\"}"}}}
+{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_stop","index":1}}
+{"type":"assistant","parent_tool_use_id":null,"message":{"id":"msg_A","content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"/tmp/fixture/hello.txt"}}]}}
+{"type":"user","parent_tool_use_id":null,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"1\thello next-ide\n2\t"}]}}
+{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"message_start","message":{"id":"msg_B"}}}
+{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}}
+{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_stop","index":0}}
+{"type":"assistant","parent_tool_use_id":null,"message":{"id":"msg_B","content":[{"type":"thinking","thinking":""}]}}
+{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"hello "}}}
+{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"next-ide"}}}
+{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_stop","index":1}}
+{"type":"assistant","parent_tool_use_id":null,"message":{"id":"msg_B","content":[{"type":"text","text":"hello next-ide"}]}}
+{"type":"rate_limit_event"}
+{"type":"result","subtype":"success","is_error":false,"duration_ms":3242,"total_cost_usd":0.0221112,"usage":{"input_tokens":18,"output_tokens":212,"cache_read_input_tokens":34522,"cache_creation_input_tokens":8306},"modelUsage":{"claude-haiku-4-5-20251001":{"contextWindow":200000}},"result":"hello next-ide","session_id":"sess-1"}
+```
+
+- [ ] **Step 2: Testes falhando**
+
+```ts
+// test/main/normalize.test.ts
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import type { AgentEvent } from '@shared/agent'
+import { StreamNormalizer, flattenToolOutput, historyToEvents } from '../../src/main/agent/normalize'
+
+const fixture = readFileSync(join(__dirname, '../fixtures/stream-read.jsonl'), 'utf8')
+  .trim()
+  .split('\n')
+  .map((line) => JSON.parse(line) as unknown)
+
+function run(messages: unknown[]): AgentEvent[] {
+  const n = new StreamNormalizer()
+  return messages.flatMap((m) => n.push(m))
+}
+
+describe('StreamNormalizer (recorded stream)', () => {
+  const events = run(fixture)
+
+  it('emits init with session, model, cwd, mode and commands', () => {
+    expect(events[0]).toEqual({
+      kind: 'init',
+      sessionId: 'sess-1',
+      model: 'claude-haiku-4-5-20251001',
+      cwd: '/tmp/fixture',
+      permissionMode: 'default',
+      slashCommands: ['compact', 'review'],
+    })
+  })
+
+  it('streams text deltas under the same key as the final text', () => {
+    const deltas = events.filter((e) => e.kind === 'text-delta')
+    const finals = events.filter((e) => e.kind === 'text')
+    expect(deltas.map((d) => d.kind === 'text-delta' && d.text)).toEqual(['hello ', 'next-ide'])
+    expect(finals).toEqual([{ kind: 'text', key: 'msg_B:1', text: 'hello next-ide' }])
+    expect(deltas.every((d) => d.kind === 'text-delta' && d.key === 'msg_B:1')).toBe(true)
+  })
+
+  it('maps tool use and tool result, skips empty thinking and unknown messages', () => {
+    expect(events).toContainEqual({ kind: 'tool-start', id: 'toolu_1', name: 'Read', input: { file_path: '/tmp/fixture/hello.txt' } })
+    expect(events).toContainEqual({ kind: 'tool-result', id: 'toolu_1', output: '1\thello next-ide\n2\t', isError: false })
+    expect(events.some((e) => e.kind === 'thinking')).toBe(false)
+  })
+
+  it('emits stats with cost, duration and context percentage', () => {
+    expect(events.at(-1)).toEqual({
+      kind: 'stats',
+      usage: { inputTokens: 18, outputTokens: 212, cacheReadTokens: 34522, cacheCreationTokens: 8306 },
+      costUsd: 0.0221112,
+      durationMs: 3242,
+      contextWindow: 200000,
+      contextPct: 21,
+    })
+  })
+})
+
+describe('StreamNormalizer (edge cases)', () => {
+  it('emits non-empty thinking and passes parentToolUseId through', () => {
+    const out = run([
+      { type: 'assistant', parent_tool_use_id: 'task_1', message: { id: 'm', content: [{ type: 'thinking', thinking: 'plan' }, { type: 'text', text: 'hi' }] } },
+    ])
+    expect(out[0]).toMatchObject({ kind: 'thinking', text: 'plan' })
+    expect(out[1]).toMatchObject({ kind: 'text', text: 'hi', parentToolUseId: 'task_1' })
+  })
+
+  it('emits an error after stats for failed results', () => {
+    const out = run([{ type: 'result', subtype: 'error_during_execution', is_error: true, errors: ['boom'], usage: {}, total_cost_usd: 0, duration_ms: 1 }])
+    expect(out.map((e) => e.kind)).toEqual(['stats', 'error'])
+    expect(out[1]).toEqual({ kind: 'error', message: 'boom' })
+  })
+})
+
+describe('flattenToolOutput', () => {
+  it('handles strings, text blocks and images', () => {
+    expect(flattenToolOutput('x')).toBe('x')
+    expect(flattenToolOutput([{ type: 'text', text: 'a' }, { type: 'image' }, { type: 'text', text: 'b' }])).toBe('a\n[imagem]\nb')
+    expect(flattenToolOutput(undefined)).toBe('')
+  })
+})
+
+describe('historyToEvents', () => {
+  it('rebuilds user prompts, assistant text and tool results; hides meta user messages', () => {
+    const out = historyToEvents([
+      { type: 'user', uuid: 'u1', parent_tool_use_id: null, message: { role: 'user', content: 'leia o arquivo' } },
+      { type: 'user', uuid: 'u0', parent_tool_use_id: null, message: { role: 'user', content: '<command-name>/clear</command-name>' } },
+      { type: 'assistant', uuid: 'a1', parent_tool_use_id: null, message: { id: 'm1', content: [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }] } },
+      { type: 'user', uuid: 'u2', parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } },
+      { type: 'assistant', uuid: 'a2', parent_tool_use_id: null, message: { id: 'm2', content: [{ type: 'text', text: 'pronto' }] } },
+      { type: 'user', uuid: 'u3', parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'text', text: 'veja' }, { type: 'image', source: {} }] } },
+    ])
+    expect(out.map((e) => e.kind)).toEqual(['user', 'tool-start', 'tool-result', 'text', 'user'])
+    expect(out[0]).toEqual({ kind: 'user', id: 'u1', text: 'leia o arquivo', images: 0 })
+    expect(out[4]).toEqual({ kind: 'user', id: 'u3', text: 'veja', images: 1 })
+  })
+})
+```
+
+- [ ] **Step 3: Rodar e ver falhar** — `npx vitest run test/main/normalize.test.ts` → FAIL (import).
+
+- [ ] **Step 4: Implementar `src/main/agent/normalize.ts`**
+
+```ts
+import type { AgentEvent, Usage } from '@shared/agent'
+import type { PermissionMode } from '@shared/models'
+
+type Rec = Record<string, unknown>
+const isRec = (v: unknown): v is Rec => typeof v === 'object' && v !== null
+const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
+const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+
+export function flattenToolOutput(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((c) => (isRec(c) && c.type === 'text' ? (str(c.text) ?? '') : isRec(c) && c.type === 'image' ? '[imagem]' : ''))
+    .filter(Boolean)
+    .join('\n')
+}
+
+/**
+ * Converts raw SDK messages into AgentEvents. Stateful: text deltas are keyed by
+ * `<messageId>:<blockIndex>` and the matching final `assistant` text block reuses that key.
+ */
+export class StreamNormalizer {
+  private messageId = ''
+  private readonly blockKeys = new Map<number, string>()
+  private readonly pendingText = new Map<string, string[]>()
+  private counter = 0
+
+  push(message: unknown): AgentEvent[] {
+    if (!isRec(message)) return []
+    const parent = str(message.parent_tool_use_id)
+    switch (message.type) {
+      case 'system':
+        return message.subtype === 'init' ? [this.init(message)] : []
+      case 'stream_event':
+        return this.stream(message.event, parent)
+      case 'assistant':
+        return this.assistant(message.message, parent)
+      case 'user':
+        return this.toolResults(message.message)
+      case 'result':
+        return this.result(message)
+      default:
+        return []
+    }
+  }
+
+  private init(m: Rec): AgentEvent {
+    return {
+      kind: 'init',
+      sessionId: str(m.session_id) ?? '',
+      model: str(m.model) ?? '',
+      cwd: str(m.cwd) ?? '',
+      permissionMode: (str(m.permissionMode) ?? 'default') as PermissionMode,
+      slashCommands: Array.isArray(m.slash_commands) ? m.slash_commands.filter((c): c is string => typeof c === 'string') : [],
+    }
+  }
+
+  private stream(event: unknown, parent: string | undefined): AgentEvent[] {
+    if (!isRec(event)) return []
+    const index = num(event.index)
+    if (event.type === 'message_start' && isRec(event.message)) {
+      this.messageId = str(event.message.id) ?? this.messageId
+      this.blockKeys.clear()
+      return []
+    }
+    if (event.type === 'content_block_start' && isRec(event.content_block) && event.content_block.type === 'text') {
+      const key = `${this.messageId}:${index}`
+      this.blockKeys.set(index, key)
+      this.pendingText.set(this.messageId, [...(this.pendingText.get(this.messageId) ?? []), key])
+      return []
+    }
+    if (event.type === 'content_block_delta' && isRec(event.delta) && event.delta.type === 'text_delta') {
+      const key = this.blockKeys.get(index)
+      const text = str(event.delta.text)
+      if (!key || !text) return []
+      return [{ kind: 'text-delta', key, text, ...(parent ? { parentToolUseId: parent } : {}) }]
+    }
+    return []
+  }
+
+  private assistant(message: unknown, parent: string | undefined): AgentEvent[] {
+    if (!isRec(message) || !Array.isArray(message.content)) return []
+    const id = str(message.id) ?? `msg-${++this.counter}`
+    const withParent = parent ? { parentToolUseId: parent } : {}
+    const out: AgentEvent[] = []
+    for (const block of message.content) {
+      if (!isRec(block)) continue
+      if (block.type === 'text') {
+        const queue = this.pendingText.get(id) ?? []
+        const key = queue.shift() ?? `${id}:final:${++this.counter}`
+        this.pendingText.set(id, queue)
+        out.push({ kind: 'text', key, text: str(block.text) ?? '', ...withParent })
+      } else if (block.type === 'thinking') {
+        const text = str(block.thinking) ?? ''
+        if (text.trim()) out.push({ kind: 'thinking', key: `${id}:thinking:${++this.counter}`, text })
+      } else if (block.type === 'tool_use') {
+        out.push({ kind: 'tool-start', id: str(block.id) ?? '', name: str(block.name) ?? '', input: block.input, ...withParent })
+      }
+    }
+    return out
+  }
+
+  private toolResults(message: unknown): AgentEvent[] {
+    if (!isRec(message) || !Array.isArray(message.content)) return []
+    return message.content.flatMap((b): AgentEvent[] =>
+      isRec(b) && b.type === 'tool_result'
+        ? [{ kind: 'tool-result', id: str(b.tool_use_id) ?? '', output: flattenToolOutput(b.content), isError: b.is_error === true }]
+        : [],
+    )
+  }
+
+  private result(m: Rec): AgentEvent[] {
+    const u = isRec(m.usage) ? m.usage : {}
+    const usage: Usage = {
+      inputTokens: num(u.input_tokens),
+      outputTokens: num(u.output_tokens),
+      cacheReadTokens: num(u.cache_read_input_tokens),
+      cacheCreationTokens: num(u.cache_creation_input_tokens),
+    }
+    const firstModel = isRec(m.modelUsage) ? Object.values(m.modelUsage).find(isRec) : undefined
+    const contextWindow = firstModel ? num(firstModel.contextWindow) : 0
+    const used = usage.inputTokens + usage.cacheReadTokens + usage.cacheCreationTokens
+    const events: AgentEvent[] = [
+      {
+        kind: 'stats',
+        usage,
+        costUsd: num(m.total_cost_usd),
+        durationMs: num(m.duration_ms),
+        ...(contextWindow > 0 ? { contextWindow, contextPct: Math.round((used / contextWindow) * 100) } : {}),
+      },
+    ]
+    if (m.subtype !== 'success' || m.is_error === true) {
+      const errors = Array.isArray(m.errors) ? m.errors.filter((e): e is string => typeof e === 'string') : []
+      events.push({ kind: 'error', message: errors.join('\n') || str(m.result) || String(m.subtype ?? 'erro') })
+    }
+    return events
+  }
+}
+
+function userText(message: unknown): { text: string; images: number } | null {
+  if (!isRec(message)) return null
+  const content = message.content
+  if (typeof content === 'string') return content.startsWith('<') ? null : { text: content, images: 0 }
+  if (!Array.isArray(content)) return null
+  const texts = content.filter((b): b is Rec => isRec(b) && b.type === 'text').map((b) => str(b.text) ?? '')
+  const images = content.filter((b) => isRec(b) && b.type === 'image').length
+  const text = texts.join('\n')
+  if ((!text && images === 0) || text.startsWith('<')) return null
+  return { text, images }
+}
+
+/** Rebuilds chat events from `getSessionMessages()` output (used by /resume and restored panels). */
+export function historyToEvents(messages: unknown[]): AgentEvent[] {
+  const normalizer = new StreamNormalizer()
+  const out: AgentEvent[] = []
+  for (const m of messages) {
+    if (!isRec(m)) continue
+    if (m.type === 'assistant') {
+      out.push(...normalizer.push({ type: 'assistant', message: m.message, parent_tool_use_id: m.parent_tool_use_id ?? null }))
+    } else if (m.type === 'user') {
+      const prompt = userText(m.message)
+      if (prompt) out.push({ kind: 'user', id: str(m.uuid) ?? '', text: prompt.text, images: prompt.images })
+      out.push(...normalizer.push({ type: 'user', message: m.message }))
+    }
+  }
+  return out
+}
+```
+
+- [ ] **Step 5: Verificar** — `npx vitest run test/main/normalize.test.ts && npm run typecheck` → verde.
+
+- [ ] **Step 6: Commit** — `git add src/main/agent/normalize.ts test/fixtures test/main/normalize.test.ts && git commit -m "feat: normalize SDK stream and session history into agent events"`
+
+---
+
+### Task 3: Reducer do chat (renderer, puro)
+
+**Files:**
+- Create: `src/renderer/src/agent/chatReducer.ts`
+- Test: `test/renderer/chatReducer.test.ts`
+
+**Interfaces:**
+- Consumes: `AgentEvent`, `StatsEvent`, `PermissionDecision` (Task 1).
+- Produces: `type ChatItem`, `type ChatState`, `initialChat: ChatState`, `reduceChat(state: ChatState, event: AgentEvent): ChatState`, `reduceAll(events: AgentEvent[], start?: ChatState): ChatState`, `pendingPermission(state: ChatState): PermissionItem | undefined`.
+
+- [ ] **Step 1: Testes falhando**
+
+```ts
+// test/renderer/chatReducer.test.ts
+import { describe, expect, it } from 'vitest'
+import type { AgentEvent } from '@shared/agent'
+import { initialChat, pendingPermission, reduceAll, reduceChat } from '@renderer/agent/chatReducer'
+
+describe('reduceChat', () => {
+  it('tracks status, init, mode and model', () => {
+    const s = reduceAll([
+      { kind: 'status', state: 'running' },
+      { kind: 'init', sessionId: 's1', model: 'opus', cwd: '/p', permissionMode: 'default', slashCommands: ['compact'] },
+      { kind: 'mode', permissionMode: 'plan' },
+      { kind: 'model', model: 'sonnet' },
+    ])
+    expect(s).toMatchObject({ state: 'running', sessionId: 's1', model: 'sonnet', permissionMode: 'plan', slashCommands: ['compact'] })
+  })
+
+  it('accumulates text deltas and lets the final text win', () => {
+    const s = reduceAll([
+      { kind: 'text-delta', key: 'm:1', text: 'hel' },
+      { kind: 'text-delta', key: 'm:1', text: 'lo' },
+    ])
+    expect(s.items).toEqual([{ type: 'text', key: 'm:1', text: 'hello', final: false }])
+    const f = reduceChat(s, { kind: 'text', key: 'm:1', text: 'hello!' })
+    expect(f.items).toEqual([{ type: 'text', key: 'm:1', text: 'hello!', final: true }])
+    expect(reduceChat(f, { kind: 'text-delta', key: 'm:1', text: 'late' }).items[0]).toMatchObject({ text: 'hello!' })
+  })
+
+  it('pushes a final text with no prior deltas and keeps parentToolUseId', () => {
+    const s = reduceChat(initialChat, { kind: 'text', key: 'k', text: 'x', parentToolUseId: 'task' })
+    expect(s.items).toEqual([{ type: 'text', key: 'k', text: 'x', final: true, parentToolUseId: 'task' }])
+  })
+
+  it('attaches tool results to their tool item and ignores unknown ids', () => {
+    const s = reduceAll([
+      { kind: 'tool-start', id: 't1', name: 'Bash', input: { command: 'ls' } },
+      { kind: 'tool-result', id: 't1', output: 'a\nb', isError: false },
+      { kind: 'tool-result', id: 'nope', output: 'x', isError: true },
+    ])
+    expect(s.items).toEqual([{ type: 'tool', id: 't1', name: 'Bash', input: { command: 'ls' }, output: 'a\nb', isError: false }])
+  })
+
+  it('tracks permission requests and their resolution', () => {
+    const s = reduceAll([
+      { kind: 'permission-request', requestId: 'r1', toolName: 'Bash', input: { command: 'rm x' }, canAlwaysAllow: true },
+    ])
+    expect(pendingPermission(s)?.requestId).toBe('r1')
+    const r = reduceChat(s, { kind: 'permission-resolved', requestId: 'r1', decision: 'deny' })
+    expect(pendingPermission(r)).toBeUndefined()
+    expect(r.items[0]).toMatchObject({ type: 'permission', decision: 'deny' })
+  })
+
+  it('accumulates cost across turns, keeps last stats, pushes users, thinking and errors', () => {
+    const stats = (costUsd: number): AgentEvent => ({
+      kind: 'stats',
+      usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
+      costUsd,
+      durationMs: 10,
+    })
+    const s = reduceAll([
+      { kind: 'user', id: 'u1', text: 'oi', images: 1 },
+      { kind: 'thinking', key: 'th', text: 'hmm' },
+      { kind: 'thinking', key: 'th', text: 'hmm' },
+      stats(0.5),
+      stats(0.25),
+      { kind: 'error', message: 'boom' },
+    ])
+    expect(s.totalCostUsd).toBeCloseTo(0.75)
+    expect(s.stats?.costUsd).toBe(0.25)
+    expect(s.items.map((i) => i.type)).toEqual(['user', 'thinking', 'error'])
+  })
+})
+```
+
+- [ ] **Step 2: Rodar e ver falhar** — `npx vitest run test/renderer/chatReducer.test.ts` → FAIL.
+
+- [ ] **Step 3: Implementar `src/renderer/src/agent/chatReducer.ts`**
+
+```ts
+import type { AgentEvent, PermissionDecision, StatsEvent } from '@shared/agent'
+import type { PermissionMode, SessionState } from '@shared/models'
+
+export type TextItem = { type: 'text'; key: string; text: string; final: boolean; parentToolUseId?: string }
+export type ToolItem = { type: 'tool'; id: string; name: string; input: unknown; output?: string; isError?: boolean; parentToolUseId?: string }
+export type PermissionItem = {
+  type: 'permission'
+  requestId: string
+  toolName: string
+  input: unknown
+  title?: string
+  canAlwaysAllow: boolean
+  decision?: PermissionDecision | 'cancelled'
+}
+export type ChatItem =
+  | { type: 'user'; id: string; text: string; images: number }
+  | TextItem
+  | { type: 'thinking'; key: string; text: string }
+  | ToolItem
+  | PermissionItem
+  | { type: 'error'; id: string; message: string }
+
+export type ChatState = {
+  items: ChatItem[]
+  state: SessionState
+  sessionId?: string
+  model?: string
+  permissionMode?: PermissionMode
+  slashCommands: string[]
+  stats?: StatsEvent
+  totalCostUsd: number
+}
+
+export const initialChat: ChatState = { items: [], state: 'idle', slashCommands: [], totalCostUsd: 0 }
+
+const push = (s: ChatState, item: ChatItem): ChatState => ({ ...s, items: [...s.items, item] })
+const replaceAt = (s: ChatState, index: number, item: ChatItem): ChatState => {
+  const items = [...s.items]
+  items[index] = item
+  return { ...s, items }
+}
+const indexOf = (s: ChatState, match: (item: ChatItem) => boolean): number => s.items.findIndex(match)
+
+export function reduceChat(s: ChatState, e: AgentEvent): ChatState {
+  switch (e.kind) {
+    case 'status':
+      return { ...s, state: e.state }
+    case 'init':
+      return { ...s, sessionId: e.sessionId, model: e.model, permissionMode: e.permissionMode, slashCommands: e.slashCommands }
+    case 'mode':
+      return { ...s, permissionMode: e.permissionMode }
+    case 'model':
+      return { ...s, model: e.model }
+    case 'user':
+      return push(s, { type: 'user', id: e.id, text: e.text, images: e.images })
+    case 'text-delta': {
+      const i = indexOf(s, (it) => it.type === 'text' && it.key === e.key)
+      if (i < 0) {
+        return push(s, { type: 'text', key: e.key, text: e.text, final: false, ...(e.parentToolUseId ? { parentToolUseId: e.parentToolUseId } : {}) })
+      }
+      const item = s.items[i] as TextItem
+      return item.final ? s : replaceAt(s, i, { ...item, text: item.text + e.text })
+    }
+    case 'text': {
+      const item: TextItem = { type: 'text', key: e.key, text: e.text, final: true, ...(e.parentToolUseId ? { parentToolUseId: e.parentToolUseId } : {}) }
+      const i = indexOf(s, (it) => it.type === 'text' && it.key === e.key)
+      return i < 0 ? push(s, item) : replaceAt(s, i, item)
+    }
+    case 'thinking':
+      return indexOf(s, (it) => it.type === 'thinking' && it.key === e.key) >= 0 ? s : push(s, { type: 'thinking', key: e.key, text: e.text })
+    case 'tool-start': {
+      const i = indexOf(s, (it) => it.type === 'tool' && it.id === e.id)
+      const base: ToolItem = { type: 'tool', id: e.id, name: e.name, input: e.input, ...(e.parentToolUseId ? { parentToolUseId: e.parentToolUseId } : {}) }
+      return i < 0 ? push(s, base) : replaceAt(s, i, { ...(s.items[i] as ToolItem), input: e.input })
+    }
+    case 'tool-result': {
+      const i = indexOf(s, (it) => it.type === 'tool' && it.id === e.id)
+      return i < 0 ? s : replaceAt(s, i, { ...(s.items[i] as ToolItem), output: e.output, isError: e.isError })
+    }
+    case 'permission-request':
+      return push(s, {
+        type: 'permission',
+        requestId: e.requestId,
+        toolName: e.toolName,
+        input: e.input,
+        canAlwaysAllow: e.canAlwaysAllow,
+        ...(e.title ? { title: e.title } : {}),
+      })
+    case 'permission-resolved': {
+      const i = indexOf(s, (it) => it.type === 'permission' && it.requestId === e.requestId)
+      return i < 0 ? s : replaceAt(s, i, { ...(s.items[i] as PermissionItem), decision: e.decision })
+    }
+    case 'stats':
+      return { ...s, stats: e, totalCostUsd: s.totalCostUsd + e.costUsd }
+    case 'error':
+      return push(s, { type: 'error', id: `err-${s.items.length}`, message: e.message })
+  }
+}
+
+export function reduceAll(events: AgentEvent[], start: ChatState = initialChat): ChatState {
+  return events.reduce(reduceChat, start)
+}
+
+export function pendingPermission(s: ChatState): PermissionItem | undefined {
+  return s.items.find((it): it is PermissionItem => it.type === 'permission' && !it.decision)
+}
+```
+
+- [ ] **Step 4: Verificar** — `npx vitest run test/renderer/chatReducer.test.ts && npm run typecheck` → verde.
+
+- [ ] **Step 5: Commit** — `git add src/renderer/src/agent test/renderer/chatReducer.test.ts && git commit -m "feat: add pure chat reducer for agent events"`
+
+---
+
+### Task 4: AgentSession (main)
+
+**Files:**
+- Create: `src/main/agent/AgentSession.ts`
+- Test: `test/main/AgentSession.test.ts`
+
+**Interfaces:**
+- Consumes: `AsyncQueue` (Task 1), `StreamNormalizer` (Task 2), tipos `@shared/agent`.
+- Produces:
+  - `type UserMessageLike`, `type PermissionResultLike`, `type CanUseToolLike`, `type QueryOptions`, `type QueryLike`, `type QueryFn` (formas estruturais compatíveis com o SDK; o SDK real é adaptado na Task 5)
+  - `type SessionConfig = { cwd: string; model?: string; permissionMode: PermissionMode; resume?: string }`
+  - `type SessionDeps = { queryFn: QueryFn; emit(event: AgentEvent): void; claudePath?: string; env?: Record<string, string>; newId?: () => string }`
+  - `class AgentSession { constructor(config, deps); readonly currentState: SessionState; readonly isStarted: boolean; start(): void; send(text: string, images?: ImageAttachment[]): void; interrupt(): Promise<void>; setModel(model: string): Promise<void>; setMode(mode: PermissionMode): Promise<void>; commands(): Promise<CommandOption[]>; models(): Promise<ModelOption[]>; respondPermission(requestId: string, decision: PermissionDecision): void; close(): void }`
+
+Comportamento: o processo `claude` só sobe no primeiro `start()`/`send()`/`commands()`/`models()`. Estados: `send` → `running`; `permission-request` → `awaiting_permission`; resposta → volta a `running`; mensagem `result` com zero turnos pendentes e sem permissão pendente → `idle`; exceção no stream → evento `error` + `error`, e o próximo `send` recria a query com `resume` do último `sessionId`; `close()` → cancela permissões, encerra fila e query, `exited`.
+
+- [ ] **Step 1: Testes falhando**
+
+```ts
+// test/main/AgentSession.test.ts
+import { describe, expect, it, vi } from 'vitest'
+import type { AgentEvent } from '@shared/agent'
+import { AsyncQueue } from '../../src/main/agent/AsyncQueue'
+import { AgentSession, type QueryFn, type QueryLike, type QueryOptions, type UserMessageLike } from '../../src/main/agent/AgentSession'
+
+const tick = () => new Promise((r) => setTimeout(r, 0))
+const INIT = { type: 'system', subtype: 'init', session_id: 'sess-9', model: 'opus', cwd: '/p', permissionMode: 'default', slash_commands: [] }
+const RESULT = { type: 'result', subtype: 'success', is_error: false, usage: {}, total_cost_usd: 0.1, duration_ms: 5, modelUsage: {} }
+
+function fake() {
+  const out = new AsyncQueue<unknown>()
+  const calls: Array<{ options: QueryOptions }> = []
+  const received: UserMessageLike[] = []
+  const q: QueryLike = {
+    [Symbol.asyncIterator]: () => out[Symbol.asyncIterator](),
+    interrupt: vi.fn(async () => undefined),
+    setModel: vi.fn(async () => undefined),
+    setPermissionMode: vi.fn(async () => undefined),
+    supportedCommands: async () => [{ name: 'compact', description: 'Compacta', argumentHint: '' }],
+    supportedModels: async () => [{ value: 'opus', displayName: 'Opus', description: '' }],
+    close: vi.fn(() => out.end()),
+  }
+  const fn: QueryFn = ({ prompt, options }) => {
+    calls.push({ options })
+    void (async () => {
+      for await (const m of prompt) received.push(m)
+    })()
+    return q
+  }
+  return { fn, out, q, calls, received }
+}
+
+function session(fn: QueryFn, over: Partial<ConstructorParameters<typeof AgentSession>[0]> = {}) {
+  const events: AgentEvent[] = []
+  let n = 0
+  const s = new AgentSession(
+    { cwd: '/p', permissionMode: 'default', ...over },
+    { queryFn: fn, emit: (e) => events.push(e), newId: () => `id${++n}`, claudePath: '/bin/claude' },
+  )
+  return { s, events }
+}
+
+describe('AgentSession', () => {
+  it('starts lazily on first send and reuses the query', async () => {
+    const f = fake()
+    const { s, events } = session(f.fn)
+    expect(f.calls).toHaveLength(0)
+    s.send('oi')
+    s.send('de novo')
+    await tick()
+    expect(f.calls).toHaveLength(1)
+    expect(f.calls[0]!.options).toMatchObject({ cwd: '/p', permissionMode: 'default', includePartialMessages: true, pathToClaudeCodeExecutable: '/bin/claude', settingSources: ['user', 'project', 'local'] })
+    expect(f.received.map((m) => m.message.content)).toEqual([[{ type: 'text', text: 'oi' }], [{ type: 'text', text: 'de novo' }]])
+    expect(events.slice(0, 2)).toEqual([{ kind: 'user', id: 'id1', text: 'oi', images: 0 }, { kind: 'status', state: 'running' }])
+  })
+
+  it('sends images before text as base64 blocks', async () => {
+    const f = fake()
+    const { s } = session(f.fn)
+    s.send('veja', [{ name: 'a.png', mediaType: 'image/png', data: 'AAAA' }])
+    await tick()
+    expect(f.received[0]!.message.content).toEqual([
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } },
+      { type: 'text', text: 'veja' },
+    ])
+  })
+
+  it('emits normalized events and goes idle after the result', async () => {
+    const f = fake()
+    const { s, events } = session(f.fn)
+    s.send('oi')
+    f.out.push(INIT)
+    f.out.push(RESULT)
+    await tick()
+    expect(events.some((e) => e.kind === 'init')).toBe(true)
+    expect(events.at(-1)).toEqual({ kind: 'status', state: 'idle' })
+    expect(s.currentState).toBe('idle')
+  })
+
+  it('asks for permission, resolves allow-always with suggestions and returns to running', async () => {
+    const f = fake()
+    const { s, events } = session(f.fn)
+    s.send('apague')
+    const decision = f.calls[0]!.options.canUseTool('Bash', { command: 'rm x' }, { signal: new AbortController().signal, suggestions: [{ type: 'addRules' }], title: 'Rodar rm?' })
+    expect(events).toContainEqual({ kind: 'permission-request', requestId: 'id2', toolName: 'Bash', input: { command: 'rm x' }, canAlwaysAllow: true, title: 'Rodar rm?' })
+    expect(s.currentState).toBe('awaiting_permission')
+    s.respondPermission('id2', 'allow-always')
+    await expect(decision).resolves.toEqual({ behavior: 'allow', updatedInput: { command: 'rm x' }, updatedPermissions: [{ type: 'addRules' }] })
+    expect(events).toContainEqual({ kind: 'permission-resolved', requestId: 'id2', decision: 'allow-always' })
+    expect(s.currentState).toBe('running')
+  })
+
+  it('denies, and cancels when the SDK aborts the request', async () => {
+    const f = fake()
+    const { s, events } = session(f.fn)
+    s.send('x')
+    const denied = f.calls[0]!.options.canUseTool('Write', {}, { signal: new AbortController().signal })
+    s.respondPermission('id2', 'deny')
+    await expect(denied).resolves.toMatchObject({ behavior: 'deny' })
+    const ac = new AbortController()
+    const cancelled = f.calls[0]!.options.canUseTool('Write', {}, { signal: ac.signal })
+    ac.abort()
+    await expect(cancelled).resolves.toMatchObject({ behavior: 'deny' })
+    expect(events).toContainEqual({ kind: 'permission-resolved', requestId: 'id3', decision: 'cancelled' })
+  })
+
+  it('applies model and mode before start via options, after start via the query', async () => {
+    const f = fake()
+    const { s, events } = session(f.fn)
+    await s.setModel('sonnet')
+    await s.setMode('plan')
+    s.send('oi')
+    expect(f.calls[0]!.options).toMatchObject({ model: 'sonnet', permissionMode: 'plan' })
+    await s.setModel('opus')
+    expect(f.q.setModel).toHaveBeenCalledWith('opus')
+    expect(events).toContainEqual({ kind: 'model', model: 'opus' })
+    expect(events).toContainEqual({ kind: 'mode', permissionMode: 'plan' })
+  })
+
+  it('lists commands and models, starting the query if needed', async () => {
+    const f = fake()
+    const { s } = session(f.fn)
+    await expect(s.commands()).resolves.toEqual([{ name: 'compact', description: 'Compacta', argumentHint: '' }])
+    await expect(s.models()).resolves.toEqual([{ value: 'opus', displayName: 'Opus', description: '' }])
+    expect(f.calls).toHaveLength(1)
+  })
+
+  it('close cancels pending permissions, closes the query and ignores later sends', async () => {
+    const f = fake()
+    const { s } = session(f.fn)
+    s.send('x')
+    const p = f.calls[0]!.options.canUseTool('Bash', {}, { signal: new AbortController().signal })
+    s.close()
+    await expect(p).resolves.toMatchObject({ behavior: 'deny' })
+    expect(f.q.close).toHaveBeenCalled()
+    expect(s.currentState).toBe('exited')
+    s.send('depois')
+    expect(f.calls).toHaveLength(1)
+  })
+
+  it('reports stream errors and resumes the last session on the next send', async () => {
+    const calls: QueryOptions[] = []
+    let first = true
+    const fn: QueryFn = ({ options }) => {
+      calls.push(options)
+      const crash = first
+      first = false
+      const gen = (async function* () {
+        yield INIT
+        if (crash) throw new Error('claude exited')
+      })()
+      return Object.assign(gen, {
+        interrupt: async () => undefined,
+        setModel: async () => undefined,
+        setPermissionMode: async () => undefined,
+        supportedCommands: async () => [],
+        supportedModels: async () => [],
+        close: () => undefined,
+      })
+    }
+    const { s, events } = session(fn)
+    s.send('oi')
+    await tick()
+    await tick()
+    expect(events).toContainEqual({ kind: 'error', message: 'claude exited' })
+    expect(s.currentState).toBe('error')
+    s.send('de novo')
+    expect(calls[1]).toMatchObject({ resume: 'sess-9' })
+  })
+})
+```
+
+- [ ] **Step 2: Rodar e ver falhar** — `npx vitest run test/main/AgentSession.test.ts` → FAIL.
+
+- [ ] **Step 3: Implementar `src/main/agent/AgentSession.ts`**
+
+```ts
+import { randomUUID } from 'node:crypto'
+import type { AgentEvent, CommandOption, ImageAttachment, ModelOption, PermissionDecision } from '@shared/agent'
+import type { PermissionMode, SessionState } from '@shared/models'
+import { AsyncQueue } from './AsyncQueue'
+import { StreamNormalizer } from './normalize'
+
+export type UserMessageLike = { type: 'user'; message: { role: 'user'; content: unknown[] }; parent_tool_use_id: null }
+export type PermissionResultLike =
+  | { behavior: 'allow'; updatedInput?: Record<string, unknown>; updatedPermissions?: unknown[] }
+  | { behavior: 'deny'; message: string }
+export type CanUseToolLike = (
+  toolName: string,
+  input: Record<string, unknown>,
+  options: { signal: AbortSignal; suggestions?: unknown[]; title?: string },
+) => Promise<PermissionResultLike>
+export type QueryOptions = {
+  cwd: string
+  model?: string
+  permissionMode: PermissionMode
+  resume?: string
+  includePartialMessages: true
+  canUseTool: CanUseToolLike
+  settingSources: Array<'user' | 'project' | 'local'>
+  abortController: AbortController
+  pathToClaudeCodeExecutable?: string
+  env?: Record<string, string>
+}
+export type QueryLike = AsyncIterable<unknown> & {
+  interrupt(): Promise<unknown>
+  setModel(model?: string): Promise<void>
+  setPermissionMode(mode: PermissionMode): Promise<void>
+  supportedCommands(): Promise<CommandOption[]>
+  supportedModels(): Promise<ModelOption[]>
+  close(): void
+}
+export type QueryFn = (params: { prompt: AsyncIterable<UserMessageLike>; options: QueryOptions }) => QueryLike
+
+export type SessionConfig = { cwd: string; model?: string; permissionMode: PermissionMode; resume?: string }
+export type SessionDeps = {
+  queryFn: QueryFn
+  emit(event: AgentEvent): void
+  claudePath?: string
+  env?: Record<string, string>
+  newId?: () => string
+}
+
+type Pending = { resolve(result: PermissionResultLike): void; input: Record<string, unknown>; suggestions?: unknown[] }
+
+const isResult = (m: unknown): boolean => typeof m === 'object' && m !== null && (m as { type?: unknown }).type === 'result'
+
+export class AgentSession {
+  private query: QueryLike | null = null
+  private input: AsyncQueue<UserMessageLike> | null = null
+  private abort: AbortController | null = null
+  private readonly pending = new Map<string, Pending>()
+  private readonly normalizer = new StreamNormalizer()
+  private state: SessionState = 'idle'
+  private turnsInFlight = 0
+  private closed = false
+  private model?: string
+  private mode: PermissionMode
+  private sessionId?: string
+  private readonly newId: () => string
+
+  constructor(
+    private readonly config: SessionConfig,
+    private readonly deps: SessionDeps,
+  ) {
+    this.model = config.model
+    this.mode = config.permissionMode
+    this.sessionId = config.resume
+    this.newId = deps.newId ?? randomUUID
+  }
+
+  get currentState(): SessionState {
+    return this.state
+  }
+
+  get isStarted(): boolean {
+    return this.query !== null
+  }
+
+  start(): void {
+    if (this.query || this.closed) return
+    const input = new AsyncQueue<UserMessageLike>()
+    const abort = new AbortController()
+    const query = this.deps.queryFn({
+      prompt: input,
+      options: {
+        cwd: this.config.cwd,
+        permissionMode: this.mode,
+        includePartialMessages: true,
+        settingSources: ['user', 'project', 'local'],
+        abortController: abort,
+        canUseTool: (toolName, toolInput, options) => this.canUseTool(toolName, toolInput, options),
+        ...(this.model ? { model: this.model } : {}),
+        ...(this.sessionId ? { resume: this.sessionId } : {}),
+        ...(this.deps.claudePath ? { pathToClaudeCodeExecutable: this.deps.claudePath } : {}),
+        ...(this.deps.env ? { env: this.deps.env } : {}),
+      },
+    })
+    this.input = input
+    this.abort = abort
+    this.query = query
+    void this.pump(query)
+  }
+
+  send(text: string, images: ImageAttachment[] = []): void {
+    if (this.closed) return
+    this.start()
+    const content: unknown[] = [
+      ...images.map((img) => ({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.data } })),
+      ...(text ? [{ type: 'text', text }] : []),
+    ]
+    this.deps.emit({ kind: 'user', id: this.newId(), text, images: images.length })
+    this.turnsInFlight++
+    this.setState('running')
+    this.input?.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null })
+  }
+
+  async interrupt(): Promise<void> {
+    await this.query?.interrupt()
+  }
+
+  async setModel(model: string): Promise<void> {
+    this.model = model
+    if (this.query) await this.query.setModel(model)
+    this.deps.emit({ kind: 'model', model })
+  }
+
+  async setMode(mode: PermissionMode): Promise<void> {
+    this.mode = mode
+    if (this.query) await this.query.setPermissionMode(mode)
+    this.deps.emit({ kind: 'mode', permissionMode: mode })
+  }
+
+  async commands(): Promise<CommandOption[]> {
+    this.start()
+    return this.query ? this.query.supportedCommands() : []
+  }
+
+  async models(): Promise<ModelOption[]> {
+    this.start()
+    return this.query ? this.query.supportedModels() : []
+  }
+
+  respondPermission(requestId: string, decision: PermissionDecision): void {
+    const pending = this.pending.get(requestId)
+    if (!pending) return
+    this.pending.delete(requestId)
+    pending.resolve(
+      decision === 'deny'
+        ? { behavior: 'deny', message: 'O usuário negou esta ação.' }
+        : {
+            behavior: 'allow',
+            updatedInput: pending.input,
+            ...(decision === 'allow-always' && pending.suggestions ? { updatedPermissions: pending.suggestions } : {}),
+          },
+    )
+    this.deps.emit({ kind: 'permission-resolved', requestId, decision })
+    if (this.pending.size === 0) this.setState(this.turnsInFlight > 0 ? 'running' : 'idle')
+  }
+
+  close(): void {
+    if (this.closed) return
+    this.closed = true
+    for (const id of [...this.pending.keys()]) this.cancelPermission(id)
+    this.input?.end()
+    this.query?.close()
+    this.abort?.abort()
+    this.setState('exited')
+  }
+
+  private canUseTool(
+    toolName: string,
+    input: Record<string, unknown>,
+    options: { signal: AbortSignal; suggestions?: unknown[]; title?: string },
+  ): Promise<PermissionResultLike> {
+    const requestId = this.newId()
+    return new Promise((resolve) => {
+      this.pending.set(requestId, { resolve, input, ...(options.suggestions ? { suggestions: options.suggestions } : {}) })
+      options.signal.addEventListener('abort', () => this.cancelPermission(requestId), { once: true })
+      this.deps.emit({
+        kind: 'permission-request',
+        requestId,
+        toolName,
+        input,
+        canAlwaysAllow: Boolean(options.suggestions?.length),
+        ...(options.title ? { title: options.title } : {}),
+      })
+      this.setState('awaiting_permission')
+    })
+  }
+
+  private cancelPermission(requestId: string): void {
+    const pending = this.pending.get(requestId)
+    if (!pending) return
+    this.pending.delete(requestId)
+    pending.resolve({ behavior: 'deny', message: 'Cancelado.' })
+    this.deps.emit({ kind: 'permission-resolved', requestId, decision: 'cancelled' })
+  }
+
+  private async pump(query: QueryLike): Promise<void> {
+    try {
+      for await (const message of query) {
+        for (const event of this.normalizer.push(message)) {
+          if (event.kind === 'init') this.sessionId = event.sessionId
+          this.deps.emit(event)
+        }
+        if (isResult(message)) {
+          this.turnsInFlight = Math.max(0, this.turnsInFlight - 1)
+          if (this.pending.size === 0) this.setState(this.turnsInFlight > 0 ? 'running' : 'idle')
+        }
+      }
+      if (!this.closed) this.reset('idle')
+    } catch (err) {
+      if (this.closed) return
+      this.deps.emit({ kind: 'error', message: err instanceof Error ? err.message : String(err) })
+      this.reset('error')
+    }
+  }
+
+  /** Drops the dead query so the next send starts a fresh one resuming `sessionId`. */
+  private reset(state: SessionState): void {
+    for (const id of [...this.pending.keys()]) this.cancelPermission(id)
+    this.input?.end()
+    this.query = null
+    this.input = null
+    this.abort = null
+    this.turnsInFlight = 0
+    this.setState(state)
+  }
+
+  private setState(state: SessionState): void {
+    if (this.state === state) return
+    this.state = state
+    this.deps.emit({ kind: 'status', state })
+  }
+}
+```
+
+- [ ] **Step 4: Verificar** — `npx vitest run test/main/AgentSession.test.ts && npm run typecheck` → 9 testes verdes.
+
+- [ ] **Step 5: Commit** — `git add src/main/agent/AgentSession.ts test/main/AgentSession.test.ts && git commit -m "feat: add agent session over streaming SDK query"`
+
+---
+
+### Task 5: AgentManager, SDK real, agente fake, PATH do login e IPC `agent:*`
+
+**Files:**
+- Create: `src/main/agent/AgentManager.ts`, `src/main/agent/sdk.ts`, `src/main/agent/fakeQuery.ts`, `src/main/env/loginShell.ts`
+- Modify: `src/shared/ipc-contract.ts`, `src/main/ipc/handlers.ts`, `src/main/index.ts`, `test/main/handlers.test.ts`
+- Test: `test/main/AgentManager.test.ts`, `test/main/fakeQuery.test.ts`, `test/main/loginShell.test.ts`, `test/main/handlers.test.ts`
+
+**Interfaces:**
+- Consumes: `AgentSession`, `QueryFn`, `QueryLike` (Task 4), `historyToEvents` (Task 2), `AsyncQueue` (Task 1), `shellEnv` (Plano 1, `src/main/pty/shellEnv.ts`).
+- Produces:
+  - `type AgentRuntime = { queryFn: QueryFn; claudePath?: string; env?: Record<string, string> }`
+  - `class AgentManager { constructor(deps: { emit(panelId: string, event: AgentEvent): void; runtime(): AgentRuntime }); create(panelId: string, params: AgentPanelParams): void; get(panelId: string): AgentSession; close(panelId: string): void; closeAll(): void; hasBusy(): boolean }`
+  - `type SessionStoreApi = { list(dir: string): Promise<SessionSummary[]>; history(dir: string, sessionId: string): Promise<unknown[]> }`
+  - `loadSdk(): Promise<{ queryFn: QueryFn } & SessionStoreApi>` (`sdk.ts`)
+  - `fakeQuery: QueryFn`, `fakeSessions: SessionStoreApi` (`fakeQuery.ts`)
+  - `loginShellPath(shell?: string): Promise<string | null>`, `mergePath(current: string | undefined, login: string | null): string`, `resolveClaudePath(configured: string | undefined, deps?: ClaudePathDeps): Promise<string | undefined>` (`loginShell.ts`)
+  - Canais novos (tabela abaixo) e evento `'agent:event': [panelId: string, event: AgentEvent]`.
+
+| Canal | args | result |
+|---|---|---|
+| `agent:create` | `[panelId, params: AgentPanelParams]` | `void` |
+| `agent:start` | `[panelId]` | `void` |
+| `agent:send` | `[panelId, text: string, images: ImageAttachment[]]` | `void` |
+| `agent:interrupt` | `[panelId]` | `void` |
+| `agent:setModel` | `[panelId, model: string]` | `void` |
+| `agent:setMode` | `[panelId, mode: PermissionMode]` | `void` |
+| `agent:respondPermission` | `[panelId, requestId: string, decision: PermissionDecision]` | `void` |
+| `agent:commands` | `[panelId]` | `CommandOption[]` |
+| `agent:models` | `[panelId]` | `ModelOption[]` |
+| `agent:listSessions` | `[projectPath]` | `SessionSummary[]` |
+| `agent:history` | `[projectPath, sessionId]` | `AgentEvent[]` |
+| `agent:close` | `[panelId]` | `void` |
+
+- [ ] **Step 1: Testes falhando**
+
+```ts
+// test/main/loginShell.test.ts
+import { describe, expect, it } from 'vitest'
+import { loginShellPath, mergePath, resolveClaudePath } from '../../src/main/env/loginShell'
+
+describe('mergePath', () => {
+  it('puts login entries first and dedupes', () => {
+    expect(mergePath('/usr/bin:/bin', '/Users/me/.local/bin:/usr/bin')).toBe('/Users/me/.local/bin:/usr/bin:/bin')
+    expect(mergePath(undefined, null)).toBe('')
+  })
+})
+
+describe('resolveClaudePath', () => {
+  const deps = (existing: string[], which: string | null) => ({
+    exists: (p: string) => existing.includes(p),
+    home: '/Users/me',
+    which: async () => which,
+  })
+  it('prefers the configured path, then ~/.local/bin/claude, then the login shell', async () => {
+    expect(await resolveClaudePath('/opt/claude', deps(['/opt/claude', '/Users/me/.local/bin/claude'], '/x'))).toBe('/opt/claude')
+    expect(await resolveClaudePath('/missing', deps(['/Users/me/.local/bin/claude'], '/x'))).toBe('/Users/me/.local/bin/claude')
+    expect(await resolveClaudePath(undefined, deps([], '/usr/local/bin/claude'))).toBe('/usr/local/bin/claude')
+    expect(await resolveClaudePath(undefined, deps([], null))).toBeUndefined()
+  })
+})
+
+describe('loginShellPath', () => {
+  it('reads PATH from a login shell', async () => {
+    expect(await loginShellPath('/bin/sh')).toMatch(/\/bin/)
+  })
+  it('returns null when the shell cannot run', async () => {
+    expect(await loginShellPath('/nope/shell')).toBeNull()
+  })
+})
+```
+
+```ts
+// test/main/AgentManager.test.ts
+import { describe, expect, it } from 'vitest'
+import type { AgentEvent } from '@shared/agent'
+import { AgentManager } from '../../src/main/agent/AgentManager'
+import { fakeQuery } from '../../src/main/agent/fakeQuery'
+
+const tick = () => new Promise((r) => setTimeout(r, 5))
+
+function manager() {
+  const events: Array<[string, AgentEvent]> = []
+  const m = new AgentManager({ emit: (id, e) => events.push([id, e]), runtime: () => ({ queryFn: fakeQuery }) })
+  return { m, events }
+}
+
+describe('AgentManager', () => {
+  it('creates one session per panel and routes events by panel id', async () => {
+    const { m, events } = manager()
+    m.create('p1', { type: 'agent', projectPath: '/proj' })
+    m.create('p1', { type: 'agent', projectPath: '/other' })
+    m.get('p1').send('oi')
+    await tick()
+    expect(events.every(([id]) => id === 'p1')).toBe(true)
+    expect(events.some(([, e]) => e.kind === 'text' && e.text === 'Você disse: oi')).toBe(true)
+  })
+
+  it('throws for unknown panels, reports busy sessions, closes one and all', () => {
+    const { m } = manager()
+    expect(() => m.get('x')).toThrow('Sessão de agente não encontrada: x')
+    m.create('a', { type: 'agent', projectPath: '/p' })
+    m.create('b', { type: 'agent', projectPath: '/p' })
+    expect(m.hasBusy()).toBe(false)
+    m.get('a').send('oi')
+    expect(m.hasBusy()).toBe(true)
+    m.close('a')
+    expect(() => m.get('a')).toThrow()
+    m.closeAll()
+    expect(() => m.get('b')).toThrow()
+    expect(m.hasBusy()).toBe(false)
+  })
+})
+```
+
+```ts
+// test/main/fakeQuery.test.ts
+import { describe, expect, it } from 'vitest'
+import type { AgentEvent } from '@shared/agent'
+import { AgentSession } from '../../src/main/agent/AgentSession'
+import { fakeQuery, fakeSessions } from '../../src/main/agent/fakeQuery'
+
+const tick = () => new Promise((r) => setTimeout(r, 5))
+
+describe('fakeQuery', () => {
+  it('echoes the prompt with streaming, stats and returns to idle', async () => {
+    const events: AgentEvent[] = []
+    const s = new AgentSession({ cwd: '/p', permissionMode: 'default' }, { queryFn: fakeQuery, emit: (e) => events.push(e) })
+    s.send('olá')
+    await tick()
+    expect(events.map((e) => e.kind)).toEqual(expect.arrayContaining(['init', 'text-delta', 'text', 'stats']))
+    expect(s.currentState).toBe('idle')
+  })
+
+  it('asks for permission when the prompt mentions "permissão"', async () => {
+    const events: AgentEvent[] = []
+    const s = new AgentSession({ cwd: '/p', permissionMode: 'default' }, { queryFn: fakeQuery, emit: (e) => events.push(e) })
+    s.send('teste de permissão')
+    await tick()
+    const req = events.find((e) => e.kind === 'permission-request')
+    expect(req).toMatchObject({ toolName: 'Bash', input: { command: 'rm -rf dist' }, canAlwaysAllow: true })
+    s.respondPermission(req!.kind === 'permission-request' ? req!.requestId : '', 'allow')
+    await tick()
+    expect(events).toContainEqual({ kind: 'tool-result', id: 'fake_tool_1', output: 'removido', isError: false })
+  })
+
+  it('emits an Edit tool call when the prompt mentions "editar"', async () => {
+    const events: AgentEvent[] = []
+    const s = new AgentSession({ cwd: '/p', permissionMode: 'default' }, { queryFn: fakeQuery, emit: (e) => events.push(e) })
+    s.send('editar arquivo')
+    await tick()
+    expect(events).toContainEqual({
+      kind: 'tool-start',
+      id: 'fake_edit_1',
+      name: 'Edit',
+      input: { file_path: '/tmp/exemplo.ts', old_string: 'const a = 1', new_string: 'const a = 2' },
+    })
+  })
+
+  it('provides a scripted session list and history', async () => {
+    expect((await fakeSessions.list('/p'))[0]).toMatchObject({ sessionId: 'fake-old', title: 'Sessão antiga de teste' })
+    expect(await fakeSessions.history('/p', 'fake-old')).toHaveLength(2)
+  })
+})
+```
+
+Acrescentar em `test/main/handlers.test.ts`: no helper `deps()`, os campos novos; e os testes:
+
+```ts
+// test/main/handlers.test.ts — imports adicionais
+import type { AgentEvent } from '@shared/agent'
+import { AgentManager } from '../../src/main/agent/AgentManager'
+import { fakeQuery, fakeSessions } from '../../src/main/agent/fakeQuery'
+
+// dentro de deps(), antes de `ptyCalls,`:
+//   agents: new AgentManager({ emit: (id, e) => agentEvents.push([id, e]), runtime: () => ({ queryFn: fakeQuery }) }),
+//   sessions: fakeSessions,
+//   agentReady: async () => undefined,
+// e declarar `const agentEvents: Array<[string, AgentEvent]> = []` no topo de deps(), retornando também `agentEvents`.
+// Tipo de retorno de deps(): HandlerDeps & { ptyCalls: unknown[][]; agentEvents: Array<[string, AgentEvent]> }
+
+it('agent channels create, send and close sessions', async () => {
+  const d = deps()
+  const h = buildHandlers(d)
+  await h['agent:create']('p1', { type: 'agent', projectPath: '/proj' })
+  await h['agent:send']('p1', 'oi', [])
+  await new Promise((r) => setTimeout(r, 5))
+  expect(d.agentEvents.some(([id, e]) => id === 'p1' && e.kind === 'text')).toBe(true)
+  expect((await h['agent:commands']('p1')).map((c) => c.name)).toEqual(['compact', 'review'])
+  await h['agent:close']('p1')
+  await expect(Promise.resolve().then(() => h['agent:interrupt']('p1'))).rejects.toThrow('Sessão de agente não encontrada')
+})
+
+it('agent:history converts stored messages into events', async () => {
+  const events = await buildHandlers(deps())['agent:history']('/proj', 'fake-old')
+  expect(events.map((e) => e.kind)).toEqual(['user', 'text'])
+})
+```
+
+- [ ] **Step 2: Rodar e ver falhar** — `npx vitest run test/main/loginShell.test.ts test/main/AgentManager.test.ts test/main/fakeQuery.test.ts test/main/handlers.test.ts` → FAIL.
+
+- [ ] **Step 3: Implementar `src/main/env/loginShell.ts`**
+
+```ts
+import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { promisify } from 'node:util'
+
+const exec = promisify(execFile)
+const defaultShell = () => process.env.SHELL || '/bin/zsh'
+
+/** Apps launched from Finder get a minimal PATH; a login shell knows the user's real one. */
+export async function loginShellPath(shell: string = defaultShell()): Promise<string | null> {
+  try {
+    const { stdout } = await exec(shell, ['-lc', 'printf "%s" "$PATH"'], { timeout: 5000 })
+    return stdout.trim() || null
+  } catch {
+    return null
+  }
+}
+
+export function mergePath(current: string | undefined, login: string | null): string {
+  const parts = [...(login ?? '').split(':'), ...(current ?? '').split(':')].filter(Boolean)
+  return [...new Set(parts)].join(':')
+}
+
+export type ClaudePathDeps = { exists(path: string): boolean; home: string; which(): Promise<string | null> }
+
+const defaultDeps: ClaudePathDeps = {
+  exists: existsSync,
+  home: homedir(),
+  which: async () => {
+    try {
+      const { stdout } = await exec(defaultShell(), ['-lc', 'command -v claude'], { timeout: 5000 })
+      return stdout.trim() || null
+    } catch {
+      return null
+    }
+  },
+}
+
+export async function resolveClaudePath(configured: string | undefined, deps: ClaudePathDeps = defaultDeps): Promise<string | undefined> {
+  if (configured && deps.exists(configured)) return configured
+  const local = join(deps.home, '.local/bin/claude')
+  if (deps.exists(local)) return local
+  return (await deps.which()) ?? undefined
+}
+```
+
+- [ ] **Step 4: Implementar `src/main/agent/AgentManager.ts`**
+
+```ts
+import type { AgentEvent } from '@shared/agent'
+import type { AgentPanelParams } from '@shared/models'
+import { AgentSession, type QueryFn } from './AgentSession'
+
+export type AgentRuntime = { queryFn: QueryFn; claudePath?: string; env?: Record<string, string> }
+
+export class AgentManager {
+  private readonly sessions = new Map<string, AgentSession>()
+
+  constructor(private readonly deps: { emit(panelId: string, event: AgentEvent): void; runtime(): AgentRuntime }) {}
+
+  create(panelId: string, params: AgentPanelParams): void {
+    if (this.sessions.has(panelId)) return
+    const runtime = this.deps.runtime()
+    this.sessions.set(
+      panelId,
+      new AgentSession(
+        {
+          cwd: params.projectPath,
+          permissionMode: params.permissionMode ?? 'default',
+          ...(params.model ? { model: params.model } : {}),
+          ...(params.sessionId ? { resume: params.sessionId } : {}),
+        },
+        {
+          queryFn: runtime.queryFn,
+          emit: (event) => this.deps.emit(panelId, event),
+          ...(runtime.claudePath ? { claudePath: runtime.claudePath } : {}),
+          ...(runtime.env ? { env: runtime.env } : {}),
+        },
+      ),
+    )
+  }
+
+  get(panelId: string): AgentSession {
+    const session = this.sessions.get(panelId)
+    if (!session) throw new Error(`Sessão de agente não encontrada: ${panelId}`)
+    return session
+  }
+
+  close(panelId: string): void {
+    this.sessions.get(panelId)?.close()
+    this.sessions.delete(panelId)
+  }
+
+  closeAll(): void {
+    for (const id of [...this.sessions.keys()]) this.close(id)
+  }
+
+  hasBusy(): boolean {
+    return [...this.sessions.values()].some((s) => s.currentState === 'running' || s.currentState === 'awaiting_permission')
+  }
+}
+```
+
+- [ ] **Step 5: Implementar `src/main/agent/fakeQuery.ts`**
+
+```ts
+import { AsyncQueue } from './AsyncQueue'
+import type { QueryFn, QueryLike, UserMessageLike } from './AgentSession'
+import type { SessionStoreApi } from './sdk'
+
+const textOf = (m: UserMessageLike): string =>
+  m.message.content
+    .map((b) => (typeof b === 'object' && b !== null && (b as { type?: unknown }).type === 'text' ? String((b as { text?: unknown }).text ?? '') : ''))
+    .join('')
+
+/** Scripted stand-in for the SDK used by E2E (NEXT_IDE_FAKE_AGENT=1). No network, no subprocess. */
+export const fakeQuery: QueryFn = ({ prompt, options }) => {
+  const out = new AsyncQueue<unknown>()
+  let model = options.model ?? 'fake-model'
+  let turn = 0
+  out.push({
+    type: 'system',
+    subtype: 'init',
+    session_id: options.resume ?? 'fake-session',
+    model,
+    cwd: options.cwd,
+    permissionMode: options.permissionMode,
+    slash_commands: ['compact', 'review'],
+  })
+  void (async () => {
+    for await (const msg of prompt) {
+      turn++
+      const text = textOf(msg)
+      const id = `fake_msg_${turn}`
+      if (text.includes('permissão')) {
+        const input = { command: 'rm -rf dist' }
+        const result = await options.canUseTool('Bash', input, {
+          signal: new AbortController().signal,
+          suggestions: [{ type: 'addRules' }],
+          title: 'Rodar rm -rf dist?',
+        })
+        const toolId = `fake_tool_${turn}`
+        out.push({ type: 'assistant', parent_tool_use_id: null, message: { id, content: [{ type: 'tool_use', id: toolId, name: 'Bash', input }] } })
+        out.push({
+          type: 'user',
+          parent_tool_use_id: null,
+          message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolId, content: result.behavior === 'allow' ? 'removido' : 'negado', is_error: result.behavior !== 'allow' }] },
+        })
+      }
+      if (text.includes('editar')) {
+        const toolId = `fake_edit_${turn}`
+        const input = { file_path: '/tmp/exemplo.ts', old_string: 'const a = 1', new_string: 'const a = 2' }
+        out.push({ type: 'assistant', parent_tool_use_id: null, message: { id, content: [{ type: 'tool_use', id: toolId, name: 'Edit', input }] } })
+        out.push({ type: 'user', parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolId, content: 'ok' }] } })
+      }
+      const reply = `Você disse: ${text}`
+      const half = Math.ceil(reply.length / 2)
+      const textId = `${id}_text`
+      out.push({ type: 'stream_event', parent_tool_use_id: null, event: { type: 'message_start', message: { id: textId } } })
+      out.push({ type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } })
+      out.push({ type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: reply.slice(0, half) } } })
+      out.push({ type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: reply.slice(half) } } })
+      out.push({ type: 'assistant', parent_tool_use_id: null, message: { id: textId, content: [{ type: 'text', text: reply }] } })
+      out.push({
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        duration_ms: 42,
+        total_cost_usd: 0.01,
+        usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+        modelUsage: { [model]: { contextWindow: 200000 } },
+      })
+    }
+    out.end()
+  })()
+  const query: QueryLike = Object.assign(out, {
+    interrupt: async () => undefined,
+    setModel: async (next?: string) => {
+      model = next ?? model
+    },
+    setPermissionMode: async () => undefined,
+    supportedCommands: async () => [
+      { name: 'compact', description: 'Compacta a conversa', argumentHint: '' },
+      { name: 'review', description: 'Revisa o código', argumentHint: '[pr]' },
+    ],
+    supportedModels: async () => [
+      { value: 'fake-model', displayName: 'Fake Opus', description: '' },
+      { value: 'fake-small', displayName: 'Fake Haiku', description: '' },
+    ],
+    close: () => out.end(),
+  })
+  return query
+}
+
+export const fakeSessions: SessionStoreApi = {
+  list: async () => [{ sessionId: 'fake-old', title: 'Sessão antiga de teste', lastModified: Date.now() - 60_000 }],
+  history: async () => [
+    { type: 'user', uuid: 'h1', parent_tool_use_id: null, message: { role: 'user', content: 'pergunta antiga' } },
+    { type: 'assistant', uuid: 'h2', parent_tool_use_id: null, message: { id: 'hm1', content: [{ type: 'text', text: 'resposta antiga' }] } },
+  ],
+}
+```
+
+- [ ] **Step 6: Implementar `src/main/agent/sdk.ts` (único arquivo que importa o SDK)**
+
+```ts
+import type { Options, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { SessionSummary } from '@shared/agent'
+import type { QueryFn, QueryLike } from './AgentSession'
+
+export type SessionStoreApi = {
+  list(dir: string): Promise<SessionSummary[]>
+  history(dir: string, sessionId: string): Promise<unknown[]>
+}
+
+export async function loadSdk(): Promise<{ queryFn: QueryFn } & SessionStoreApi> {
+  const sdk = await import('@anthropic-ai/claude-agent-sdk')
+  return {
+    // Our option/message shapes are structural subsets of the SDK's; the casts only bridge
+    // SDK-specific nominal types (PermissionUpdate, MessageParam) we deliberately don't import elsewhere.
+    queryFn: ({ prompt, options }) =>
+      sdk.query({ prompt: prompt as AsyncIterable<SDKUserMessage>, options: options as unknown as Options }) as unknown as QueryLike,
+    list: async (dir) =>
+      (await sdk.listSessions({ dir }))
+        .map((s) => ({ sessionId: s.sessionId, title: s.customTitle || s.summary || s.firstPrompt || s.sessionId, lastModified: s.lastModified }))
+        .sort((a, b) => b.lastModified - a.lastModified),
+    history: (dir, sessionId) => sdk.getSessionMessages(sessionId, { dir }),
+  }
+}
+```
+
+- [ ] **Step 7: Contrato IPC** — em `src/shared/ipc-contract.ts`: importar `AgentPanelParams, PermissionMode` de `./models` e `AgentEvent, CommandOption, ImageAttachment, ModelOption, PermissionDecision, SessionSummary` de `./agent`; adicionar ao `InvokeMap` as 12 linhas da tabela acima (ex.: `'agent:send': { args: [panelId: string, text: string, images: ImageAttachment[]]; result: void }`), os 12 nomes em `INVOKE_CHANNELS`, `'agent:event': [panelId: string, event: AgentEvent]` ao `EventMap` e `'agent:event'` em `EVENT_CHANNELS`.
+
+- [ ] **Step 8: Handlers** — em `src/main/ipc/handlers.ts`:
+
+```ts
+// imports adicionais
+import type { AgentManager } from '../agent/AgentManager'
+import { historyToEvents } from '../agent/normalize'
+import type { SessionStoreApi } from '../agent/sdk'
+
+// HandlerDeps ganha:
+//   agents: Pick<AgentManager, 'create' | 'get' | 'close'>
+//   sessions: SessionStoreApi
+//   agentReady: () => Promise<void>
+
+// dentro de buildHandlers, acrescentar:
+    'agent:create': (panelId, params) => d.agents.create(panelId, params),
+    'agent:start': async (panelId) => {
+      await d.agentReady()
+      d.agents.get(panelId).start()
+    },
+    'agent:send': async (panelId, text, images) => {
+      await d.agentReady()
+      d.agents.get(panelId).send(text, images)
+    },
+    'agent:interrupt': (panelId) => d.agents.get(panelId).interrupt(),
+    'agent:setModel': (panelId, model) => d.agents.get(panelId).setModel(model),
+    'agent:setMode': (panelId, mode) => d.agents.get(panelId).setMode(mode),
+    'agent:respondPermission': (panelId, requestId, decision) => d.agents.get(panelId).respondPermission(requestId, decision),
+    'agent:commands': async (panelId) => {
+      await d.agentReady()
+      return d.agents.get(panelId).commands()
+    },
+    'agent:models': async (panelId) => {
+      await d.agentReady()
+      return d.agents.get(panelId).models()
+    },
+    'agent:listSessions': async (projectPath) => {
+      await d.agentReady()
+      return d.sessions.list(projectPath)
+    },
+    'agent:history': async (projectPath, sessionId) => {
+      await d.agentReady()
+      return historyToEvents(await d.sessions.history(projectPath, sessionId))
+    },
+    'agent:close': (panelId) => d.agents.close(panelId),
+```
+
+- [ ] **Step 9: Wiring em `src/main/index.ts`**
+
+```ts
+// imports adicionais
+import { AgentManager } from './agent/AgentManager'
+import type { QueryFn } from './agent/AgentSession'
+import { fakeQuery, fakeSessions } from './agent/fakeQuery'
+import { loadSdk, type SessionStoreApi } from './agent/sdk'
+import { loginShellPath, mergePath, resolveClaudePath } from './env/loginShell'
+import { shellEnv } from './pty/shellEnv'
+
+// depois de `const ptys = ...`:
+type Sdk = { queryFn: QueryFn } & SessionStoreApi
+const FAKE_AGENT = process.env.NEXT_IDE_FAKE_AGENT === '1'
+let sdk: Sdk | null = null
+let claudePath: string | undefined
+const agentReady: Promise<void> = (async () => {
+  process.env.PATH = mergePath(process.env.PATH, await loginShellPath())
+  if (FAKE_AGENT) {
+    sdk = { queryFn: fakeQuery, ...fakeSessions }
+    return
+  }
+  claudePath = await resolveClaudePath((await stores.settings.read()).claudePath)
+  sdk = await loadSdk()
+})()
+agentReady.catch((err) => console.error('[next-ide] failed to prepare Claude Agent SDK', err))
+
+const requireSdk = (): Sdk => {
+  if (!sdk) throw new Error('O SDK do Claude ainda não carregou.')
+  return sdk
+}
+
+const agents = new AgentManager({
+  emit: (panelId, event) => send('agent:event', panelId, event),
+  runtime: () => ({
+    queryFn: (params) => requireSdk().queryFn(params),
+    env: shellEnv(process.env),
+    ...(claudePath ? { claudePath } : {}),
+  }),
+})
+
+// em buildHandlers({...}) acrescentar:
+//   agents,
+//   sessions: { list: (dir) => requireSdk().list(dir), history: (dir, id) => requireSdk().history(dir, id) },
+//   agentReady: () => agentReady,
+
+// before-quit: substituir o handler inteiro por
+app.on('before-quit', (event) => {
+  if (quitting) return
+  if (mainWindow && !mainWindow.isDestroyed() && agents.hasBusy()) {
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: 'warning',
+      buttons: ['Sair', 'Cancelar'],
+      defaultId: 1,
+      cancelId: 1,
+      message: 'Há agentes trabalhando.',
+      detail: 'Sair agora interrompe as sessões em andamento.',
+    })
+    if (choice === 1) {
+      event.preventDefault()
+      return
+    }
+  }
+  event.preventDefault()
+  quitting = true
+  try {
+    agents.closeAll()
+  } catch (err) {
+    console.error('[next-ide] closeAll failed', err)
+  }
+  try {
+    ptys.killAll()
+  } catch (err) {
+    console.error('[next-ide] killAll failed', err)
+  }
+  void Promise.allSettled([stores.workspaces.flush(), stores.layout.flush(), stores.settings.flush()]).finally(() => app.quit())
+})
+```
+
+Se `resolveClaudePath` retornar `undefined` fora do modo fake, `loadSdk` ainda carrega; o erro do SDK ao iniciar vira evento `error` no chat (tratado na Task 6).
+
+- [ ] **Step 10: Verificar**
+
+```bash
+npx vitest run test/main && npm run typecheck && npm test && npm run build
+grep -c 'import("@anthropic-ai/claude-agent-sdk")' out/main/index.js
+npm run test:e2e
+```
+Expected: todos verdes; o `grep` retorna `1` (o SDK ESM continua como `import()` dinâmico no bundle CJS). Se retornar `0`, conferir se virou `require(` e registrar no relatório (Electron 44/Node 24 suporta `require(esm)`, mas o smoke real da Task 6 confirma).
+
+- [ ] **Step 11: Commit** — `git add -A && git commit -m "feat: wire agent manager, SDK loader and agent IPC channels"` (conferir `git status --short` antes; nada de `.superpowers/`).
+
+---
+
+### Task 6: Painel Agente com chat e composer (primeiro teste visual)
+
+**Files:**
+- Create: `src/renderer/src/stores/agentStore.ts`, `src/renderer/src/agent/composerKeys.ts`, `src/renderer/src/panels/agent/AgentPanel.tsx`, `src/renderer/src/panels/agent/ChatView.tsx`, `src/renderer/src/panels/agent/Composer.tsx`, `src/renderer/src/panels/agent/cards/ChatItemView.tsx`, `cards/TextBlock.tsx`, `cards/ThinkingBlock.tsx`, `cards/UserBubble.tsx`, `cards/ErrorCard.tsx`, `cards/GenericToolCard.tsx`, `e2e/agent.spec.ts`, `e2e/agent-real.spec.ts`
+- Modify: `src/renderer/src/dock/Dock.tsx`, `src/renderer/src/App.tsx`, `e2e/helpers.ts`
+- Delete: `src/renderer/src/panels/agent/AgentStubPanel.tsx`
+- Test: `test/renderer/composerKeys.test.ts`, `test/renderer/agentStore.test.ts`, `e2e/agent.spec.ts`
+
+**Interfaces:**
+- Consumes: canais `agent:*` e evento `agent:event` (Task 5), `reduceChat`/`reduceAll`/`initialChat`/`ChatItem`/`ChatState` (Task 3), `useDock`, `useSessions`, `registerPanelRemovedListener` (Plano 1).
+- Produces:
+  - `useAgents` (zustand): `{ chats: Record<string, ChatState>; apply(panelId, event): void; load(panelId, events): void; clear(panelId): void; remove(panelId): void }`, `selectChat(panelId)`, `handleAgentEvent(panelId, event): void`, `subscribeAgentEvents(): void`
+  - `composerKeyAction(input: { key: string; shiftKey: boolean; isComposing: boolean; text: string; busy: boolean; hasHistory: boolean }): 'send' | 'interrupt' | 'history' | null`
+  - `<AgentPanel>` registrado como componente `agent` do dock; `<ChatView items panelId>`; `<Composer panelId chat onSend>`; `<ChatItemView item items panelId>` (despacho de cartões — Task 7 e 8 acrescentam tipos).
+
+- [ ] **Step 1: Testes unitários falhando**
+
+```ts
+// test/renderer/composerKeys.test.ts
+import { describe, expect, it } from 'vitest'
+import { composerKeyAction } from '@renderer/agent/composerKeys'
+
+const base = { key: 'a', shiftKey: false, isComposing: false, text: 'oi', busy: false, hasHistory: true }
+
+describe('composerKeyAction', () => {
+  it('Enter sends, Shift+Enter and IME composition do not', () => {
+    expect(composerKeyAction({ ...base, key: 'Enter' })).toBe('send')
+    expect(composerKeyAction({ ...base, key: 'Enter', shiftKey: true })).toBeNull()
+    expect(composerKeyAction({ ...base, key: 'Enter', isComposing: true })).toBeNull()
+  })
+  it('Escape interrupts only while busy', () => {
+    expect(composerKeyAction({ ...base, key: 'Escape', busy: true })).toBe('interrupt')
+    expect(composerKeyAction({ ...base, key: 'Escape' })).toBeNull()
+  })
+  it('ArrowUp recalls history only with an empty input', () => {
+    expect(composerKeyAction({ ...base, key: 'ArrowUp', text: '' })).toBe('history')
+    expect(composerKeyAction({ ...base, key: 'ArrowUp' })).toBeNull()
+    expect(composerKeyAction({ ...base, key: 'ArrowUp', text: '', hasHistory: false })).toBeNull()
+  })
+})
+```
+
+```ts
+// test/renderer/agentStore.test.ts
+import { beforeEach, describe, expect, it } from 'vitest'
+import { handleAgentEvent, selectChat, useAgents } from '@renderer/stores/agentStore'
+import { useSessions } from '@renderer/stores/sessionsStore'
+
+describe('agentStore', () => {
+  beforeEach(() => {
+    useAgents.setState({ chats: {} })
+    useSessions.setState({ byId: {}, order: [] })
+  })
+
+  it('applies events per panel and mirrors status into the sessions store', () => {
+    useSessions.getState().add({ panelId: 'p1', type: 'agent', projectPath: '/p', title: 'p · claude', state: 'idle' })
+    handleAgentEvent('p1', { kind: 'status', state: 'running' })
+    handleAgentEvent('p1', { kind: 'user', id: 'u', text: 'oi', images: 0 })
+    expect(selectChat('p1')(useAgents.getState()).state).toBe('running')
+    expect(selectChat('p1')(useAgents.getState()).items).toHaveLength(1)
+    expect(useSessions.getState().byId.p1!.state).toBe('running')
+    expect(selectChat('other')(useAgents.getState()).items).toEqual([])
+  })
+
+  it('loads history, clears and removes', () => {
+    useAgents.getState().load('p1', [{ kind: 'user', id: 'u', text: 'antiga', images: 0 }])
+    expect(useAgents.getState().chats.p1!.items).toHaveLength(1)
+    useAgents.getState().clear('p1')
+    expect(useAgents.getState().chats.p1!.items).toEqual([])
+    useAgents.getState().remove('p1')
+    expect(useAgents.getState().chats.p1).toBeUndefined()
+  })
+})
+```
+
+- [ ] **Step 2: E2E falhando** — em `e2e/helpers.ts`, dentro de `launch`, o env passa a incluir `NEXT_IDE_FAKE_AGENT: '1'` junto com o ZDOTDIR hermético (antes de `opts.env`, para que um teste possa sobrescrever com `'0'`). Todos os specs existentes que abrem Claude passam a usar o agente fake.
+
+```ts
+// e2e/agent.spec.ts
+import { expect, test } from '@playwright/test'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { basename, join } from 'node:path'
+import { launch } from './helpers'
+
+export async function openAgent() {
+  const folder = mkdtempSync(join(tmpdir(), 'proj-agent-'))
+  const name = basename(folder)
+  const { app, page, userData } = await launch({ env: { NEXT_IDE_E2E_PICK_FOLDER: folder } })
+  await page.getByRole('button', { name: 'Novo workspace' }).click()
+  await page.getByPlaceholder('Nome do workspace').fill('ws')
+  await page.getByPlaceholder('Nome do workspace').press('Enter')
+  await page.getByRole('button', { name: 'Adicionar pasta em ws' }).click()
+  await page.getByRole('button', { name: `Abrir Claude em ${name}` }).click()
+  return { app, page, name, folder, userData }
+}
+
+test('envia mensagem e recebe resposta em streaming', async () => {
+  const { app, page } = await openAgent()
+  const input = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
+  await input.fill('olá mundo')
+  await input.press('Enter')
+  await expect(page.getByTestId('chat-view')).toContainText('Você disse: olá mundo')
+  await expect(input).toHaveValue('')
+  await app.close()
+})
+
+test('Shift+Enter quebra linha sem enviar', async () => {
+  const { app, page } = await openAgent()
+  const input = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
+  await input.click()
+  await page.keyboard.type('linha 1')
+  await page.keyboard.press('Shift+Enter')
+  await page.keyboard.type('linha 2')
+  await expect(page.getByTestId('user-bubble')).toHaveCount(0)
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('user-bubble')).toHaveCount(1)
+  await expect(page.getByTestId('user-bubble')).toContainText('linha 1')
+  await expect(page.getByTestId('user-bubble')).toContainText('linha 2')
+  await app.close()
+})
+```
+
+```ts
+// e2e/agent-real.spec.ts — smoke opcional com o Claude real (custa tokens)
+import { expect, test } from '@playwright/test'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { basename, join } from 'node:path'
+import { launch } from './helpers'
+
+test.skip(process.env.NEXT_IDE_REAL_AGENT !== '1', 'set NEXT_IDE_REAL_AGENT=1 to run against the real Claude')
+
+test('Claude real responde pelo SDK', async () => {
+  test.setTimeout(120_000)
+  const folder = mkdtempSync(join(tmpdir(), 'proj-real-'))
+  const name = basename(folder)
+  const { app, page } = await launch({ env: { NEXT_IDE_E2E_PICK_FOLDER: folder, NEXT_IDE_FAKE_AGENT: '0' } })
+  await page.getByRole('button', { name: 'Novo workspace' }).click()
+  await page.getByPlaceholder('Nome do workspace').fill('ws')
+  await page.getByPlaceholder('Nome do workspace').press('Enter')
+  await page.getByRole('button', { name: 'Adicionar pasta em ws' }).click()
+  await page.getByRole('button', { name: `Abrir Claude em ${name}` }).click()
+  const input = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
+  await input.fill('Responda apenas com a palavra: pong')
+  await input.press('Enter')
+  await expect(page.getByTestId('chat-view')).toContainText(/pong/i, { timeout: 90_000 })
+  await app.close()
+})
+```
+
+- [ ] **Step 3: Rodar e ver falhar** — `npx vitest run test/renderer/composerKeys.test.ts test/renderer/agentStore.test.ts` (FAIL: imports) e `npm run test:e2e -- e2e/agent.spec.ts` (FAIL: textbox não existe).
+
+- [ ] **Step 4: Implementar lógica pura e store**
+
+```ts
+// src/renderer/src/agent/composerKeys.ts
+export type ComposerKeyInput = { key: string; shiftKey: boolean; isComposing: boolean; text: string; busy: boolean; hasHistory: boolean }
+
+export function composerKeyAction(e: ComposerKeyInput): 'send' | 'interrupt' | 'history' | null {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) return 'send'
+  if (e.key === 'Escape' && e.busy) return 'interrupt'
+  if (e.key === 'ArrowUp' && e.text === '' && e.hasHistory) return 'history'
+  return null
+}
+```
+
+```ts
+// src/renderer/src/stores/agentStore.ts
+import { create } from 'zustand'
+import type { AgentEvent } from '@shared/agent'
+import type { AgentPanelParams } from '@shared/models'
+import { initialChat, reduceAll, reduceChat, type ChatState } from '../agent/chatReducer'
+import { useDock } from '../dock/dockStore'
+import { useSessions } from './sessionsStore'
+
+type AgentsState = {
+  chats: Record<string, ChatState>
+  apply(panelId: string, event: AgentEvent): void
+  load(panelId: string, events: AgentEvent[]): void
+  clear(panelId: string): void
+  remove(panelId: string): void
+}
+
+export const useAgents = create<AgentsState>()((set) => ({
+  chats: {},
+  apply: (panelId, event) => set((s) => ({ chats: { ...s.chats, [panelId]: reduceChat(s.chats[panelId] ?? initialChat, event) } })),
+  load: (panelId, events) => set((s) => ({ chats: { ...s.chats, [panelId]: reduceAll(events, s.chats[panelId] ?? initialChat) } })),
+  clear: (panelId) => set((s) => ({ chats: { ...s.chats, [panelId]: initialChat } })),
+  remove: (panelId) =>
+    set((s) => {
+      const { [panelId]: _removed, ...rest } = s.chats
+      return { chats: rest }
+    }),
+}))
+
+export const selectChat =
+  (panelId: string) =>
+  (s: AgentsState): ChatState =>
+    s.chats[panelId] ?? initialChat
+
+/** Keeps session id / model / mode in the panel params so the layout restores them. */
+function persistParams(panelId: string, patch: Partial<AgentPanelParams>): void {
+  const panel = useDock.getState().api?.getPanel(panelId)
+  const params = panel?.params as AgentPanelParams | undefined
+  if (!panel || params?.type !== 'agent') return
+  panel.api.updateParameters({ ...params, ...patch })
+}
+
+export function handleAgentEvent(panelId: string, event: AgentEvent): void {
+  useAgents.getState().apply(panelId, event)
+  if (event.kind === 'status') useSessions.getState().setState(panelId, event.state)
+  if (event.kind === 'init' && event.sessionId) persistParams(panelId, { sessionId: event.sessionId })
+  if (event.kind === 'model') persistParams(panelId, { model: event.model })
+  if (event.kind === 'mode') persistParams(panelId, { permissionMode: event.permissionMode })
+}
+
+let subscribed = false
+export function subscribeAgentEvents(): void {
+  if (subscribed) return
+  subscribed = true
+  window.api.on('agent:event', handleAgentEvent)
+}
+```
+
+- [ ] **Step 5: Cartões básicos**
+
+```tsx
+// src/renderer/src/panels/agent/cards/TextBlock.tsx
+import Markdown, { type Components } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+
+const components: Components = {
+  p: ({ children }) => <p className="my-2 leading-relaxed">{children}</p>,
+  a: ({ children, href }) => (
+    <a href={href} target="_blank" rel="noreferrer" className="text-sky-400 underline">
+      {children}
+    </a>
+  ),
+  ul: ({ children }) => <ul className="my-2 list-disc pl-5">{children}</ul>,
+  ol: ({ children }) => <ol className="my-2 list-decimal pl-5">{children}</ol>,
+  h1: ({ children }) => <h1 className="mt-3 mb-2 text-lg font-semibold">{children}</h1>,
+  h2: ({ children }) => <h2 className="mt-3 mb-2 text-base font-semibold">{children}</h2>,
+  h3: ({ children }) => <h3 className="mt-3 mb-1 font-semibold">{children}</h3>,
+  pre: ({ children }) => <pre className="my-2 overflow-x-auto rounded bg-neutral-900 p-3 text-xs">{children}</pre>,
+  code: ({ children, className }) =>
+    className ? <code className={className}>{children}</code> : <code className="rounded bg-neutral-800 px-1 py-0.5 text-[0.85em]">{children}</code>,
+  table: ({ children }) => (
+    <div className="my-2 overflow-x-auto">
+      <table className="border-collapse text-xs">{children}</table>
+    </div>
+  ),
+  th: ({ children }) => <th className="border border-neutral-700 px-2 py-1 text-left">{children}</th>,
+  td: ({ children }) => <td className="border border-neutral-800 px-2 py-1">{children}</td>,
+}
+
+export function TextBlock({ text, streaming }: { text: string; streaming: boolean }) {
+  return (
+    <div className="text-sm text-neutral-200" data-testid="assistant-text">
+      <Markdown remarkPlugins={[remarkGfm]} components={components}>
+        {text}
+      </Markdown>
+      {streaming && <span className="inline-block h-3 w-1.5 animate-pulse bg-neutral-400 align-middle" />}
+    </div>
+  )
+}
+```
+
+```tsx
+// src/renderer/src/panels/agent/cards/ThinkingBlock.tsx
+export function ThinkingBlock({ text }: { text: string }) {
+  return (
+    <details className="text-xs text-neutral-500">
+      <summary className="cursor-pointer select-none">pensamento</summary>
+      <p className="mt-1 whitespace-pre-wrap">{text}</p>
+    </details>
+  )
+}
+```
+
+```tsx
+// src/renderer/src/panels/agent/cards/UserBubble.tsx
+export function UserBubble({ text, images }: { text: string; images: number }) {
+  return (
+    <div data-testid="user-bubble" className="ml-auto max-w-[85%] rounded-lg bg-neutral-800 px-3 py-2 text-sm whitespace-pre-wrap text-neutral-100">
+      {text}
+      {images > 0 && <div className="mt-1 text-xs text-neutral-400">📎 {images} imagem(ns)</div>}
+    </div>
+  )
+}
+```
+
+```tsx
+// src/renderer/src/panels/agent/cards/ErrorCard.tsx
+export function ErrorCard({ message }: { message: string }) {
+  return (
+    <div role="alert" className="rounded border border-red-900 bg-red-950/40 px-3 py-2 text-xs whitespace-pre-wrap text-red-300">
+      {message}
+    </div>
+  )
+}
+```
+
+```tsx
+// src/renderer/src/panels/agent/cards/GenericToolCard.tsx
+import type { ToolItem } from '../../../agent/chatReducer'
+
+export function toolSummary(input: unknown): string {
+  if (typeof input !== 'object' || input === null) return ''
+  const rec = input as Record<string, unknown>
+  const first = rec.file_path ?? rec.path ?? rec.pattern ?? rec.command ?? rec.url ?? rec.description
+  return typeof first === 'string' ? first : ''
+}
+
+export function ToolStatus({ item }: { item: ToolItem }) {
+  if (item.output === undefined) return <span className="text-neutral-500">…</span>
+  return item.isError ? <span className="text-red-400">✗</span> : <span className="text-emerald-400">✓</span>
+}
+
+export function GenericToolCard({ item }: { item: ToolItem }) {
+  return (
+    <details className="rounded border border-neutral-800 text-xs" data-testid="tool-card">
+      <summary className="flex cursor-pointer items-center gap-2 px-2 py-1 text-neutral-300">
+        <span className="font-medium">{item.name}</span>
+        <span className="truncate text-neutral-500">{toolSummary(item.input)}</span>
+        <span className="ml-auto">
+          <ToolStatus item={item} />
+        </span>
+      </summary>
+      {item.output !== undefined && <pre className="max-h-64 overflow-auto border-t border-neutral-800 p-2 whitespace-pre-wrap text-neutral-400">{item.output}</pre>}
+    </details>
+  )
+}
+```
+
+```tsx
+// src/renderer/src/panels/agent/cards/ChatItemView.tsx
+import type { ChatItem } from '../../../agent/chatReducer'
+import { ErrorCard } from './ErrorCard'
+import { GenericToolCard } from './GenericToolCard'
+import { TextBlock } from './TextBlock'
+import { ThinkingBlock } from './ThinkingBlock'
+import { UserBubble } from './UserBubble'
+
+export function itemKey(item: ChatItem): string {
+  switch (item.type) {
+    case 'user':
+    case 'error':
+    case 'tool':
+      return `${item.type}:${item.id}`
+    case 'text':
+    case 'thinking':
+      return `${item.type}:${item.key}`
+    case 'permission':
+      return `permission:${item.requestId}`
+  }
+}
+
+export function ChatItemView({ item }: { item: ChatItem; items: ChatItem[]; panelId: string }) {
+  switch (item.type) {
+    case 'user':
+      return <UserBubble text={item.text} images={item.images} />
+    case 'text':
+      return <TextBlock text={item.text} streaming={!item.final} />
+    case 'thinking':
+      return <ThinkingBlock text={item.text} />
+    case 'tool':
+      return <GenericToolCard item={item} />
+    case 'error':
+      return <ErrorCard message={item.message} />
+    case 'permission':
+      return <div className="text-xs text-orange-400">Permissão pendente: {item.toolName}</div>
+  }
+}
+```
+
+- [ ] **Step 6: ChatView, Composer e AgentPanel**
+
+```tsx
+// src/renderer/src/panels/agent/ChatView.tsx
+import { useEffect, useRef } from 'react'
+import type { ChatItem } from '../../agent/chatReducer'
+import { ChatItemView, itemKey } from './cards/ChatItemView'
+
+const isChild = (item: ChatItem) => (item.type === 'text' || item.type === 'tool') && Boolean(item.parentToolUseId)
+
+export function ChatView({ items, panelId }: { items: ChatItem[]; panelId: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const stickToBottom = useRef(true)
+
+  useEffect(() => {
+    const el = ref.current
+    if (el && stickToBottom.current) el.scrollTop = el.scrollHeight
+  }, [items])
+
+  const topLevel = items.filter((item) => !isChild(item))
+
+  return (
+    <div
+      ref={ref}
+      data-testid="chat-view"
+      className="flex-1 space-y-3 overflow-y-auto px-4 py-3"
+      onScroll={() => {
+        const el = ref.current
+        if (el) stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+      }}
+    >
+      {topLevel.length === 0 && <div className="pt-10 text-center text-sm text-neutral-600">Pergunte algo ao Claude sobre este projeto.</div>}
+      {topLevel.map((item) => (
+        <ChatItemView key={itemKey(item)} item={item} items={items} panelId={panelId} />
+      ))}
+    </div>
+  )
+}
+```
+
+```tsx
+// src/renderer/src/panels/agent/Composer.tsx
+import { useLayoutEffect, useRef, useState } from 'react'
+import type { ImageAttachment } from '@shared/agent'
+import type { ChatState } from '../../agent/chatReducer'
+import { composerKeyAction } from '../../agent/composerKeys'
+
+type Props = { panelId: string; chat: ChatState; onSend(text: string, images: ImageAttachment[]): void }
+
+export function Composer({ panelId, chat, onSend }: Props) {
+  const [text, setText] = useState('')
+  const history = useRef<string[]>([])
+  const textarea = useRef<HTMLTextAreaElement>(null)
+  const busy = chat.state === 'running' || chat.state === 'awaiting_permission'
+
+  useLayoutEffect(() => {
+    const el = textarea.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 280)}px`
+  }, [text])
+
+  const submit = () => {
+    const value = text.trim()
+    if (!value) return
+    onSend(value, [])
+    history.current.push(value)
+    setText('')
+  }
+  const interrupt = () => void window.api.invoke('agent:interrupt', panelId).catch((err) => console.error('[next-ide] interrupt failed', err))
+
+  return (
+    <div className="border-t border-neutral-800 p-2">
+      <textarea
+        ref={textarea}
+        aria-label="Mensagem para o Claude"
+        placeholder="Pergunte ao Claude… (Enter envia, Shift+Enter quebra linha)"
+        rows={1}
+        className="w-full resize-none rounded bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none ring-1 ring-neutral-800 focus:ring-neutral-600"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          const action = composerKeyAction({
+            key: e.key,
+            shiftKey: e.shiftKey,
+            isComposing: e.nativeEvent.isComposing,
+            text,
+            busy,
+            hasHistory: history.current.length > 0,
+          })
+          if (!action) return
+          e.preventDefault()
+          if (action === 'send') submit()
+          else if (action === 'interrupt') interrupt()
+          else setText(history.current.at(-1) ?? '')
+        }}
+      />
+      <div className="mt-1 flex items-center gap-2 text-xs text-neutral-500" data-testid="composer-toolbar">
+        <span className="flex-1" />
+        {busy ? (
+          <button aria-label="Parar" className="rounded bg-neutral-800 px-2 py-1 text-neutral-200 hover:bg-neutral-700" onClick={interrupt}>
+            ■
+          </button>
+        ) : (
+          <button aria-label="Enviar" className="rounded bg-orange-600 px-2 py-1 text-white hover:bg-orange-500 disabled:opacity-40" disabled={!text.trim()} onClick={submit}>
+            ↑
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+```
+
+```tsx
+// src/renderer/src/panels/agent/AgentPanel.tsx
+import type { IDockviewPanelProps } from 'dockview-react'
+import { useEffect } from 'react'
+import type { ImageAttachment } from '@shared/agent'
+import type { AgentPanelParams } from '@shared/models'
+import { selectChat, useAgents } from '../../stores/agentStore'
+import { ChatView } from './ChatView'
+import { Composer } from './Composer'
+
+const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
+
+export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams>) {
+  const panelId = api.id
+  const chat = useAgents(selectChat(panelId))
+
+  useEffect(() => {
+    let cancelled = false
+    const fail = (err: unknown) => useAgents.getState().apply(panelId, { kind: 'error', message: `Falha ao iniciar o agente: ${errorText(err)}` })
+    void (async () => {
+      await window.api.invoke('agent:create', panelId, params)
+      if (params.sessionId) {
+        // Restored panel: show history now, spawn `claude --resume` only on the first send.
+        if (useAgents.getState().chats[panelId]) return
+        const history = await window.api.invoke('agent:history', params.projectPath, params.sessionId)
+        if (!cancelled) useAgents.getState().load(panelId, history)
+      } else {
+        await window.api.invoke('agent:start', panelId)
+      }
+    })().catch(fail)
+    return () => {
+      cancelled = true
+    }
+    // Params are read once per panel: later changes (sessionId/model/mode) come from this same session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelId])
+
+  const send = (text: string, images: ImageAttachment[]) =>
+    void window.api
+      .invoke('agent:send', panelId, text, images)
+      .catch((err) => useAgents.getState().apply(panelId, { kind: 'error', message: `Falha ao enviar: ${errorText(err)}` }))
+
+  return (
+    <div className="flex h-full flex-col bg-neutral-950" data-testid="agent-panel">
+      <ChatView items={chat.items} panelId={panelId} />
+      <Composer panelId={panelId} chat={chat} onSend={send} />
+    </div>
+  )
+}
+```
+
+- [ ] **Step 7: Integrar** — em `Dock.tsx`: trocar o import/uso de `AgentStubPanel` por `AgentPanel` no mapa `components`; acrescentar, junto do listener de terminal existente:
+
+```ts
+registerPanelRemovedListener((panelId, params) => {
+  if (params?.type !== 'agent') return
+  useAgents.getState().remove(panelId)
+  void window.api.invoke('agent:close', panelId).catch((err) => console.error('[next-ide] agent close failed', err))
+})
+```
+
+(com `import { useAgents } from '../stores/agentStore'`). Em `App.tsx`, dentro de `App`: `useEffect(() => subscribeAgentEvents(), [])` (import de `useEffect` e de `subscribeAgentEvents`). Apagar `src/renderer/src/panels/agent/AgentStubPanel.tsx`.
+
+- [ ] **Step 8: Verificar**
+
+```bash
+npx vitest run test/renderer && npm run typecheck && npm test
+npm run test:e2e
+NEXT_IDE_REAL_AGENT=1 npx playwright test e2e/agent-real.spec.ts
+```
+Expected: unitários e E2E verdes (inclui `agent.spec.ts` e os specs antigos, agora com agente fake). O smoke real deve passar usando o login do usuário (se falhar por auth/rede, registrar a mensagem exata no relatório como DONE_WITH_CONCERNS — não enfraquecer o teste).
+
+- [ ] **Step 9: Commit** — `git add -A && git commit -m "feat: add agent chat panel with streaming and native composer"` (conferir `git status --short`).
+
+<!-- TASKS 7+ APPENDED BELOW -->
