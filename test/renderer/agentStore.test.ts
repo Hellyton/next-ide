@@ -1,11 +1,25 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { handleAgentEvent, selectChat, useAgents } from '@renderer/stores/agentStore'
+import { useDock } from '@renderer/dock/dockStore'
 import { useSessions } from '@renderer/stores/sessionsStore'
+
+/** Minimal fake dockview api so `persistParams` has a panel to update. */
+function fakeDockApi(panelId: string) {
+  const params = { type: 'agent' as const, projectPath: '/p' }
+  const updateParameters = vi.fn()
+  useDock.setState({
+    api: {
+      getPanel: (id: string) => (id === panelId ? { params, api: { updateParameters } } : undefined),
+    } as never,
+  })
+  return updateParameters
+}
 
 describe('agentStore', () => {
   beforeEach(() => {
     useAgents.setState({ chats: {} })
     useSessions.setState({ byId: {}, order: [] })
+    useDock.setState({ api: null })
   })
 
   it('applies events per panel and mirrors status into the sessions store', () => {
@@ -22,6 +36,34 @@ describe('agentStore', () => {
     handleAgentEvent('gone', { kind: 'status', state: 'exited' })
     handleAgentEvent('gone', { kind: 'user', id: 'u', text: 'tarde', images: 0 })
     expect(useAgents.getState().chats.gone).toBeUndefined()
+  })
+
+  it('does not persist the session id from init until the panel has a user message', () => {
+    useSessions.getState().add({ panelId: 'p1', type: 'agent', projectPath: '/p', title: 'p · claude', state: 'idle' })
+    const updateParameters = fakeDockApi('p1')
+    handleAgentEvent('p1', { kind: 'init', sessionId: 's1', model: 'opus', cwd: '/p', permissionMode: 'default', slashCommands: [] })
+    expect(updateParameters).not.toHaveBeenCalled()
+    handleAgentEvent('p1', { kind: 'user', id: 'u1', text: 'oi', images: 0 })
+    expect(updateParameters).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 's1' }))
+  })
+
+  it('persists the session id from init immediately when the panel already has a user message', () => {
+    useSessions.getState().add({ panelId: 'p1', type: 'agent', projectPath: '/p', title: 'p · claude', state: 'idle' })
+    useAgents.getState().apply('p1', { kind: 'user', id: 'u0', text: 'oi', images: 0 })
+    const updateParameters = fakeDockApi('p1')
+    handleAgentEvent('p1', { kind: 'init', sessionId: 's2', model: 'opus', cwd: '/p', permissionMode: 'default', slashCommands: [] })
+    expect(updateParameters).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 's2' }))
+  })
+
+  it('clears a pending session id when the panel is removed', () => {
+    useSessions.getState().add({ panelId: 'p1', type: 'agent', projectPath: '/p', title: 'p · claude', state: 'idle' })
+    fakeDockApi('p1')
+    handleAgentEvent('p1', { kind: 'init', sessionId: 's3', model: 'opus', cwd: '/p', permissionMode: 'default', slashCommands: [] })
+    useAgents.getState().remove('p1')
+    const updateParameters = fakeDockApi('p1')
+    useSessions.getState().add({ panelId: 'p1', type: 'agent', projectPath: '/p', title: 'p · claude', state: 'idle' })
+    handleAgentEvent('p1', { kind: 'user', id: 'u1', text: 'oi', images: 0 })
+    expect(updateParameters).not.toHaveBeenCalled()
   })
 
   it('loads history, clears and removes', () => {

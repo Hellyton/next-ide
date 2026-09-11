@@ -22,6 +22,7 @@ export const useAgents = create<AgentsState>()((set) => ({
   clear: (panelId) => set((s) => ({ chats: { ...s.chats, [panelId]: initialChat } })),
   remove: (panelId) =>
     set((s) => {
+      pendingSessionId.delete(panelId)
       const { [panelId]: _removed, ...rest } = s.chats
       return { chats: rest }
     }),
@@ -59,13 +60,31 @@ export function replacePanelParams(panelId: string, params: AgentPanelParams): v
   panel.api.updateParameters(replacementPatch(panel.params, params))
 }
 
+/**
+ * `init` fires right after `agent:start`, before any user message: a panel opened but never
+ * used would otherwise persist a `sessionId` with no transcript, and show the "Sessão anterior
+ * não encontrada." card on every relaunch. Holds one sessionId per panel until its first `user`.
+ */
+const pendingSessionId = new Map<string, string>()
+
 export function handleAgentEvent(panelId: string, event: AgentEvent): void {
   // Late events (e.g. the `exited` from agent:close) can arrive after the panel left the dock;
   // applying them would resurrect a chat entry for a panel that no longer exists.
   if (!useSessions.getState().byId[panelId]) return
   useAgents.getState().apply(panelId, event)
   if (event.kind === 'status') useSessions.getState().setState(panelId, event.state)
-  if (event.kind === 'init' && event.sessionId) persistParams(panelId, { sessionId: event.sessionId })
+  if (event.kind === 'init' && event.sessionId) {
+    const hasUserItem = useAgents.getState().chats[panelId]?.items.some((it) => it.type === 'user') ?? false
+    if (hasUserItem) persistParams(panelId, { sessionId: event.sessionId })
+    else pendingSessionId.set(panelId, event.sessionId)
+  }
+  if (event.kind === 'user') {
+    const sessionId = pendingSessionId.get(panelId)
+    if (sessionId) {
+      pendingSessionId.delete(panelId)
+      persistParams(panelId, { sessionId })
+    }
+  }
   if (event.kind === 'model') persistParams(panelId, { model: event.model })
   if (event.kind === 'mode') persistParams(panelId, { permissionMode: event.permissionMode })
 }
