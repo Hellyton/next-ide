@@ -17,7 +17,7 @@ function fakeDockApi(panelId: string, extraParams: Record<string, unknown> = {})
 
 describe('agentStore', () => {
   beforeEach(() => {
-    useAgents.setState({ chats: {} })
+    useAgents.setState({ chats: {}, drafts: {} })
     useSessions.setState({ byId: {}, order: [] })
     useDock.setState({ api: null })
   })
@@ -95,5 +95,15 @@ describe('agentStore', () => {
     expect(useAgents.getState().chats.p1!.items).toEqual([])
     useAgents.getState().remove('p1')
     expect(useAgents.getState().chats.p1).toBeUndefined()
+  })
+
+  it('keeps a draft per panel, appends snippets, and drops it on remove', () => {
+    useAgents.getState().setDraft('p1', 'olha')
+    useAgents.getState().insertIntoDraft('p1', '@a.ts')
+    expect(useAgents.getState().drafts.p1).toBe('olha @a.ts ')
+    useAgents.getState().insertIntoDraft('p2', '@b.ts')
+    expect(useAgents.getState().drafts.p2).toBe('@b.ts ')
+    useAgents.getState().remove('p1')
+    expect(useAgents.getState().drafts.p1).toBeUndefined()
   })
 })

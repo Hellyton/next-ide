@@ -1,10 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { fuzzyFilter } from '@shared/fuzzy'
 import type { ImageAttachment } from '@shared/agent'
+import { applyMention, mentionQuery } from '../../agent/mentions'
 import type { ChatState } from '../../agent/chatReducer'
 import { composerKeyAction } from '../../agent/composerKeys'
 import { canSend, pickImageFiles, readImage, validateImage } from '../../agent/images'
 import { classifySlash, filterCommands, mergeCommands, slashQuery, type LocalCommand, type SlashItem } from '../../agent/slash'
 import { useDock } from '../../dock/dockStore'
+import { useAgents } from '../../stores/agentStore'
+import { useFiles } from '../../stores/filesStore'
+import { MentionMenu } from './MentionMenu'
 import { ModelSelect } from './ModelSelect'
 import { ModeSelect } from './ModeSelect'
 import { SlashMenu } from './SlashMenu'
@@ -18,7 +23,10 @@ type Props = {
 }
 
 export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }: Props) {
-  const [text, setText] = useState('')
+  const text = useAgents((s) => s.drafts[panelId] ?? '')
+  const setText = (value: string) => useAgents.getState().setDraft(panelId, value)
+  const [caret, setCaret] = useState(0)
+  const [dismissedAt, setDismissedAt] = useState<number | null>(null)
   const history = useRef<string[]>([])
   const textarea = useRef<HTMLTextAreaElement>(null)
   const busy = chat.state === 'running' || chat.state === 'awaiting_permission'
@@ -30,6 +38,23 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }:
   const fileInput = useRef<HTMLInputElement>(null)
   const query = slashQuery(text)
   const menuItems = query === null ? [] : filterCommands(commands ?? mergeCommands([], chat.slashCommands), query)
+  const mention = query === null ? mentionQuery(text, caret) : null
+  const index = useFiles((s) => s.indexes[projectPath])
+  const mentionItems = mention && mention.start !== dismissedAt ? fuzzyFilter(mention.query, index ?? [], (s) => s, 8) : []
+  const activeIndex = (n: number) => Math.min(menuIndex, Math.max(n - 1, 0))
+
+  useEffect(() => {
+    if (mention && !index) void useFiles.getState().ensureIndex(projectPath)
+  }, [mention !== null, index, projectPath])
+
+  const pickMention = (rel: string) => {
+    if (!mention) return
+    const next = applyMention(text, mention.start, caret, rel)
+    setText(next.text)
+    setCaret(next.caret)
+    setMenuIndex(0)
+    requestAnimationFrame(() => textarea.current?.setSelectionRange(next.caret, next.caret))
+  }
 
   useLayoutEffect(() => {
     const el = textarea.current
@@ -103,6 +128,7 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }:
       }}
     >
       <SlashMenu items={menuItems} activeIndex={Math.min(menuIndex, Math.max(menuItems.length - 1, 0))} onPick={pick} />
+      <MentionMenu items={mentionItems} activeIndex={activeIndex(mentionItems.length)} onPick={pickMention} />
       {notice && (
         <div data-testid="composer-notice" className="mb-1 flex items-center gap-2 rounded border border-amber-800 bg-amber-950/30 px-2 py-1 text-xs text-amber-200">
           <span className="flex-1">{notice.text}</span>
@@ -137,12 +163,18 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }:
       )}
       <textarea
         ref={textarea}
+        data-composer={panelId}
         aria-label="Mensagem para o Claude"
         placeholder="Pergunte ao Claude… (Enter envia, Shift+Enter quebra linha)"
         rows={1}
         className="w-full resize-none rounded bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none ring-1 ring-neutral-800 focus:ring-neutral-600"
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => {
+          setText(e.target.value)
+          setCaret(e.target.selectionStart ?? e.target.value.length)
+          setDismissedAt(null)
+        }}
+        onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
         onPaste={(e) => {
           const files = pickImageFiles(e.clipboardData.files)
           if (files.length) {
@@ -151,6 +183,23 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }:
           }
         }}
         onKeyDown={(e) => {
+          if (mentionItems.length > 0 && mention) {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+              e.preventDefault()
+              setMenuIndex((i) => (i + (e.key === 'ArrowDown' ? 1 : mentionItems.length - 1)) % mentionItems.length)
+              return
+            }
+            if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing)) {
+              e.preventDefault()
+              pickMention(mentionItems[activeIndex(mentionItems.length)]!)
+              return
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault()
+              setDismissedAt(mention.start)
+              return
+            }
+          }
           if (menuItems.length > 0) {
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
               e.preventDefault()

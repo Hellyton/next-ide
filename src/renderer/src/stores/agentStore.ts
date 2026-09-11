@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { AgentEvent } from '@shared/agent'
 import type { AgentPanelParams } from '@shared/models'
+import { appendSnippet } from '../agent/mentions'
 import { initialChat, reduceAll, reduceChat, type ChatState } from '../agent/chatReducer'
 import { useDock } from '../dock/dockStore'
 import { replacementPatch } from '../dock/panelParams'
@@ -8,15 +9,20 @@ import { useSessions } from './sessionsStore'
 
 type AgentsState = {
   chats: Record<string, ChatState>
+  /** Composer text per panel; lives here so other panels (file viewer) can insert @mentions. */
+  drafts: Record<string, string>
   apply(panelId: string, event: AgentEvent): void
   load(panelId: string, events: AgentEvent[]): void
   clear(panelId: string): void
   remove(panelId: string): void
   setChat(panelId: string, chat: ChatState | undefined): void
+  setDraft(panelId: string, text: string): void
+  insertIntoDraft(panelId: string, snippet: string): void
 }
 
 export const useAgents = create<AgentsState>()((set) => ({
   chats: {},
+  drafts: {},
   apply: (panelId, event) => set((s) => ({ chats: { ...s.chats, [panelId]: reduceChat(s.chats[panelId] ?? initialChat, event) } })),
   load: (panelId, events) => set((s) => ({ chats: { ...s.chats, [panelId]: reduceAll(events, s.chats[panelId] ?? initialChat) } })),
   clear: (panelId) => {
@@ -29,7 +35,8 @@ export const useAgents = create<AgentsState>()((set) => ({
     set((s) => {
       pendingSessionId.delete(panelId)
       const { [panelId]: _removed, ...rest } = s.chats
-      return { chats: rest }
+      const { [panelId]: _draft, ...drafts } = s.drafts
+      return { chats: rest, drafts }
     }),
   setChat: (panelId, chat) =>
     set((s) => {
@@ -39,6 +46,9 @@ export const useAgents = create<AgentsState>()((set) => ({
       }
       return { chats: { ...s.chats, [panelId]: chat } }
     }),
+  setDraft: (panelId, text) => set((s) => ({ drafts: { ...s.drafts, [panelId]: text } })),
+  insertIntoDraft: (panelId, snippet) =>
+    set((s) => ({ drafts: { ...s.drafts, [panelId]: appendSnippet(s.drafts[panelId] ?? '', snippet) } })),
 }))
 
 export const selectChat =

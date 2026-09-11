@@ -2,9 +2,26 @@ import type { IDockviewPanelProps } from 'dockview-react'
 import { useEffect, useRef, useState } from 'react'
 import type { FileContent } from '@shared/files'
 import type { FilePanelParams } from '@shared/models'
+import type { LineRange } from '../../agent/mentions'
+import { mentionInAgent } from '../../dock/mention'
 import { highlight } from '../../files/highlighter'
 import { langForPath } from '../../files/languages'
 import { relPath } from '../../files/tree'
+
+/** 1-based line numbers covered by the current text selection inside the code view, if any. */
+function selectedLineRange(root: HTMLElement | null): LineRange | null {
+  const sel = window.getSelection()
+  if (!root || !sel || sel.isCollapsed || sel.rangeCount === 0) return null
+  const lines = Array.from(root.querySelectorAll('.line'))
+  const lineOf = (node: Node | null) => {
+    const el = node instanceof Element ? node : node?.parentElement
+    const line = el?.closest('.line')
+    return line && root.contains(line) ? lines.indexOf(line) + 1 : 0
+  }
+  const a = lineOf(sel.anchorNode)
+  const b = lineOf(sel.focusNode)
+  return a && b ? { start: Math.min(a, b), end: Math.max(a, b) } : null
+}
 
 const NOTICE: Partial<Record<FileContent['kind'], string>> = {
   binary: 'Arquivo binário — não exibido.',
@@ -63,7 +80,13 @@ export function FilePanel({ params }: IDockviewPanelProps<FilePanelParams>) {
         <span className="min-w-0 flex-1 truncate" title={params.filePath}>
           {relPath(params.projectPath, params.filePath)}
         </span>
-        {/* Task 6 adds the "Mencionar no agente" button here */}
+        <button
+          className="rounded bg-neutral-800 px-2 py-0.5 text-neutral-200 hover:bg-neutral-700"
+          onMouseDown={(e) => e.preventDefault() /* keep the code selection */}
+          onClick={() => mentionInAgent(params.projectPath, params.filePath, selectedLineRange(codeRef.current))}
+        >
+          Mencionar no agente
+        </button>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         {error && <div className="p-3 text-sm text-red-400">Falha ao abrir: {error}</div>}
