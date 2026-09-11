@@ -1,0 +1,82 @@
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { DEFAULT_SETTINGS } from '@shared/models'
+import { buildHandlers, type HandlerDeps } from '../../src/main/ipc/handlers'
+import { createStores } from '../../src/main/store/stores'
+
+function deps(over: Partial<HandlerDeps> = {}): HandlerDeps & { ptyCalls: unknown[][] } {
+  const ptyCalls: unknown[][] = []
+  return {
+    stores: createStores(mkdtempSync(join(tmpdir(), 'handlers-'))),
+    pty: {
+      create: (...a) => void ptyCalls.push(['create', ...a]),
+      write: (...a) => void ptyCalls.push(['write', ...a]),
+      resize: (...a) => void ptyCalls.push(['resize', ...a]),
+      kill: (...a) => void ptyCalls.push(['kill', ...a]),
+    },
+    pickFolder: async () => '/picked',
+    pickWorkspaceFile: async () => null,
+    readTextFile: async () => '{}',
+    gitInfo: async () => ({ branch: 'dev' }),
+    ptyCalls,
+    ...over,
+  }
+}
+
+describe('buildHandlers', () => {
+  it('workspace get/save round-trips after flush', async () => {
+    const d = deps()
+    const h = buildHandlers(d)
+    expect(await h['workspace:get']()).toEqual([])
+    const ws = [{ id: 'w', name: 'x', projects: [], collapsed: false }]
+    await h['workspace:save'](ws)
+    await d.stores.workspaces.flush()
+    expect(await h['workspace:get']()).toEqual(ws)
+  })
+
+  it('settings:get merges defaults', async () => {
+    const d = deps()
+    await d.stores.settings.writeNow({ ...DEFAULT_SETTINGS, theme: 'light' })
+    const s = await buildHandlers(d)['settings:get']()
+    expect(s.theme).toBe('light')
+    expect(s.statusline).toEqual(DEFAULT_SETTINGS.statusline)
+  })
+
+  it('layout:get returns null by default', async () => {
+    expect(await buildHandlers(deps())['layout:get']()).toBeNull()
+  })
+
+  it('fs:pickWorkspaceFile parses the chosen file', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cw-'))
+    const file = join(dir, 'papersystem.code-workspace')
+    writeFileSync(file, '{ "folders": [{ "path": "api" }] }')
+    const h = buildHandlers(
+      deps({
+        pickWorkspaceFile: async () => file,
+        readTextFile: async (p) => (await import('node:fs/promises')).readFile(p, 'utf8'),
+      }),
+    )
+    expect(await h['fs:pickWorkspaceFile']()).toEqual({ name: 'papersystem', paths: [join(dir, 'api')] })
+  })
+
+  it('fs:pickWorkspaceFile returns null when cancelled', async () => {
+    expect(await buildHandlers(deps())['fs:pickWorkspaceFile']()).toBeNull()
+  })
+
+  it('pty channels delegate to the manager', async () => {
+    const d = deps()
+    const h = buildHandlers(d)
+    await h['pty:create']('t', '/p', 80, 24)
+    await h['pty:write']('t', 'ls')
+    await h['pty:resize']('t', 90, 30)
+    await h['pty:kill']('t')
+    expect(d.ptyCalls).toEqual([
+      ['create', 't', '/p', 80, 24],
+      ['write', 't', 'ls'],
+      ['resize', 't', 90, 30],
+      ['kill', 't'],
+    ])
+  })
+})

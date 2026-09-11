@@ -3238,11 +3238,11 @@ git commit -m "feat: add dock keyboard shortcuts and app menu"
 | §5 Arquitetura, segurança renderer | Tasks 1, 7 | — |
 | §5.2 Modelo de dados | Task 2 | — |
 | §6 Painel Agente | placeholder (Task 8) | Plano 2 |
-| §7 Sidebar: filtro de projetos, sessões ativas, workspaces, import, linha do projeto | Tasks 4, 9 | — |
+| §7 Sidebar: filtro de projetos, sessões ativas, workspaces, import, linha do projeto | Tasks 4, 9 | reordenar workspaces por drag → Plano 3 |
 | §7 Árvore de arquivos, filtro de arquivos, Cmd+P | — | Plano 3 |
 | §7 Branch | Task 5, 9 (atualiza em foco da janela) | watch de `.git/HEAD` no Plano 3 |
 | §8 Dock: abas, cor, split, atalhos, maximizar | Tasks 8, 12 | confirmação de fechar agente rodando no Plano 2 |
-| §9 Terminal | Tasks 6, 10 (addon search `Cmd+F` no Plano 3) | Plano 3 |
+| §9 Terminal | Tasks 6, 10 (addon search `Cmd+F` no Plano 3) | botão reiniciar após processo encerrado → Plano 3 |
 | §10 FileViewer | — | Plano 3 |
 | §11 IPC (canais de workspace/layout/settings/pty/git) | Task 7 | canais `agent:*` (Plano 2), `fs:list/read/index` (Plano 3) |
 | §12 Persistência | Tasks 3, 7, 11 | histórico de agente no Plano 2 |
