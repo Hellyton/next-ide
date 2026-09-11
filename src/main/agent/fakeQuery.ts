@@ -47,6 +47,12 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
         out.push({ type: 'assistant', parent_tool_use_id: null, message: { id, content: [{ type: 'tool_use', id: toolId, name: 'Edit', input }] } })
         out.push({ type: 'user', parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolId, content: 'ok' }] } })
       }
+      if (text.includes('subagente')) {
+        const taskId = `fake_task_${turn}`
+        out.push({ type: 'assistant', parent_tool_use_id: null, message: { id, content: [{ type: 'tool_use', id: taskId, name: 'Task', input: { description: 'Explorar o projeto', prompt: 'explore' } }] } })
+        out.push({ type: 'assistant', parent_tool_use_id: taskId, message: { id: `${id}_sub`, content: [{ type: 'text', text: 'Resposta do subagente' }] } })
+        out.push({ type: 'user', parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: taskId, content: 'feito' }] } })
+      }
       const reply = `Você disse: ${text}`
       const half = Math.ceil(reply.length / 2)
       const textId = `${id}_text`

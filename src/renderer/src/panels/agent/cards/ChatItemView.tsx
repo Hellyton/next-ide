@@ -1,8 +1,8 @@
 import type { ChatItem } from '../../../agent/chatReducer'
 import { ErrorCard } from './ErrorCard'
-import { GenericToolCard } from './GenericToolCard'
 import { TextBlock } from './TextBlock'
 import { ThinkingBlock } from './ThinkingBlock'
+import { ToolCard } from './ToolCard'
 import { UserBubble } from './UserBubble'
 
 export function itemKey(item: ChatItem): string {
@@ -19,7 +19,7 @@ export function itemKey(item: ChatItem): string {
   }
 }
 
-export function ChatItemView({ item }: { item: ChatItem; items: ChatItem[]; panelId: string }) {
+export function ChatItemView({ item, items, panelId }: { item: ChatItem; items: ChatItem[]; panelId: string }) {
   switch (item.type) {
     case 'user':
       return <UserBubble text={item.text} images={item.images} />
@@ -28,7 +28,7 @@ export function ChatItemView({ item }: { item: ChatItem; items: ChatItem[]; pane
     case 'thinking':
       return <ThinkingBlock text={item.text} />
     case 'tool':
-      return <GenericToolCard item={item} />
+      return <ToolCard item={item} items={items} panelId={panelId} />
     case 'error':
       return <ErrorCard message={item.message} />
     case 'permission':
