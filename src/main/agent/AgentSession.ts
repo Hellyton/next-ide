@@ -17,7 +17,10 @@ export type QueryOptions = {
   cwd: string
   model?: string
   permissionMode: PermissionMode
-  /** Required by the SDK for permissionMode 'bypassPermissions'. */
+  /**
+   * Required by the SDK to PERMIT permissionMode 'bypassPermissions'; it does not itself turn
+   * bypass on. Passed on every start so a later `setMode('bypassPermissions')` isn't rejected.
+   */
   allowDangerouslySkipPermissions?: boolean
   resume?: string
   includePartialMessages: true
@@ -103,7 +106,7 @@ export class AgentSession {
       options: {
         cwd: this.config.cwd,
         permissionMode: this.mode,
-        ...(this.mode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
+        allowDangerouslySkipPermissions: true,
         includePartialMessages: true,
         settingSources: ['user', 'project', 'local'],
         abortController: abort,

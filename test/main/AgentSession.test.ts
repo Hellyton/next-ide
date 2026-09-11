@@ -224,10 +224,12 @@ describe('AgentSession', () => {
     expect(s.currentState).toBe('idle')
   })
 
-  it('passes allowDangerouslySkipPermissions only when starting in bypass mode', async () => {
+  it('always passes allowDangerouslySkipPermissions, so bypass can be selected mid-session', async () => {
+    // The SDK requires this flag only to PERMIT bypassPermissions, not to enable it: it must be
+    // present on every start (not only when starting in bypass) or a later switch is rejected.
     const plain = fake()
     session(plain.fn).s.send('oi')
-    expect(plain.calls[0]!.options.allowDangerouslySkipPermissions).toBeUndefined()
+    expect(plain.calls[0]!.options.allowDangerouslySkipPermissions).toBe(true)
     const bypass = fake()
     const { s } = session(bypass.fn)
     await s.setMode('bypassPermissions')
