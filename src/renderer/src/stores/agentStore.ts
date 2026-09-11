@@ -3,6 +3,7 @@ import type { AgentEvent } from '@shared/agent'
 import type { AgentPanelParams } from '@shared/models'
 import { initialChat, reduceAll, reduceChat, type ChatState } from '../agent/chatReducer'
 import { useDock } from '../dock/dockStore'
+import { replacementPatch } from '../dock/panelParams'
 import { useSessions } from './sessionsStore'
 
 type AgentsState = {
@@ -53,7 +54,9 @@ export function currentAgentParams(panelId: string): AgentPanelParams | undefine
 }
 
 export function replacePanelParams(panelId: string, params: AgentPanelParams): void {
-  useDock.getState().api?.getPanel(panelId)?.api.updateParameters(params)
+  const panel = useDock.getState().api?.getPanel(panelId)
+  if (!panel) return
+  panel.api.updateParameters(replacementPatch(panel.params, params))
 }
 
 export function handleAgentEvent(panelId: string, event: AgentEvent): void {
