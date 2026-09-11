@@ -217,7 +217,11 @@ export class AgentSession {
           this.deps.emit(event)
         }
         if (isResult(message)) {
-          this.turnsInFlight = Math.max(0, this.turnsInFlight - 1)
+          // Queued sends may coalesce into fewer turns, so a per-result decrement can get stuck
+          // above zero; `queued_turn_count` is the SDK's own count of sends still pending.
+          const queued = (message as { queued_turn_count?: unknown }).queued_turn_count
+          this.turnsInFlight =
+            typeof queued === 'number' && Number.isFinite(queued) ? Math.max(0, queued) : Math.max(0, this.turnsInFlight - 1)
           if (this.pending.size === 0) this.setState(this.turnsInFlight > 0 ? 'running' : 'idle')
         }
       }

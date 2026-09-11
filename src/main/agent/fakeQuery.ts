@@ -7,6 +7,11 @@ const textOf = (m: UserMessageLike): string =>
     .map((b) => (typeof b === 'object' && b !== null && (b as { type?: unknown }).type === 'text' ? String((b as { text?: unknown }).text ?? '') : ''))
     .join('')
 
+const queuedSends = (prompt: AsyncIterable<UserMessageLike>): number => {
+  const size = (prompt as { size?: unknown }).size
+  return typeof size === 'number' ? size : 0
+}
+
 /** Scripted stand-in for the SDK used by E2E (NEXT_IDE_FAKE_AGENT=1). No network, no subprocess. */
 export const fakeQuery: QueryFn = ({ prompt, options }) => {
   const out = new AsyncQueue<unknown>()
@@ -69,6 +74,8 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
         total_cost_usd: 0.01,
         usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
         modelUsage: { [model]: { contextWindow: 200000 } },
+        // Sends still waiting in the prompt queue, like the SDK's command-queue count.
+        queued_turn_count: queuedSends(prompt),
       })
     }
     out.end()
