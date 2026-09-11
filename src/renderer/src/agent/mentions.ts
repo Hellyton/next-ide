@@ -1,3 +1,5 @@
+import { fuzzyFilter } from '@shared/fuzzy'
+
 export type LineRange = { start: number; end: number }
 export type AgentCandidate = { id: string; projectPath: string; visible: boolean }
 
@@ -15,6 +17,16 @@ export function mentionQuery(text: string, caret: number): { query: string; star
   while (i > 0 && !/\s/.test(text[i - 1]!)) i--
   if (text[i] !== '@' || i === caret) return null
   return { query: text.slice(i + 1, caret), start: i }
+}
+
+/** Fuzzy-filtered @ mention candidates; empty once the token at `start` has been dismissed. */
+export function mentionItems(
+  mention: { query: string; start: number } | null,
+  dismissedAt: number | null,
+  index: string[] | undefined,
+): string[] {
+  if (!mention || mention.start === dismissedAt) return []
+  return fuzzyFilter(mention.query, index ?? [], (s) => s, 8)
 }
 
 export function applyMention(text: string, start: number, caret: number, rel: string): { text: string; caret: number } {

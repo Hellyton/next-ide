@@ -1,7 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { fuzzyFilter } from '@shared/fuzzy'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ImageAttachment } from '@shared/agent'
-import { applyMention, mentionQuery } from '../../agent/mentions'
+import { applyMention, mentionItems as computeMentionItems, mentionQuery } from '../../agent/mentions'
 import type { ChatState } from '../../agent/chatReducer'
 import { composerKeyAction } from '../../agent/composerKeys'
 import { canSend, pickImageFiles, readImage, validateImage } from '../../agent/images'
@@ -40,12 +39,15 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }:
   const menuItems = query === null ? [] : filterCommands(commands ?? mergeCommands([], chat.slashCommands), query)
   const mention = query === null ? mentionQuery(text, caret) : null
   const index = useFiles((s) => s.indexes[projectPath])
-  const mentionItems = mention && mention.start !== dismissedAt ? fuzzyFilter(mention.query, index ?? [], (s) => s, 8) : []
+  const mentionItems = useMemo(
+    () => computeMentionItems(mention, dismissedAt, index),
+    [mention?.query, mention?.start, dismissedAt, index],
+  )
   const activeIndex = (n: number) => Math.min(menuIndex, Math.max(n - 1, 0))
 
   useEffect(() => {
-    if (mention && !index) void useFiles.getState().ensureIndex(projectPath)
-  }, [mention !== null, index, projectPath])
+    if (mention) void useFiles.getState().ensureIndex(projectPath)
+  }, [mention !== null, projectPath])
 
   const pickMention = (rel: string) => {
     if (!mention) return

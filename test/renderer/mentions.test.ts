@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appendSnippet, applyMention, formatMention, mentionQuery, pickAgentPanel } from '@renderer/agent/mentions'
+import { appendSnippet, applyMention, formatMention, mentionItems, mentionQuery, pickAgentPanel } from '@renderer/agent/mentions'
 
 describe('formatMention', () => {
   it('uses project-relative paths and optional line ranges', () => {
@@ -36,6 +36,19 @@ describe('appendSnippet', () => {
     expect(appendSnippet('', '@a.ts')).toBe('@a.ts ')
     expect(appendSnippet('olha', '@a.ts')).toBe('olha @a.ts ')
     expect(appendSnippet('olha ', '@a.ts')).toBe('olha @a.ts ')
+  })
+})
+
+describe('mentionItems', () => {
+  it('fuzzy-filters the index by the mention query', () => {
+    expect(mentionItems({ query: 'ap', start: 0 }, null, ['src/app.ts', 'src/other.ts'])).toEqual(['src/app.ts'])
+  })
+  it('is empty once the token has been dismissed (start === dismissedAt)', () => {
+    expect(mentionItems({ query: 'ap', start: 0 }, 0, ['src/app.ts'])).toEqual([])
+  })
+  it('is empty with no active mention or no index yet', () => {
+    expect(mentionItems(null, null, ['src/app.ts'])).toEqual([])
+    expect(mentionItems({ query: '', start: 3 }, null, undefined)).toEqual([])
   })
 })
 
