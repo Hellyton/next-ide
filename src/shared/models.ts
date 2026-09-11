@@ -11,7 +11,7 @@ export type AgentPanelParams = {
   model?: string
   permissionMode?: PermissionMode
 }
-export type TerminalPanelParams = { type: 'terminal'; projectPath: string }
+export type TerminalPanelParams = { type: 'terminal'; projectPath: string; initialCommand?: string }
 export type FilePanelParams = { type: 'file'; projectPath: string; filePath: string; line?: number }
 export type PanelParams = AgentPanelParams | TerminalPanelParams | FilePanelParams
 export type PanelType = PanelParams['type']

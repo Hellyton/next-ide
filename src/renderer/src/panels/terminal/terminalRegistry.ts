@@ -11,7 +11,7 @@ type InternalEntry = TerminalEntry & { dispose(): void }
 // Terminals live outside React so moving a panel between dock groups never kills the shell.
 const entries = new Map<string, InternalEntry>()
 
-export function attachTerminal(panelId: string, cwd: string, container: HTMLElement): TerminalEntry {
+export function attachTerminal(panelId: string, cwd: string, container: HTMLElement, initialCommand?: string): TerminalEntry {
   const existing = entries.get(panelId)
   if (existing) {
     container.appendChild(existing.host)
@@ -67,11 +67,16 @@ export function attachTerminal(panelId: string, cwd: string, container: HTMLElem
         .invoke('pty:write', panelId, data)
         .catch((err) => console.error('[next-ide] pty ipc failed', panelId, err)),
   )
-  window.api.invoke('pty:create', panelId, cwd, cols, rows).catch((err) => {
-    const message = err instanceof Error ? err.message : String(err)
-    term.write(`\r\n\x1b[31m[falha ao iniciar o terminal: ${message}]\x1b[0m\r\n`)
-    useSessions.getState().setState(panelId, 'error')
-  })
+  window.api
+    .invoke('pty:create', panelId, cwd, cols, rows)
+    .then(() => {
+      if (initialCommand) return window.api.invoke('pty:write', panelId, `${initialCommand}\r`)
+    })
+    .catch((err) => {
+      const message = err instanceof Error ? err.message : String(err)
+      term.write(`\r\n\x1b[31m[falha ao iniciar o terminal: ${message}]\x1b[0m\r\n`)
+      useSessions.getState().setState(panelId, 'error')
+    })
 
   const entry: InternalEntry = {
     term,

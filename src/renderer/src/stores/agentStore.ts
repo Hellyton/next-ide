@@ -38,6 +38,15 @@ function persistParams(panelId: string, patch: Partial<AgentPanelParams>): void 
   panel.api.updateParameters({ ...params, ...patch })
 }
 
+export function currentAgentParams(panelId: string): AgentPanelParams | undefined {
+  const params = useDock.getState().api?.getPanel(panelId)?.params as AgentPanelParams | undefined
+  return params?.type === 'agent' ? params : undefined
+}
+
+export function replacePanelParams(panelId: string, params: AgentPanelParams): void {
+  useDock.getState().api?.getPanel(panelId)?.api.updateParameters(params)
+}
+
 export function handleAgentEvent(panelId: string, event: AgentEvent): void {
   useAgents.getState().apply(panelId, event)
   if (event.kind === 'status') useSessions.getState().setState(panelId, event.state)

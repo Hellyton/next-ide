@@ -9,7 +9,7 @@ export function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanel
   useEffect(() => {
     const container = ref.current
     if (!container) return
-    const entry = attachTerminal(api.id, params.projectPath, container)
+    const entry = attachTerminal(api.id, params.projectPath, container, params.initialCommand)
     const observer = new ResizeObserver(() => entry.fit())
     observer.observe(container)
     entry.fit()
