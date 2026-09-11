@@ -2,6 +2,7 @@ import type { IDockviewPanelProps } from 'dockview-react'
 import { useEffect, useRef } from 'react'
 import type { TerminalPanelParams } from '@shared/models'
 import { attachTerminal } from './terminalRegistry'
+import { withoutInitialCommand } from './terminalParams'
 
 export function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanelParams>) {
   const ref = useRef<HTMLDivElement>(null)
@@ -10,6 +11,11 @@ export function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanel
     const container = ref.current
     if (!container) return
     const entry = attachTerminal(api.id, params.projectPath, container, params.initialCommand)
+    // One-shot: strip it from the persisted params so a relaunch never replays it.
+    // dockview's updateParameters merges into the existing params object, so an
+    // omitted key is not enough to clear it — it must be set to `undefined`
+    // explicitly, which dockview's merge treats as a delete.
+    if (params.initialCommand) api.updateParameters({ ...withoutInitialCommand(params), initialCommand: undefined })
     const observer = new ResizeObserver(() => entry.fit())
     observer.observe(container)
     entry.fit()

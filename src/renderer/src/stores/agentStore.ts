@@ -11,6 +11,7 @@ type AgentsState = {
   load(panelId: string, events: AgentEvent[]): void
   clear(panelId: string): void
   remove(panelId: string): void
+  setChat(panelId: string, chat: ChatState | undefined): void
 }
 
 export const useAgents = create<AgentsState>()((set) => ({
@@ -22,6 +23,14 @@ export const useAgents = create<AgentsState>()((set) => ({
     set((s) => {
       const { [panelId]: _removed, ...rest } = s.chats
       return { chats: rest }
+    }),
+  setChat: (panelId, chat) =>
+    set((s) => {
+      if (chat === undefined) {
+        const { [panelId]: _removed, ...rest } = s.chats
+        return { chats: rest }
+      }
+      return { chats: { ...s.chats, [panelId]: chat } }
     }),
 }))
 

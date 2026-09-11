@@ -1,0 +1,46 @@
+import type { AgentEvent } from '@shared/agent'
+import type { AgentPanelParams } from '@shared/models'
+import type { ChatState } from './chatReducer'
+
+export type RestartSessionDeps = {
+  invoke: typeof window.api.invoke
+  getChat(panelId: string): ChatState | undefined
+  setChat(panelId: string, chat: ChatState | undefined): void
+  clearChat(panelId: string): void
+  loadChat(panelId: string, events: AgentEvent[]): void
+  currentParams(panelId: string): AgentPanelParams | undefined
+  replaceParams(panelId: string, params: AgentPanelParams): void
+  apply(panelId: string, event: AgentEvent): void
+}
+
+const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
+
+/**
+ * Switches a panel to a different agent session (resume/clear), tearing down the
+ * current one and standing up `next`. If anything in that sequence fails, the
+ * previous chat and params are restored and the previous session is re-created
+ * (but not started) so it can resume lazily on the next send.
+ */
+export async function restartSession(panelId: string, next: AgentPanelParams, history: AgentEvent[], deps: RestartSessionDeps): Promise<void> {
+  const prevChat = deps.getChat(panelId)
+  const prevParams = deps.currentParams(panelId)
+  try {
+    await deps.invoke('agent:close', panelId)
+    deps.clearChat(panelId)
+    if (history.length > 0) deps.loadChat(panelId, history)
+    deps.replaceParams(panelId, next)
+    await deps.invoke('agent:create', panelId, next)
+    if (!next.sessionId) await deps.invoke('agent:start', panelId)
+  } catch (err) {
+    deps.setChat(panelId, prevChat)
+    if (prevParams) deps.replaceParams(panelId, prevParams)
+    deps.apply(panelId, { kind: 'error', message: `Não foi possível trocar de sessão: ${errorText(err)}` })
+    if (prevParams) {
+      try {
+        await deps.invoke('agent:create', panelId, prevParams)
+      } catch (err2) {
+        deps.apply(panelId, { kind: 'error', message: `Não foi possível trocar de sessão: ${errorText(err2)}` })
+      }
+    }
+  }
+}

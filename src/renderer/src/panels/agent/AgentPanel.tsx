@@ -2,6 +2,7 @@ import type { IDockviewPanelProps } from 'dockview-react'
 import { useEffect, useState } from 'react'
 import type { AgentEvent, ImageAttachment } from '@shared/agent'
 import type { AgentPanelParams } from '@shared/models'
+import { restartSession } from '../../agent/restartSession'
 import type { LocalCommand } from '../../agent/slash'
 import { currentAgentParams, replacePanelParams, selectChat, useAgents } from '../../stores/agentStore'
 import { ChatView } from './ChatView'
@@ -44,14 +45,17 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
       .invoke('agent:send', panelId, text, images)
       .catch((err) => useAgents.getState().apply(panelId, { kind: 'error', message: `Falha ao enviar: ${errorText(err)}` }))
 
-  const restart = async (next: AgentPanelParams, history: AgentEvent[] = []) => {
-    await window.api.invoke('agent:close', panelId)
-    useAgents.getState().clear(panelId)
-    if (history.length > 0) useAgents.getState().load(panelId, history)
-    replacePanelParams(panelId, next)
-    await window.api.invoke('agent:create', panelId, next)
-    if (!next.sessionId) await window.api.invoke('agent:start', panelId)
-  }
+  const restart = (next: AgentPanelParams, history: AgentEvent[] = []) =>
+    restartSession(panelId, next, history, {
+      invoke: window.api.invoke,
+      getChat: (id) => useAgents.getState().chats[id],
+      setChat: (id, nextChat) => useAgents.getState().setChat(id, nextChat),
+      clearChat: (id) => useAgents.getState().clear(id),
+      loadChat: (id, events) => useAgents.getState().load(id, events),
+      currentParams: currentAgentParams,
+      replaceParams: replacePanelParams,
+      apply: (id, event) => useAgents.getState().apply(id, event),
+    })
 
   const base = (): AgentPanelParams => {
     const p = currentAgentParams(panelId) ?? params
