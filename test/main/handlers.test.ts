@@ -27,6 +27,7 @@ function deps(over: Partial<HandlerDeps> = {}): HandlerDeps & { ptyCalls: unknow
     agents: new AgentManager({ emit: (id, e) => agentEvents.push([id, e]), runtime: () => ({ queryFn: fakeQuery }) }),
     sessions: fakeSessions,
     agentReady: async () => undefined,
+    runStatusLine: async () => 'linha',
     ptyCalls,
     agentEvents,
     ...over,
@@ -50,6 +51,17 @@ describe('buildHandlers', () => {
     const s = await buildHandlers(d)['settings:get']()
     expect(s.theme).toBe('light')
     expect(s.statusline).toEqual(DEFAULT_SETTINGS.statusline)
+  })
+
+  it('settings:get deep-merges statusline defaults', async () => {
+    const d = deps()
+    await d.stores.settings.writeNow({ ...DEFAULT_SETTINGS, statusline: { customScript: true } as never })
+    const s = await buildHandlers(d)['settings:get']()
+    expect(s.statusline).toEqual({ segments: DEFAULT_SETTINGS.statusline.segments, customScript: true })
+  })
+
+  it('statusline:run delegates to the runner', async () => {
+    expect(await buildHandlers(deps())['statusline:run']({} as never)).toBe('linha')
   })
 
   it('layout:get returns null by default', async () => {

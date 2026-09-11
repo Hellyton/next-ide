@@ -1,4 +1,4 @@
-import type { AgentEvent, CommandOption, ImageAttachment, ModelOption, PermissionDecision, SessionSummary } from './agent'
+import type { AgentEvent, CommandOption, ImageAttachment, ModelOption, PermissionDecision, SessionSummary, StatusLineInput } from './agent'
 import type { AgentPanelParams, GitInfo, LayoutState, PermissionMode, Settings, Workspace } from './models'
 
 export type InvokeMap = {
@@ -27,6 +27,7 @@ export type InvokeMap = {
   'agent:listSessions': { args: [projectPath: string]; result: SessionSummary[] }
   'agent:history': { args: [projectPath: string, sessionId: string]; result: AgentEvent[] }
   'agent:close': { args: [panelId: string]; result: void }
+  'statusline:run': { args: [input: StatusLineInput]; result: string | null }
 }
 
 export type EventMap = {
@@ -70,6 +71,7 @@ export const INVOKE_CHANNELS = [
   'agent:listSessions',
   'agent:history',
   'agent:close',
+  'statusline:run',
 ] as const satisfies readonly InvokeChannel[]
 
 export const EVENT_CHANNELS = ['pty:data', 'pty:exit', 'agent:event'] as const satisfies readonly EventChannel[]

@@ -26,6 +26,7 @@ export async function launch(
       ...hermeticZshEnv(),
       NEXT_IDE_FAKE_AGENT: '1',
       NEXT_IDE_E2E_NO_QUIT_CONFIRM: '1',
+      NEXT_IDE_CLAUDE_SETTINGS: join(mkdtempSync(join(tmpdir(), 'next-ide-e2e-claude-')), 'claude-settings.json'),
       ...opts.env,
     },
   })

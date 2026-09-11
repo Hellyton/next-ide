@@ -1,3 +1,4 @@
+import type { StatusLineInput } from '@shared/agent'
 import type { Handlers } from '@shared/ipc-contract'
 import { sanitizeLayout } from '@shared/layout'
 import { DEFAULT_SETTINGS, type GitInfo } from '@shared/models'
@@ -18,13 +19,17 @@ export type HandlerDeps = {
   agents: Pick<AgentManager, 'create' | 'get' | 'close'>
   sessions: SessionStoreApi
   agentReady: () => Promise<void>
+  runStatusLine: (input: StatusLineInput) => Promise<string | null>
 }
 
 export function buildHandlers(d: HandlerDeps): Handlers {
   return {
     'workspace:get': () => d.stores.workspaces.read(),
     'workspace:save': (workspaces) => d.stores.workspaces.schedule(workspaces),
-    'settings:get': async () => ({ ...DEFAULT_SETTINGS, ...(await d.stores.settings.read()) }),
+    'settings:get': async () => {
+      const stored = await d.stores.settings.read()
+      return { ...DEFAULT_SETTINGS, ...stored, statusline: { ...DEFAULT_SETTINGS.statusline, ...stored.statusline } }
+    },
     'settings:save': (settings) => d.stores.settings.writeNow(settings),
     'layout:get': async () => sanitizeLayout(await d.stores.layout.read()),
     'layout:save': (layout) => d.stores.layout.schedule(layout),
@@ -72,5 +77,6 @@ export function buildHandlers(d: HandlerDeps): Handlers {
       return historyToEvents(await d.sessions.history(projectPath, sessionId))
     },
     'agent:close': (panelId) => d.agents.close(panelId),
+    'statusline:run': (input) => d.runStatusLine(input),
   }
 }

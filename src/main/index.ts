@@ -15,6 +15,7 @@ import { isAllowedNavigation } from './navigation'
 import { PtyManager } from './pty/PtyManager'
 import { shellEnv } from './pty/shellEnv'
 import { spawnShell } from './pty/spawnShell'
+import { runStatusLine } from './statusline/runStatusLine'
 import { createStores } from './store/stores'
 
 if (process.env.NEXT_IDE_USER_DATA) app.setPath('userData', process.env.NEXT_IDE_USER_DATA)
@@ -87,6 +88,8 @@ registerHandlers(
     agents,
     sessions: { list: (dir) => requireSdk().list(dir), history: (dir, id) => requireSdk().history(dir, id) },
     agentReady: () => agentReady,
+    runStatusLine: (input) =>
+      runStatusLine(input, process.env.NEXT_IDE_CLAUDE_SETTINGS ? { settingsPath: process.env.NEXT_IDE_CLAUDE_SETTINGS } : {}),
   }),
 )
 
