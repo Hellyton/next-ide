@@ -39,7 +39,10 @@ export function buildHandlers(d: HandlerDeps): Handlers {
     'pty:write': (panelId, data) => d.pty.write(panelId, data),
     'pty:resize': (panelId, cols, rows) => d.pty.resize(panelId, cols, rows),
     'pty:kill': (panelId) => d.pty.kill(panelId),
-    'agent:create': (panelId, params) => d.agents.create(panelId, params),
+    'agent:create': async (panelId, params) => {
+      await d.agentReady()
+      d.agents.create(panelId, params)
+    },
     'agent:start': async (panelId) => {
       await d.agentReady()
       d.agents.get(panelId).start()

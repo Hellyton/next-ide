@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { AgentEvent } from '@shared/agent'
 import { DEFAULT_SETTINGS } from '@shared/models'
 import { AgentManager } from '../../src/main/agent/AgentManager'
@@ -103,5 +103,23 @@ describe('buildHandlers', () => {
   it('agent:history converts stored messages into events', async () => {
     const events = await buildHandlers(deps())['agent:history']('/proj', 'fake-old')
     expect(events.map((e) => e.kind)).toEqual(['user', 'text'])
+  })
+
+  it('agent:create waits for the agent runtime to be ready', async () => {
+    let release!: () => void
+    const ready = new Promise<void>((r) => (release = r))
+    const create = vi.fn()
+    const d = deps({
+      agents: { create, get: vi.fn(), close: vi.fn() } as unknown as HandlerDeps['agents'],
+      agentReady: () => ready,
+    })
+    const h = buildHandlers(d)
+    const p = h['agent:create']('p1', { type: 'agent', projectPath: '/p' })
+    await Promise.resolve()
+    expect(create).not.toHaveBeenCalled()
+    release()
+    await p
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(create).toHaveBeenCalledWith('p1', { type: 'agent', projectPath: '/p' })
   })
 })
