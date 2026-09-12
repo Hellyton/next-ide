@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent } from '@shared/agent'
-import { StreamNormalizer, flattenToolOutput, historyToEvents } from '../../src/main/agent/normalize'
+import { StreamNormalizer, flattenToolOutput, historyToEvents, parseSessionUsage } from '../../src/main/agent/normalize'
 
 const fixture = readFileSync(join(__dirname, '../fixtures/stream-read.jsonl'), 'utf8')
   .trim()
@@ -153,6 +153,29 @@ describe('StreamNormalizer (edge cases)', () => {
     ])
     const texts = out.filter((e) => e.kind === 'text')
     expect(texts.map((t) => t.key)).toEqual(['m2:0', 'm2:2'])
+  })
+})
+
+describe('parseSessionUsage', () => {
+  it('maps session totals and rate limits (ISO resets -> epoch seconds)', () => {
+    expect(
+      parseSessionUsage({
+        session: { total_cost_usd: 1.5, total_duration_ms: 53_700_000, total_lines_added: 28_129, total_lines_removed: 651 },
+        rate_limits: { five_hour: { utilization: 0, resets_at: '2100-01-01T00:00:00.000Z' }, seven_day: { utilization: 17.44, resets_at: null } },
+      }),
+    ).toEqual({
+      totalCostUsd: 1.5,
+      totalDurationMs: 53_700_000,
+      totalLinesAdded: 28_129,
+      totalLinesRemoved: 651,
+      rateLimits: { five_hour: { used_percentage: 0, resets_at: 4_102_444_800 }, seven_day: { used_percentage: 17.4 } },
+    })
+  })
+  it('returns empty limits when the plan has none, and null for a junk response', () => {
+    expect(parseSessionUsage({ session: {}, rate_limits: null })).toEqual({
+      totalCostUsd: 0, totalDurationMs: 0, totalLinesAdded: 0, totalLinesRemoved: 0, rateLimits: {},
+    })
+    expect(parseSessionUsage('nope')).toBeNull()
   })
 })
 

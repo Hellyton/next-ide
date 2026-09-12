@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { basename } from '@shared/workspaces'
 import { STATUS_SEGMENTS, type StatusSegmentId } from '@shared/models'
+import type { SessionUsage } from '@shared/agent'
 import type { ChatState } from '../../agent/chatReducer'
 import { ansiToSpans } from '../../agent/ansi'
 import { SEGMENT_LABELS, buildSegments, buildStatusLineInput, lineStats, type StatusContext } from '../../agent/statusline'
@@ -8,22 +9,39 @@ import { useAgents } from '../../stores/agentStore'
 import { useSettings } from '../../stores/settingsStore'
 import { useGitBranch } from '../../sidebar/useGitBranch'
 
-type Props = { projectPath: string; chat: ChatState; configOpen: boolean; onConfigClose(): void; onConfigOpen(): void }
+type Props = { panelId: string; projectPath: string; chat: ChatState; configOpen: boolean; onConfigClose(): void; onConfigOpen(): void }
 
 /** Re-runs the user's script this often so countdowns (rate-limit resets, duration) stay fresh. */
 const SCRIPT_REFRESH_MS = 60_000
 
-export function StatusLine({ projectPath, chat, configOpen, onConfigClose, onConfigOpen }: Props) {
+export function StatusLine({ panelId, projectPath, chat, configOpen, onConfigClose, onConfigOpen }: Props) {
   const settings = useSettings((s) => s.settings)
   const branch = useGitBranch(projectPath)
   const rateLimits = useAgents((s) => s.rateLimits)
   const [scriptOut, setScriptOut] = useState<string | null>(null)
+  const [usage, setUsage] = useState<SessionUsage | null>(null)
   const [tick, setTick] = useState(0)
   const openedAt = useRef(Date.now())
   useEffect(() => void useSettings.getState().load(), [])
 
   const lines = useMemo(() => lineStats(chat.items), [chat.items])
-  const usage = chat.stats?.usage
+
+  // Session totals and plan usage straight from Claude Code (same source as /usage), when it
+  // supports the request; otherwise the status line falls back to what this chat can count.
+  useEffect(() => {
+    let alive = true
+    window.api
+      .invoke('agent:usage', panelId)
+      .then((next) => {
+        if (alive && next) setUsage(next)
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [panelId, chat.stats, tick])
+
+  const turnUsage = chat.stats?.usage
   const ctx: StatusContext = {
     projectName: basename(projectPath),
     branch,
@@ -31,23 +49,22 @@ export function StatusLine({ projectPath, chat, configOpen, onConfigClose, onCon
     ...(chat.stats?.contextPct !== undefined ? { contextPct: chat.stats.contextPct } : {}),
     ...(chat.stats?.contextWindow !== undefined ? { contextWindow: chat.stats.contextWindow } : {}),
     ...(chat.stats?.contextTokens !== undefined ? { contextTokens: chat.stats.contextTokens } : {}),
-    tokens: usage ? usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheCreationTokens : 0,
+    tokens: turnUsage ? turnUsage.inputTokens + turnUsage.outputTokens + turnUsage.cacheReadTokens + turnUsage.cacheCreationTokens : 0,
     costUsd: chat.totalCostUsd,
     ...(chat.stats ? { durationMs: chat.stats.durationMs } : {}),
-    sessionDurationMs: Date.now() - openedAt.current,
-    linesAdded: lines.added,
-    linesRemoved: lines.removed,
+    sessionDurationMs: usage?.totalDurationMs ?? Date.now() - openedAt.current,
+    linesAdded: usage?.totalLinesAdded ?? lines.added,
+    linesRemoved: usage?.totalLinesRemoved ?? lines.removed,
     ...(chat.version ? { version: chat.version } : {}),
-    rateLimits,
+    rateLimits: usage?.rateLimits ?? rateLimits,
     ...(chat.permissionMode ? { mode: chat.permissionMode } : {}),
   }
   const segments = buildSegments(settings.statusline.segments, ctx)
 
   useEffect(() => {
-    if (!settings.statusline.customScript) return
     const timer = setInterval(() => setTick((t) => t + 1), SCRIPT_REFRESH_MS)
     return () => clearInterval(timer)
-  }, [settings.statusline.customScript])
+  }, [])
 
   useEffect(() => {
     if (!settings.statusline.customScript) return setScriptOut(null)
@@ -58,7 +75,7 @@ export function StatusLine({ projectPath, chat, configOpen, onConfigClose, onCon
     // Re-run after each turn (stats), on model/mode/version change, new rate limits, the refresh
     // tick, or when the toggle flips.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.statusline.customScript, chat.stats, chat.model, chat.permissionMode, chat.version, rateLimits, tick])
+  }, [settings.statusline.customScript, chat.stats, chat.model, chat.permissionMode, chat.version, rateLimits, usage, tick])
 
   const spans = useMemo(() => (scriptOut ? ansiToSpans(scriptOut) : []), [scriptOut])
   // Like the CLI: when the user's script prints something, it is the whole status line.

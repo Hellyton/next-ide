@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import type { AgentEvent, CommandOption, ImageAttachment, ModelOption, PermissionDecision } from '@shared/agent'
+import type { AgentEvent, CommandOption, ImageAttachment, ModelOption, PermissionDecision, SessionUsage } from '@shared/agent'
 import type { PermissionMode, SessionState } from '@shared/models'
 import { AsyncQueue } from './AsyncQueue'
-import { StreamNormalizer } from './normalize'
+import { parseSessionUsage, StreamNormalizer } from './normalize'
 
 export type UserMessageLike = { type: 'user'; message: { role: 'user'; content: unknown[] }; parent_tool_use_id: null }
 export type PermissionResultLike =
@@ -36,6 +36,8 @@ export type QueryLike = AsyncIterable<unknown> & {
   setPermissionMode(mode: PermissionMode): Promise<void>
   supportedCommands(): Promise<CommandOption[]>
   supportedModels(): Promise<ModelOption[]>
+  /** Experimental in the SDK (name included), and absent on older Claude Code binaries. */
+  usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET?(opts?: { skipBehaviors?: boolean }): Promise<unknown>
   close(): void
 }
 export type QueryFn = (params: { prompt: AsyncIterable<UserMessageLike>; options: QueryOptions }) => QueryLike
@@ -165,6 +167,18 @@ export class AgentSession {
   async models(): Promise<ModelOption[]> {
     this.start()
     return this.query ? this.query.supportedModels() : []
+  }
+
+  /** Session cost/duration/lines and plan rate limits, for the status line. Null when unsupported. */
+  async usage(): Promise<SessionUsage | null> {
+    const query = this.query
+    if (!query?.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET) return null
+    try {
+      // skipBehaviors: the behaviors section scans every transcript of the last 7 days.
+      return parseSessionUsage(await query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }))
+    } catch {
+      return null
+    }
   }
 
   respondPermission(requestId: string, decision: PermissionDecision): void {

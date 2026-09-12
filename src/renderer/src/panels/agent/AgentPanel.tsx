@@ -104,6 +104,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
       </AgentPanelContext.Provider>
       <Composer panelId={panelId} chat={chat} projectPath={params.projectPath} onSend={send} onLocalCommand={onLocalCommand} />
       <StatusLine
+        panelId={panelId}
         projectPath={params.projectPath}
         chat={chat}
         configOpen={statusConfig}

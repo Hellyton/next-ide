@@ -37,8 +37,8 @@ test('statusline: script do usuário recebe o JSON completo e vira a barra intei
     effort: { level: 'high' },
     thinking: { enabled: true },
     context_window: { context_window_size: 200000, total_input_tokens: 10 },
-    cost: { total_lines_added: 0, total_lines_removed: 0 },
-    rate_limits: { five_hour: { used_percentage: 42, resets_at: 4_102_444_800 } },
+    cost: { total_duration_ms: 3_600_000, total_lines_added: 12, total_lines_removed: 3 },
+    rate_limits: { five_hour: { used_percentage: 42, resets_at: 4_102_444_800 }, seven_day: { used_percentage: 17 } },
   })
   await app.close()
 })

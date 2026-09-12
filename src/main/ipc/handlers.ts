@@ -79,6 +79,10 @@ export function buildHandlers(d: HandlerDeps): Handlers {
       await d.agentReady()
       return d.agents.get(panelId).models()
     },
+    'agent:usage': async (panelId) => {
+      await d.agentReady()
+      return d.agents.get(panelId).usage()
+    },
     'agent:listSessions': async (projectPath) => {
       await d.agentReady()
       return d.sessions.list(projectPath)

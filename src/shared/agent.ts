@@ -43,6 +43,15 @@ export type AgentEvent =
   | StatsEvent
   | { kind: 'error'; message: string; action?: ErrorAction }
 
+/** Session totals and plan usage from the SDK's experimental `usage` control request (same data as /usage). */
+export type SessionUsage = {
+  totalCostUsd: number
+  totalDurationMs: number
+  totalLinesAdded: number
+  totalLinesRemoved: number
+  rateLimits: RateLimits
+}
+
 export type CommandOption = { name: string; description: string; argumentHint: string }
 export type ModelOption = { value: string; displayName: string; description: string }
 export type SessionSummary = { sessionId: string; title: string; lastModified: number }

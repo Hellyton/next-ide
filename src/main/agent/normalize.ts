@@ -1,4 +1,4 @@
-import type { AgentEvent, Usage } from '@shared/agent'
+import type { AgentEvent, RateWindow, SessionUsage, Usage } from '@shared/agent'
 import type { PermissionMode } from '@shared/models'
 
 type Rec = Record<string, unknown>
@@ -172,6 +172,30 @@ export class StreamNormalizer {
       events.push({ kind: 'error', message: errors.join('\n') || str(m.result) || String(m.subtype ?? 'erro') })
     }
     return events
+  }
+}
+
+/** Maps the SDK's get_usage response to what the status line needs (`utilization` is 0-100 here). */
+export function parseSessionUsage(response: unknown): SessionUsage | null {
+  if (!isRec(response)) return null
+  const session = isRec(response.session) ? response.session : {}
+  const limits = isRec(response.rate_limits) ? response.rate_limits : {}
+  const windowOf = (value: unknown): RateWindow | undefined => {
+    if (!isRec(value) || typeof value.utilization !== 'number') return undefined
+    const resets = typeof value.resets_at === 'string' ? Math.round(Date.parse(value.resets_at) / 1000) : NaN
+    return {
+      used_percentage: Math.round(value.utilization * 10) / 10,
+      ...(Number.isFinite(resets) ? { resets_at: resets } : {}),
+    }
+  }
+  const fiveHour = windowOf(limits.five_hour)
+  const sevenDay = windowOf(limits.seven_day)
+  return {
+    totalCostUsd: num(session.total_cost_usd),
+    totalDurationMs: num(session.total_duration_ms),
+    totalLinesAdded: num(session.total_lines_added),
+    totalLinesRemoved: num(session.total_lines_removed),
+    rateLimits: { ...(fiveHour ? { five_hour: fiveHour } : {}), ...(sevenDay ? { seven_day: sevenDay } : {}) },
   }
 }
 

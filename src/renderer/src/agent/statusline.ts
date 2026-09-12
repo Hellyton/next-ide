@@ -117,7 +117,7 @@ export function buildStatusLineInput(ctx: StatusContext & { sessionId?: string; 
     ...(ctx.contextPct !== undefined
       ? { context_window: { context_window_size: ctx.contextWindow ?? 0, used_percentage: ctx.contextPct, total_input_tokens: inUse } }
       : {}),
-    exceeds_200k_tokens: inUse > 200_000,
+    exceeds_200k_tokens: (ctx.contextWindow ?? 0) > 200_000,
     ...(hasRates ? { rate_limits: ctx.rateLimits! } : {}),
   }
 }

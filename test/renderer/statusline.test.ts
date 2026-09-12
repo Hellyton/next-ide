@@ -66,7 +66,7 @@ describe('buildStatusLineInput', () => {
       version: '2.1.0',
       cost: { total_cost_usd: 0.4213, total_duration_ms: 3_600_000, total_lines_added: 12, total_lines_removed: 3 },
       context_window: { context_window_size: 1_000_000, used_percentage: 29, total_input_tokens: 452_000 },
-      exceeds_200k_tokens: true,
+      exceeds_200k_tokens: true, // the 1M window, like the CLI's "200k+" flag
       rate_limits: { five_hour: { used_percentage: 97, resets_at: 1_900_000_000 } },
     })
   })

@@ -77,10 +77,6 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
         },
       })
       out.push({
-        type: 'rate_limit_event',
-        rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', utilization: 0.42, resetsAt: 4_102_444_800 },
-      })
-      out.push({
         type: 'result',
         subtype: 'success',
         is_error: false,
@@ -109,6 +105,15 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
       { value: 'fake-model', displayName: 'Fake Opus', description: '' },
       { value: 'fake-small', displayName: 'Fake Haiku', description: '' },
     ],
+    usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => ({
+      session: { total_cost_usd: 0.01, total_duration_ms: 3_600_000, total_api_duration_ms: 1000, total_lines_added: 12, total_lines_removed: 3, model_usage: {} },
+      subscription_type: 'max',
+      rate_limits_available: true,
+      rate_limits: {
+        five_hour: { utilization: 42, resets_at: '2100-01-01T00:00:00.000Z' },
+        seven_day: { utilization: 17, resets_at: '2100-01-02T00:00:00.000Z' },
+      },
+    }),
     close: () => out.end(),
   })
   return query

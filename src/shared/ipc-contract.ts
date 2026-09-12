@@ -1,4 +1,4 @@
-import type { AgentEvent, CommandOption, ImageAttachment, ModelOption, PermissionDecision, SessionSummary, StatusLineInput } from './agent'
+import type { AgentEvent, CommandOption, ImageAttachment, ModelOption, PermissionDecision, SessionSummary, SessionUsage, StatusLineInput } from './agent'
 import type { FileContent, FsEntry, GitFileStatus } from './files'
 import type { AgentPanelParams, GitInfo, LayoutState, PermissionMode, Settings, Workspace } from './models'
 
@@ -29,6 +29,7 @@ export type InvokeMap = {
   'agent:respondPermission': { args: [panelId: string, requestId: string, decision: PermissionDecision]; result: void }
   'agent:commands': { args: [panelId: string]; result: CommandOption[] }
   'agent:models': { args: [panelId: string]; result: ModelOption[] }
+  'agent:usage': { args: [panelId: string]; result: SessionUsage | null }
   'agent:listSessions': { args: [projectPath: string]; result: SessionSummary[] }
   'agent:history': { args: [projectPath: string, sessionId: string]; result: AgentEvent[] }
   'agent:close': { args: [panelId: string]; result: void }
@@ -79,6 +80,7 @@ export const INVOKE_CHANNELS = [
   'agent:respondPermission',
   'agent:commands',
   'agent:models',
+  'agent:usage',
   'agent:listSessions',
   'agent:history',
   'agent:close',
