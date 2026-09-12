@@ -23,7 +23,11 @@ export type StatusSegmentId = (typeof STATUS_SEGMENTS)[number] | 'customScript'
 export const sanitizeSegments = (ids: readonly string[]): StatusSegmentId[] =>
   ids.filter((id): id is StatusSegmentId => (STATUS_SEGMENTS as readonly string[]).includes(id))
 
+export const SETTINGS_VERSION = 2
+
 export type Settings = {
+  /** Bumped when a default changes and older files must be upgraded (see migrateSettings). */
+  settingsVersion?: number
   claudePath?: string
   defaultModel?: string
   defaultPermissionMode: PermissionMode
@@ -34,12 +38,19 @@ export type Settings = {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  defaultPermissionMode: 'default',
+  settingsVersion: SETTINGS_VERSION,
+  defaultPermissionMode: 'auto',
   statusline: {
     segments: ['project', 'branch', 'model', 'context', 'duration'],
     customScript: false,
   },
   theme: 'dark',
+}
+
+/** v2: new chats start in auto mode; files written before it carry the old 'default'. */
+export function migrateSettings(settings: Settings): Settings {
+  if ((settings.settingsVersion ?? 1) >= SETTINGS_VERSION) return settings
+  return { ...settings, settingsVersion: SETTINGS_VERSION, defaultPermissionMode: 'auto' }
 }
 
 /** `dock` is dockview's SerializedDockview; kept opaque outside the renderer. */

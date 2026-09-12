@@ -24,7 +24,7 @@ describe('modelLabel', () => {
 describe('buildSegments', () => {
   it('renders the chosen segments in order and skips missing data', () => {
     expect(buildSegments(['project', 'branch', 'model', 'context', 'duration', 'mode', 'tokens'], ctx).map((s) => s.text)).toEqual([
-      'api', 'dev', 'opus', 'contexto 29%', '1m13s', 'Plano', '288k tokens',
+      'api', 'dev', 'opus', 'contexto 29%', '1m13s', 'plan mode on', '288k tokens',
     ])
     expect(buildSegments(['branch', 'context', 'customScript'], { ...ctx, branch: null, contextPct: undefined }).map((s) => s.id)).toEqual([])
   })

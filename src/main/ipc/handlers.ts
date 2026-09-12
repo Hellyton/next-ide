@@ -1,7 +1,7 @@
 import type { StatusLineInput } from '@shared/agent'
 import type { Handlers } from '@shared/ipc-contract'
 import { sanitizeLayout } from '@shared/layout'
-import { DEFAULT_SETTINGS, sanitizeSegments, type GitInfo, type Workspace } from '@shared/models'
+import { DEFAULT_SETTINGS, migrateSettings, sanitizeSegments, type GitInfo, type Workspace } from '@shared/models'
 import type { AgentManager } from '../agent/AgentManager'
 import { historyToEvents } from '../agent/normalize'
 import type { SessionStoreApi } from '../agent/sdk'
@@ -35,7 +35,12 @@ export function buildHandlers(d: HandlerDeps): Handlers {
     'settings:get': async () => {
       const stored = await d.stores.settings.read()
       const statusline = { ...DEFAULT_SETTINGS.statusline, ...stored.statusline }
-      return { ...DEFAULT_SETTINGS, ...stored, statusline: { ...statusline, segments: sanitizeSegments(statusline.segments) } }
+      const merged = { ...DEFAULT_SETTINGS, ...stored, statusline: { ...statusline, segments: sanitizeSegments(statusline.segments) } }
+      // The stored version decides the upgrade; the defaults above always carry the current one.
+      const settings = migrateSettings({ ...merged, settingsVersion: stored.settingsVersion })
+      // Write it back so the upgrade happens once, not on every read.
+      if (settings.settingsVersion !== stored.settingsVersion) await d.stores.settings.writeNow(settings)
+      return settings
     },
     'settings:save': (settings) => d.stores.settings.writeNow(settings),
     'layout:get': async () => sanitizeLayout(await d.stores.layout.read()),
@@ -65,7 +70,10 @@ export function buildHandlers(d: HandlerDeps): Handlers {
     'pty:kill': (panelId) => d.pty.kill(panelId),
     'agent:create': async (panelId, params) => {
       await d.agentReady()
-      d.agents.create(panelId, params)
+      // A brand-new panel has no mode of its own: start it in the configured default (auto).
+      const stored = await d.stores.settings.read()
+      const mode = params.permissionMode ?? migrateSettings({ ...DEFAULT_SETTINGS, ...stored, settingsVersion: stored.settingsVersion }).defaultPermissionMode
+      d.agents.create(panelId, { ...params, permissionMode: mode })
     },
     'agent:start': async (panelId) => {
       await d.agentReady()

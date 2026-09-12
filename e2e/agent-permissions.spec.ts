@@ -15,6 +15,8 @@ test('aprova permissão inline e troca modo e modelo', async () => {
   await expect(card).toContainText('Permitido')
   await expect(page.getByTestId('bash-card')).toContainText('removido')
 
+  // New panels open in auto mode.
+  await expect(page.getByRole('combobox', { name: 'Modo de permissão' })).toHaveValue('auto')
   await page.getByRole('combobox', { name: 'Modo de permissão' }).selectOption('plan')
   await expect(page.getByRole('combobox', { name: 'Modo de permissão' })).toHaveValue('plan')
 

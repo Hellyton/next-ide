@@ -1,12 +1,13 @@
 import type { PermissionDecision } from '@shared/agent'
 import type { PermissionMode } from '@shared/models'
 
+/** Same wording as the Claude Code CLI's shift+tab indicator. */
 export const MODE_OPTIONS: Array<{ value: PermissionMode; label: string }> = [
-  { value: 'default', label: 'Perguntar' },
-  { value: 'acceptEdits', label: 'Aceitar edições' },
-  { value: 'plan', label: 'Plano' },
-  { value: 'auto', label: 'Auto' },
-  { value: 'bypassPermissions', label: 'Sem permissões' },
+  { value: 'auto', label: 'auto mode on' },
+  { value: 'default', label: 'manual mode on' },
+  { value: 'acceptEdits', label: 'accept edit on' },
+  { value: 'plan', label: 'plan mode on' },
+  { value: 'bypassPermissions', label: 'bypass mode on' },
 ]
 
 export function permissionSummary(_toolName: string, input: unknown): string {

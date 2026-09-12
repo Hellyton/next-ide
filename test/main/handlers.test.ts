@@ -51,6 +51,28 @@ describe('buildHandlers (settings)', () => {
   })
 })
 
+describe('buildHandlers (permission mode default)', () => {
+  it('upgrades an older settings file to auto mode, once', async () => {
+    const d = deps()
+    await d.stores.settings.writeNow({ ...DEFAULT_SETTINGS, settingsVersion: undefined, defaultPermissionMode: 'default' })
+    const h = buildHandlers(d)
+    expect((await h['settings:get']()).defaultPermissionMode).toBe('auto')
+    // Written back: a later explicit choice is kept.
+    await h['settings:save']({ ...DEFAULT_SETTINGS, defaultPermissionMode: 'plan' })
+    expect((await h['settings:get']()).defaultPermissionMode).toBe('plan')
+  })
+
+  it('agent:create starts a panel without a mode in the configured default', async () => {
+    const create = vi.fn()
+    const d = deps({ agents: { create, get: vi.fn(), close: vi.fn() } as unknown as HandlerDeps['agents'] })
+    const h = buildHandlers(d)
+    await h['agent:create']('p1', { type: 'agent', projectPath: '/p' })
+    expect(create).toHaveBeenCalledWith('p1', { type: 'agent', projectPath: '/p', permissionMode: 'auto' })
+    await h['agent:create']('p2', { type: 'agent', projectPath: '/p', permissionMode: 'plan' })
+    expect(create).toHaveBeenLastCalledWith('p2', { type: 'agent', projectPath: '/p', permissionMode: 'plan' })
+  })
+})
+
 describe('buildHandlers', () => {
   it('workspace get/save round-trips after flush', async () => {
     const d = deps()
@@ -149,7 +171,7 @@ describe('buildHandlers', () => {
     release()
     await p
     expect(create).toHaveBeenCalledTimes(1)
-    expect(create).toHaveBeenCalledWith('p1', { type: 'agent', projectPath: '/p' })
+    expect(create).toHaveBeenCalledWith('p1', { type: 'agent', projectPath: '/p', permissionMode: 'auto' })
   })
 
   it('fs and git:status channels delegate to FilesService', async () => {

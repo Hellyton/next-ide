@@ -9,11 +9,12 @@ describe('permissions view helpers', () => {
     expect(permissionSummary('mcp__db__query', { sql: 'select 1' })).toBe('{"sql":"select 1"}')
   })
 
-  it('labels decisions and lists modes in pt-BR', () => {
+  it('labels decisions in pt-BR and modes like the Claude Code CLI', () => {
     expect(decisionLabel('allow')).toBe('Permitido')
     expect(decisionLabel('allow-always')).toBe('Sempre permitido')
     expect(decisionLabel('deny')).toBe('Negado')
     expect(decisionLabel('cancelled')).toBe('Cancelado')
-    expect(MODE_OPTIONS.map((m) => m.value)).toEqual(['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'])
+    expect(MODE_OPTIONS.map((m) => m.value)).toEqual(['auto', 'default', 'acceptEdits', 'plan', 'bypassPermissions'])
+    expect(MODE_OPTIONS.map((m) => m.label)).toEqual(['auto mode on', 'manual mode on', 'accept edit on', 'plan mode on', 'bypass mode on'])
   })
 })
