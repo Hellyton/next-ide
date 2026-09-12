@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import type { FsEntry } from '@shared/files'
 import { useDock } from '../dock/dockStore'
+import { FileIcon } from '../files/FileTypeIcon'
 import { entryStatus, STATUS_CLASS } from '../files/tree'
 import { useFiles } from '../stores/filesStore'
 
@@ -41,6 +42,7 @@ function FileTreeRow({ projectPath, entry, depth }: { projectPath: string; entry
         onClick={onClick}
       >
         <span className="w-3 shrink-0 text-neutral-500">{entry.kind === 'dir' ? (open ? '▾' : '▸') : ''}</span>
+        <FileIcon name={entry.name} isDir={entry.kind === 'dir'} open={open} />
         <span className="truncate">{entry.name}</span>
         {status && entry.kind === 'file' && <span className="ml-auto pl-1 text-[10px]">{status}</span>}
       </button>

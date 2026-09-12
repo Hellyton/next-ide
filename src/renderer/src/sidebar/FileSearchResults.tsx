@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { fuzzyFilter } from '@shared/fuzzy'
 import { useDock } from '../dock/dockStore'
+import { FileIcon } from '../files/FileTypeIcon'
 import { useFiles } from '../stores/filesStore'
 
 export function FileSearchResults({ projectPath, query }: { projectPath: string; query: string }) {
@@ -18,10 +19,11 @@ export function FileSearchResults({ projectPath, query }: { projectPath: string;
           key={rel}
           data-testid="file-search-result"
           title={rel}
-          className="block w-full truncate rounded py-0.5 pr-1 pl-8 text-left text-xs text-neutral-300 hover:bg-neutral-800/70"
+          className="flex w-full items-center gap-1 rounded py-0.5 pr-1 pl-8 text-left text-xs text-neutral-300 hover:bg-neutral-800/70"
           onClick={() => useDock.getState().openFile({ type: 'file', projectPath, filePath: `${projectPath}/${rel}` })}
         >
-          {rel}
+          <FileIcon name={rel.slice(rel.lastIndexOf('/') + 1)} />
+          <span className="truncate">{rel}</span>
         </button>
       ))}
     </>

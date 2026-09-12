@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { fuzzyFilter } from '@shared/fuzzy'
 import { uniqueProjects } from '@shared/workspaces'
 import { useDock } from '../dock/dockStore'
+import { FileIcon } from '../files/FileTypeIcon'
 import { useFiles } from '../stores/filesStore'
 import { useWorkspaces } from '../stores/workspaceStore'
 import { useQuickOpen } from './quickOpenStore'
@@ -79,6 +80,7 @@ function QuickOpenDialog() {
                 choose(h)
               }}
             >
+              <FileIcon name={h.rel.slice(h.rel.lastIndexOf('/') + 1)} />
               <span className="truncate text-neutral-100">{h.rel}</span>
               <span className="ml-auto shrink-0 text-neutral-500">{h.projectName}</span>
             </li>

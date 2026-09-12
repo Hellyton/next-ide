@@ -47,6 +47,17 @@ const LOADERS: Record<SupportedLang, LangInput> = {
   diff: () => import('@shikijs/langs/diff'),
 }
 
+async function ensureLanguage(hl: HighlighterCore, lang: SupportedLang | 'text'): Promise<SupportedLang | 'text'> {
+  if (lang === 'text' || hl.getLoadedLanguages().includes(lang)) return lang
+  try {
+    await hl.loadLanguage(LOADERS[lang])
+    return lang
+  } catch (err) {
+    console.error('[next-ide] failed to load grammar', lang, err)
+    return 'text'
+  }
+}
+
 let highlighter: Promise<HighlighterCore> | null = null
 const getHighlighter = () => {
   if (!highlighter) {
@@ -65,16 +76,15 @@ const getHighlighter = () => {
   return highlighter
 }
 
+/** Same colors, but plain <span>s: for a single line inside an existing element. */
+export async function highlightInline(code: string, lang: SupportedLang | 'text'): Promise<string> {
+  const hl = await getHighlighter()
+  const target = await ensureLanguage(hl, lang)
+  return hl.codeToHtml(code, { lang: target, theme: THEME, structure: 'inline' })
+}
+
 export async function highlight(code: string, lang: SupportedLang | 'text'): Promise<string> {
   const hl = await getHighlighter()
-  let target: SupportedLang | 'text' = code.length > PLAIN_ABOVE ? 'text' : lang
-  if (target !== 'text' && !hl.getLoadedLanguages().includes(target)) {
-    try {
-      await hl.loadLanguage(LOADERS[target])
-    } catch (err) {
-      console.error('[next-ide] failed to load grammar', target, err)
-      target = 'text'
-    }
-  }
+  const target = await ensureLanguage(hl, code.length > PLAIN_ABOVE ? 'text' : lang)
   return hl.codeToHtml(code, { lang: target, theme: THEME })
 }
