@@ -12,12 +12,13 @@ export class AgentManager {
   create(panelId: string, params: AgentPanelParams): void {
     if (this.sessions.has(panelId)) return
     const runtime = this.deps.runtime()
+    const permissionMode = params.permissionMode ?? 'default'
     this.sessions.set(
       panelId,
       new AgentSession(
         {
           cwd: params.projectPath,
-          permissionMode: params.permissionMode ?? 'default',
+          permissionMode,
           ...(params.model ? { model: params.model } : {}),
           ...(params.sessionId ? { resume: params.sessionId } : {}),
         },
@@ -29,6 +30,9 @@ export class AgentManager {
         },
       ),
     )
+    // The real CLI only reports the mode in its first `init` (i.e. after the first message), so
+    // tell the panel now — otherwise a fresh panel would show the wrong mode until it is used.
+    this.deps.emit(panelId, { kind: 'mode', permissionMode })
   }
 
   get(panelId: string): AgentSession {

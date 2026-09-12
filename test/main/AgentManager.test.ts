@@ -22,6 +22,14 @@ describe('AgentManager', () => {
     expect(events.some(([, e]) => e.kind === 'text' && e.text === 'Você disse: oi')).toBe(true)
   })
 
+  it('announces the session mode right away, so a fresh panel shows it', () => {
+    const { m, events } = manager()
+    m.create('p1', { type: 'agent', projectPath: '/proj', permissionMode: 'auto' })
+    expect(events).toEqual([['p1', { kind: 'mode', permissionMode: 'auto' }]])
+    m.create('p2', { type: 'agent', projectPath: '/proj' })
+    expect(events.at(-1)).toEqual(['p2', { kind: 'mode', permissionMode: 'default' }])
+  })
+
   it('throws for unknown panels, reports busy sessions, closes one and all', () => {
     const { m } = manager()
     expect(() => m.get('x')).toThrow('Sessão de agente não encontrada: x')
