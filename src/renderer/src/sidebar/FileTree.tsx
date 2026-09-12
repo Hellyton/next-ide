@@ -4,6 +4,7 @@ import { useDock } from '../dock/dockStore'
 import { FileIcon } from '../files/FileTypeIcon'
 import { entryStatus, STATUS_CLASS } from '../files/tree'
 import { useFiles } from '../stores/filesStore'
+import { Chevron } from './Chevron'
 
 export function FileTree({ projectPath, dir, depth }: { projectPath: string; dir: string; depth: number }) {
   const entries = useFiles((s) => s.children[dir])
@@ -41,7 +42,7 @@ function FileTreeRow({ projectPath, entry, depth }: { projectPath: string; entry
         className={`flex w-full items-center gap-1 rounded py-0.5 pr-1 text-left text-xs hover:bg-neutral-800/70 ${status ? STATUS_CLASS[status] : 'text-neutral-300'}`}
         onClick={onClick}
       >
-        <span className="w-3 shrink-0 text-neutral-500">{entry.kind === 'dir' ? (open ? '▾' : '▸') : ''}</span>
+        <span className="flex w-4 shrink-0 justify-center text-neutral-400">{entry.kind === 'dir' && <Chevron open={open} />}</span>
         <FileIcon name={entry.name} isDir={entry.kind === 'dir'} open={open} />
         <span className="truncate">{entry.name}</span>
         {status && entry.kind === 'file' && <span className="ml-auto pl-1 text-[10px]">{status}</span>}

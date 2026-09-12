@@ -6,6 +6,7 @@ import { useSessions } from '../stores/sessionsStore'
 import { useWorkspaces } from '../stores/workspaceStore'
 import { FileSearchResults } from './FileSearchResults'
 import { FileTree } from './FileTree'
+import { Chevron } from './Chevron'
 import { useGitBranch } from './useGitBranch'
 
 export function ProjectRow({ project, onRemove }: { project: Project; onRemove: () => void }) {
@@ -23,10 +24,10 @@ export function ProjectRow({ project, onRemove }: { project: Project; onRemove: 
       >
         <button
           aria-label={expanded ? `Recolher arquivos de ${project.name}` : `Expandir arquivos de ${project.name}`}
-          className="w-4 shrink-0 text-xs text-neutral-500"
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-neutral-400 hover:bg-neutral-700/60 hover:text-neutral-100"
           onClick={() => useFiles.getState().toggleDir(project.path, project.path)}
         >
-          {expanded ? '▾' : '▸'}
+          <Chevron open={expanded} />
         </button>
         <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: projectColor(project.path) }} />
         <span className="min-w-0 flex-1 truncate">

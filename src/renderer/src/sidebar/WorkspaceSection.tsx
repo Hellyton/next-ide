@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Workspace } from '@shared/models'
 import { useWorkspaces } from '../stores/workspaceStore'
+import { Chevron } from './Chevron'
 import { ProjectRow } from './ProjectRow'
 
 const DRAG_TYPE = 'application/x-next-ide-workspace'
@@ -45,10 +46,10 @@ export function WorkspaceSection({ workspace, draggable }: { workspace: Workspac
       >
         <button
           aria-label={workspace.collapsed ? `Expandir ${workspace.name}` : `Recolher ${workspace.name}`}
-          className="w-4 text-xs text-neutral-500"
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-neutral-400 hover:bg-neutral-700/60 hover:text-neutral-100"
           onClick={() => toggle(workspace.id)}
         >
-          {workspace.collapsed ? '▸' : '▾'}
+          <Chevron open={!workspace.collapsed} />
         </button>
         {editing ? (
           <input
