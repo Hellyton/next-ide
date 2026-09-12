@@ -1,5 +1,6 @@
 appId: dev.nextide.app
 productName: next-ide
+afterPack: build/afterPack.cjs
 directories:
   output: dist
   buildResources: resources
@@ -14,6 +15,10 @@ mac:
   category: public.app-category.developer-tools
   target:
     - dir
+    - dmg
   identity: null
   extendInfo:
     LSUIElement: false
+dmg:
+  title: next-ide
+  artifactName: next-ide-${version}-${arch}.dmg

@@ -13,8 +13,9 @@
     "test:e2e": "electron-vite build && playwright test",
     "postinstall": "chmod +x node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null || true; node scripts/brand-electron.mjs || true",
     "brand": "node scripts/brand-electron.mjs",
-    "package": "electron-vite build && electron-builder --dir && codesign --force --deep --sign - dist/mac-arm64/next-ide.app",
-    "app": "open dist/mac-arm64/next-ide.app"
+    "package": "electron-vite build && electron-builder --dir",
+    "app": "open dist/mac-arm64/next-ide.app",
+    "dist": "electron-vite build && electron-builder"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.268",
