@@ -21,7 +21,7 @@ export type HandlerDeps = {
   sessions: SessionStoreApi
   agentReady: () => Promise<void>
   runStatusLine: (input: StatusLineInput) => Promise<string | null>
-  files: Pick<FilesService, 'list' | 'read' | 'index' | 'status'>
+  files: Pick<FilesService, 'list' | 'read' | 'write' | 'index' | 'status'>
   onWorkspaces: (workspaces: Workspace[]) => void
 }
 
@@ -50,6 +50,14 @@ export function buildHandlers(d: HandlerDeps): Handlers {
     'fs:list': (projectPath, dir) => d.files.list(projectPath, dir),
     'fs:read': (path) => d.files.read(path),
     'fs:index': (projectPath) => d.files.index(projectPath),
+    'fs:write': async (path, content) => {
+      try {
+        await d.files.write(path, content)
+        return { ok: true as const }
+      } catch (err) {
+        return { ok: false as const, message: err instanceof Error ? err.message : String(err) }
+      }
+    },
     'git:status': (projectPath) => d.files.status(projectPath),
     'pty:create': (panelId, cwd, cols, rows) => d.pty.create(panelId, cwd, cols, rows),
     'pty:write': (panelId, data) => d.pty.write(panelId, data),

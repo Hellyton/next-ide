@@ -31,6 +31,7 @@ function deps(over: Partial<HandlerDeps> = {}): HandlerDeps & { ptyCalls: unknow
     files: {
       list: async (p, d) => [{ name: 'a.ts', path: `${d}/a.ts`, kind: 'file' }],
       read: async () => ({ kind: 'missing' }),
+      write: async () => undefined,
       index: async () => ['a.ts'],
       status: async () => ({ 'a.ts': 'M' }),
     },
@@ -157,6 +158,15 @@ describe('buildHandlers', () => {
     expect(await h['fs:read']('/p/a.ts')).toEqual({ kind: 'missing' })
     expect(await h['fs:index']('/p')).toEqual(['a.ts'])
     expect(await h['git:status']('/p')).toEqual({ 'a.ts': 'M' })
+  })
+
+  it('fs:write reports failures instead of throwing at the renderer', async () => {
+    expect(await buildHandlers(deps())['fs:write']('/p/a.ts', 'x')).toEqual({ ok: true })
+    const failing = deps()
+    failing.files.write = async () => {
+      throw new Error('Arquivo fora das pastas dos workspaces.')
+    }
+    expect(await buildHandlers(failing)['fs:write']('/nope', 'x')).toEqual({ ok: false, message: 'Arquivo fora das pastas dos workspaces.' })
   })
 
   it('workspace:save reports the new workspaces so watchers and roots follow', async () => {

@@ -15,6 +15,7 @@ export type InvokeMap = {
   'fs:list': { args: [projectPath: string, dir: string]; result: FsEntry[] }
   'fs:read': { args: [path: string]; result: FileContent }
   'fs:index': { args: [projectPath: string]; result: string[] }
+  'fs:write': { args: [path: string, content: string]; result: { ok: true } | { ok: false; message: string } }
   'git:status': { args: [projectPath: string]; result: Record<string, GitFileStatus> }
   'pty:create': { args: [panelId: string, cwd: string, cols: number, rows: number]; result: void }
   'pty:write': { args: [panelId: string, data: string]; result: void }
@@ -66,6 +67,7 @@ export const INVOKE_CHANNELS = [
   'fs:list',
   'fs:read',
   'fs:index',
+  'fs:write',
   'git:status',
   'pty:create',
   'pty:write',

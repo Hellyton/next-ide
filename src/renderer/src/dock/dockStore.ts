@@ -2,7 +2,8 @@ import type { DockviewApi } from 'dockview-react'
 import { create } from 'zustand'
 import type { FilePanelParams, PanelParams } from '@shared/models'
 import { useSessions } from '../stores/sessionsStore'
-import { CLOSE_CONFIRM_MESSAGE, needsCloseConfirm } from './closeGuard'
+import { useFiles } from '../stores/filesStore'
+import { CLOSE_CONFIRM_MESSAGE, needsCloseConfirm, UNSAVED_CONFIRM_MESSAGE } from './closeGuard'
 import { buildAddPanelOptions, newPanelId } from './panelOptions'
 import { replacementPatch } from './panelParams'
 
@@ -64,6 +65,7 @@ export const useDock = create<DockState>()((set, get) => ({
     const params = panel.params as PanelParams | undefined
     const state = useSessions.getState().byId[panelId]?.state
     if (needsCloseConfirm(params?.type, state) && !window.confirm(CLOSE_CONFIRM_MESSAGE)) return
+    if (params?.type === 'file' && useFiles.getState().dirty[params.filePath] && !window.confirm(UNSAVED_CONFIRM_MESSAGE)) return
     panel.api.close()
   },
   closeActive: () => {

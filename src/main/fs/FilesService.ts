@@ -1,7 +1,7 @@
-import { lstat } from 'node:fs/promises'
+import { lstat, stat, writeFile } from 'node:fs/promises'
 import { isAbsolute, resolve } from 'node:path'
 import type { Ignore } from 'ignore'
-import type { FileContent, FsEntry, GitFileStatus } from '@shared/files'
+import { MAX_VIEW_BYTES, type FileContent, type FsEntry, type GitFileStatus } from '@shared/files'
 import { listDir, loadIgnore, readViewable } from './fsOps'
 import { isInside, resolveInsideRoots } from './pathGuard'
 import { gitStatus, indexProject } from './projectIndex'
@@ -59,6 +59,18 @@ export class FilesService {
       }
     }
     return readViewable(real)
+  }
+
+  /** Overwrites an existing file inside a workspace project. Never creates files, never escapes. */
+  async write(path: string, content: string): Promise<void> {
+    const abs = isAbsolute(path) ? resolve(path) : null
+    const roots = await this.roots()
+    if (!abs || !roots.some((r) => isInside(abs, r))) throw new Error('Arquivo fora das pastas dos workspaces.')
+    const real = await resolveInsideRoots(abs, roots)
+    if (!real) throw new Error('Arquivo não encontrado.')
+    if (!(await stat(real)).isFile()) throw new Error('Só é possível salvar arquivos.')
+    if (Buffer.byteLength(content, 'utf8') > MAX_VIEW_BYTES) throw new Error('Arquivo maior que 2 MB.')
+    await writeFile(real, content, 'utf8')
   }
 
   async index(projectPath: string): Promise<string[]> {

@@ -8,11 +8,14 @@ type FilesState = {
   errors: Record<string, string>
   status: Record<string, Record<string, GitFileStatus>>
   indexes: Record<string, string[]>
+  /** File panels with unsaved edits, by absolute path. */
+  dirty: Record<string, true>
   staleIndexes: Record<string, true>
   toggleDir(projectPath: string, dir: string): void
   loadDir(projectPath: string, dir: string): Promise<void>
   refreshStatus(projectPath: string): Promise<void>
   ensureIndex(projectPath: string): Promise<string[]>
+  setDirty(path: string, on: boolean): void
   handleFsChanged(projectPath: string, paths: string[]): void
   handleGitChanged(projectPath: string): void
 }
@@ -33,6 +36,7 @@ export const useFiles = create<FilesState>()((set, get) => ({
   errors: {},
   status: {},
   indexes: {},
+  dirty: {},
   staleIndexes: {},
   toggleDir: (projectPath, dir) => {
     if (get().expanded[dir]) {
@@ -87,6 +91,7 @@ export const useFiles = create<FilesState>()((set, get) => ({
     }
     return pending
   },
+  setDirty: (path, on) => set((s) => (on ? { dirty: { ...s.dirty, [path]: true } } : { dirty: without(s.dirty, path) })),
   handleFsChanged: (projectPath, paths) => {
     // Mark stale instead of deleting: Quick Open / sidebar filter / @ mentions keep showing the
     // old list (rather than going blank) until the next ensureIndex refetches it.

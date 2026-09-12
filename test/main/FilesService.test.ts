@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -44,6 +44,17 @@ describe('FilesService', () => {
     expect((await files.index(root)).sort()).toEqual(['.gitignore', 'link.txt', 'src/a.ts'])
     expect(await files.index(outside)).toEqual([])
     expect(await files.status(outside)).toEqual({})
+  })
+
+  it('writes an existing file inside a project and refuses everything else', async () => {
+    const { root, outside, files } = setup()
+    await files.write(join(root, 'src', 'a.ts'), 'export const a = 2\n')
+    expect(readFileSync(join(root, 'src', 'a.ts'), 'utf8')).toBe('export const a = 2\n')
+    await expect(files.write(join(outside, 'x.txt'), 'nope')).rejects.toThrow('fora das pastas')
+    await expect(files.write('src/a.ts', 'nope')).rejects.toThrow('fora das pastas')
+    await expect(files.write(join(root, 'src', 'new.ts'), 'nope')).rejects.toThrow('não encontrado')
+    await expect(files.write(join(root, 'link.txt'), 'nope')).rejects.toThrow('não encontrado')
+    await expect(files.write(join(root, 'src'), 'nope')).rejects.toThrow('arquivos')
   })
 
   it('re-reads .gitignore after invalidateIgnore', async () => {
