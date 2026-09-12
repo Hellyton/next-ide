@@ -190,11 +190,13 @@ function createWindow(): BrowserWindow {
 }
 
 void app.whenReady().then(() => {
-  // Not packaged: the Dock would show the stock Electron icon.
-  try {
-    app.dock?.setIcon(join(__dirname, '../../resources/icon.png'))
-  } catch (err) {
-    console.error('[next-ide] failed to set dock icon', err)
+  // Dev only: unpackaged, the Dock would show the stock Electron icon (packaged, the bundle has it).
+  if (!app.isPackaged) {
+    try {
+      app.dock?.setIcon(join(__dirname, '../../resources/icon.png'))
+    } catch (err) {
+      console.error('[next-ide] failed to set dock icon', err)
+    }
   }
   installMenu()
   mainWindow = createWindow()

@@ -1,0 +1,19 @@
+appId: dev.nextide.app
+productName: next-ide
+directories:
+  output: dist
+  buildResources: resources
+files:
+  - out/**
+  - package.json
+# node-pty ships a native binary and a spawn helper that must stay on disk, outside the asar.
+asarUnpack:
+  - '**/node_modules/node-pty/**'
+mac:
+  icon: resources/icon.icns
+  category: public.app-category.developer-tools
+  target:
+    - dir
+  identity: null
+  extendInfo:
+    LSUIElement: false
