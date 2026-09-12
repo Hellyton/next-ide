@@ -19,6 +19,9 @@ if (!existsSync(plist) || !existsSync(icns)) process.exit(0)
 // The menu bar and Cmd+Tab read CFBundleName; the Dock tooltip follows the executable's name.
 // Electron still finds its helpers: it looks for "Electron Helper.app" (its product name) first.
 for (const key of ['CFBundleName', 'CFBundleDisplayName']) execFileSync('plutil', ['-replace', key, '-string', NAME, plist])
+// Own bundle id too: LaunchServices caches the name/icon per id, and com.github.Electron is
+// shared with every other Electron app on the machine (that cache is what kept saying "Electron").
+execFileSync('plutil', ['-replace', 'CFBundleIdentifier', '-string', 'dev.nextide.app', plist])
 const macos = join(appDir, 'Contents', 'MacOS')
 if (existsSync(join(macos, 'Electron')) && !existsSync(join(macos, NAME))) renameSync(join(macos, 'Electron'), join(macos, NAME))
 execFileSync('plutil', ['-replace', 'CFBundleExecutable', '-string', NAME, plist])
