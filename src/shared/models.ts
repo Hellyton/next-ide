@@ -28,6 +28,8 @@ export type Settings = {
   defaultModel?: string
   defaultPermissionMode: PermissionMode
   statusline: { segments: StatusSegmentId[]; customScript: boolean }
+  /** Sidebar width in px (drag handle between the sidebar and the dock). */
+  sidebarWidth?: number
   theme: 'dark' | 'light' | 'system'
 }
 
