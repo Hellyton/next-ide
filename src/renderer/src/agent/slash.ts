@@ -52,7 +52,7 @@ export function filterCommands(items: SlashItem[], query: string): SlashItem[] {
   const q = query.toLowerCase()
   const prefix = items.filter((c) => c.name.toLowerCase().startsWith(q))
   const rest = items.filter((c) => !c.name.toLowerCase().startsWith(q) && c.name.toLowerCase().includes(q))
-  return [...prefix, ...rest].slice(0, 8)
+  return [...prefix, ...rest].slice(0, 50)
 }
 
 export function classifySlash(text: string): SlashAction {

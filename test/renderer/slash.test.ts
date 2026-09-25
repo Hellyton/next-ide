@@ -19,9 +19,18 @@ describe('mergeCommands / filterCommands', () => {
       'resume', 'clear', 'model', 'statusline', 'btw', 'rewind', 'context', 'effort', 'rename', 'compact', 'review',
     ])
   })
-  it('ranks prefix matches first and caps at 8', () => {
+  it('ranks prefix matches first and caps at 50', () => {
     expect(filterCommands(merged, 're').map((c) => c.name)).toEqual(['resume', 'rewind', 'rename', 'review'])
-    expect(filterCommands(merged, '').length).toBeLessThanOrEqual(8)
+    // Build 60 items to verify cap at 50
+    const manyItems = mergeCommands(
+      Array.from({ length: 60 }, (_, i) => ({ name: `cmd${i}`, description: '', argumentHint: '' })),
+      []
+    )
+    expect(filterCommands(manyItems, '').length).toBe(50)
+  })
+  it('shows SDK commands in menu even with more local commands', () => {
+    const withSDK = mergeCommands([{ name: 'compact', description: 'Compacta', argumentHint: '' }], [])
+    expect(filterCommands(withSDK, '').map((c) => c.name)).toContain('compact')
   })
 })
 
@@ -30,6 +39,7 @@ describe('classifySlash', () => {
     expect(classifySlash('/resume')).toEqual({ kind: 'local', name: 'resume', arg: '' })
     expect(classifySlash('  /clear  ')).toEqual({ kind: 'local', name: 'clear', arg: '' })
     expect(classifySlash('/login')).toEqual({ kind: 'tui', name: 'login' })
+    expect(classifySlash('/login foo')).toEqual({ kind: 'send' })
     expect(classifySlash('/compact foco em testes')).toEqual({ kind: 'send' })
     expect(classifySlash('oi')).toEqual({ kind: 'send' })
   })
