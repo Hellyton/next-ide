@@ -131,4 +131,5 @@ export function subscribeAgentEvents(): void {
   if (subscribed) return
   subscribed = true
   window.api.on('agent:event', handleAgentEvent)
+  window.api.on('agent:focus', (panelId) => useDock.getState().focus(panelId))
 }

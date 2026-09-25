@@ -53,4 +53,12 @@ describe('AgentManager', () => {
     expect(() => m.get('b')).toThrow()
     expect(m.hasBusy()).toBe(false)
   })
+
+  it('remembers the project of each panel until it is closed', () => {
+    const m = new AgentManager({ emit: () => undefined, runtime: () => ({ queryFn: fakeQuery }) })
+    m.create('p1', { type: 'agent', projectPath: '/g/api' })
+    expect(m.projectOf('p1')).toBe('/g/api')
+    m.close('p1')
+    expect(m.projectOf('p1')).toBeUndefined()
+  })
 })

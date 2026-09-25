@@ -61,6 +61,7 @@ export type EventMap = {
   'pty:data': [panelId: string, chunk: string]
   'pty:exit': [panelId: string, exitCode: number]
   'agent:event': [panelId: string, event: AgentEvent]
+  'agent:focus': [panelId: string]
   'fs:changed': [projectPath: string, paths: string[]]
   'git:changed': [projectPath: string]
 }
@@ -116,7 +117,7 @@ export const INVOKE_CHANNELS = [
   'statusline:run',
 ] as const satisfies readonly InvokeChannel[]
 
-export const EVENT_CHANNELS = ['pty:data', 'pty:exit', 'agent:event', 'fs:changed', 'git:changed'] as const satisfies readonly EventChannel[]
+export const EVENT_CHANNELS = ['pty:data', 'pty:exit', 'agent:event', 'agent:focus', 'fs:changed', 'git:changed'] as const satisfies readonly EventChannel[]
 
 // Compile-time guard: every channel in the maps must be listed above.
 type MissingInvoke = Exclude<InvokeChannel, (typeof INVOKE_CHANNELS)[number]>

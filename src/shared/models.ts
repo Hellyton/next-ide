@@ -41,6 +41,8 @@ export type Settings = {
   /** Sidebar width in px (drag handle between the sidebar and the dock). */
   sidebarWidth?: number
   theme: 'dark' | 'light' | 'system'
+  /** macOS notifications when a panel finishes, asks for permission or fails while the window is in the background. Default on. */
+  notifications?: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {

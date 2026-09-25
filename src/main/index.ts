@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, type MessageBoxSyncOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Notification, shell, type MessageBoxSyncOptions } from 'electron'
 import { watch } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { basename, delimiter, join } from 'node:path'
@@ -7,6 +7,7 @@ import { projectPaths } from '@shared/workspaces'
 import { AgentManager } from './agent/AgentManager'
 import type { QueryFn } from './agent/AgentSession'
 import { fakeQuery, fakeSessions } from './agent/fakeQuery'
+import { AgentNotifier } from './agent/notifications'
 import { loadSdk, type SessionStoreApi } from './agent/sdk'
 import { loginShellPath, mergePath, resolveClaudePath } from './env/loginShell'
 import { FilesService } from './fs/FilesService'
@@ -93,8 +94,32 @@ const requireSdk = (): Sdk => {
   return sdk
 }
 
+let notificationsEnabled = true
+
+const notifier = new AgentNotifier({
+  isFocused: () => Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()),
+  enabled: () => notificationsEnabled && Notification.isSupported(),
+  projectOf: (panelId) => agents.projectOf(panelId),
+  show: ({ title, body, panelId }) => {
+    const n = new Notification({ title, body, silent: false })
+    n.on('click', () => {
+      const win = mainWindow
+      if (!win || win.isDestroyed()) return
+      if (win.isMinimized()) win.restore()
+      win.show()
+      win.focus()
+      send('agent:focus', panelId)
+    })
+    n.show()
+  },
+})
+
 const agents = new AgentManager({
-  emit: (panelId, event) => send('agent:event', panelId, event),
+  emit: (panelId, event) => {
+    notifier.onEvent(panelId, event)
+    if (event.kind === 'status' && event.state === 'exited') notifier.forget(panelId)
+    send('agent:event', panelId, event)
+  },
   runtime: () => ({
     queryFn: (params) => requireSdk().queryFn(params),
     env: shellEnv(process.env),
@@ -194,7 +219,7 @@ function createWindow(): BrowserWindow {
   return win
 }
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
   // Dev only: unpackaged, the Dock would show the stock Electron icon (packaged, the bundle has it).
   if (!app.isPackaged) {
     try {
@@ -203,7 +228,15 @@ void app.whenReady().then(() => {
       console.error('[next-ide] failed to set dock icon', err)
     }
   }
-  installMenu()
+  const settings = await stores.settings.read()
+  notificationsEnabled = settings.notifications !== false
+  installMenu({
+    notifications: notificationsEnabled,
+    onToggleNotifications: (enabled) => {
+      notificationsEnabled = enabled
+      void stores.settings.read().then((s) => stores.settings.writeNow({ ...s, notifications: enabled }))
+    },
+  })
   mainWindow = createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow()

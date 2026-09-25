@@ -6,11 +6,13 @@ export type AgentRuntime = { queryFn: QueryFn; claudePath?: string; env?: Record
 
 export class AgentManager {
   private readonly sessions = new Map<string, AgentSession>()
+  private readonly projects = new Map<string, string>()
 
   constructor(private readonly deps: { emit(panelId: string, event: AgentEvent): void; runtime(): AgentRuntime }) {}
 
   create(panelId: string, params: AgentPanelParams): void {
     if (this.sessions.has(panelId)) return
+    this.projects.set(panelId, params.projectPath)
     const runtime = this.deps.runtime()
     const permissionMode = params.permissionMode ?? 'default'
     // Params come from the renderer (and saved layouts): an unknown effort is dropped, not passed to the CLI.
@@ -48,6 +50,11 @@ export class AgentManager {
   close(panelId: string): void {
     this.sessions.get(panelId)?.close()
     this.sessions.delete(panelId)
+    this.projects.delete(panelId)
+  }
+
+  projectOf(panelId: string): string | undefined {
+    return this.projects.get(panelId)
   }
 
   closeAll(): void {
