@@ -36,7 +36,8 @@ export async function restartSession(panelId: string, next: AgentPanelParams, hi
     deps.setSessionState(panelId, 'idle')
     return true
   } catch (err) {
-    deps.setChat(panelId, prevChat)
+    // The old query died with `agent:close`; any tasks it was tracking can no longer be stopped.
+    deps.setChat(panelId, prevChat ? { ...prevChat, tasks: [] } : prevChat)
     if (prevParams) deps.replaceParams(panelId, prevParams)
     deps.apply(panelId, { kind: 'error', message: `Não foi possível trocar de sessão: ${errorText(err)}` })
     if (prevParams) {

@@ -292,7 +292,8 @@ export class AgentSession {
   async stopTask(taskId: string): Promise<Outcome<null>> {
     if (this.closed) return { ok: false, message: 'Sessão encerrada.' }
     const query = this.query
-    if (!query?.stopTask) return unsupported('Parar tarefa')
+    if (!query) return { ok: false, message: 'A tarefa não está mais rodando.' }
+    if (!query.stopTask) return unsupported('Parar tarefa')
     try {
       await query.stopTask(taskId)
       return { ok: true, value: null }

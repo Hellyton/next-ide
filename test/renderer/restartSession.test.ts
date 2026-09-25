@@ -54,7 +54,11 @@ describe('restartSession', () => {
   })
 
   it('rolls back chat and params and retries the previous session when agent:create fails', async () => {
-    const prevChat = { ...initialChat, items: [{ type: 'user' as const, id: 'u1', text: 'antiga', images: 0 }] }
+    const prevChat = {
+      ...initialChat,
+      items: [{ type: 'user' as const, id: 'u1', text: 'antiga', images: 0 }],
+      tasks: [{ id: 't1', description: 'rodando', status: 'running' as const }],
+    }
     const prevParams: AgentPanelParams = { type: 'agent', projectPath: '/p', sessionId: 'old' }
     let createCalls = 0
     const invoke = vi.fn(async (channel: string) => {
@@ -72,7 +76,8 @@ describe('restartSession', () => {
 
     await expect(restartSession('panel1', next, [{ kind: 'user', id: 'h1', text: 'pergunta antiga', images: 0 }], deps)).resolves.toBe(false)
 
-    expect(deps.setChat).toHaveBeenCalledWith('panel1', prevChat)
+    // A dead query's tasks can't be stopped anymore, so the rollback clears them.
+    expect(deps.setChat).toHaveBeenCalledWith('panel1', { ...prevChat, tasks: [] })
     expect(deps.replaceParams).toHaveBeenLastCalledWith('panel1', prevParams)
     expect(deps.apply).toHaveBeenCalledWith(
       'panel1',

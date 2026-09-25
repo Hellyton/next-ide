@@ -514,6 +514,13 @@ describe('AgentSession', () => {
       await expect(s.backgroundTasks()).resolves.toEqual({ ok: true, value: true })
     })
 
+    it('says the task is no longer running when there is no live query', async () => {
+      const f = fake()
+      const { s } = session(f.fn)
+      // Never started: no query yet, but the session isn't closed either.
+      await expect(s.stopTask('t1')).resolves.toEqual({ ok: false, message: 'A tarefa não está mais rodando.' })
+    })
+
     it('degrades when unsupported, failing or closed', async () => {
       const f = fake()
       const { s } = session(f.fn)
