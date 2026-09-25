@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { RewindFiles } from '@shared/agent'
 import type { RewindMode, RewindTarget } from '../../agent/rewind'
+import { useDialogKeys } from './useDialogKeys'
 
 type Props = { panelId: string; targets: RewindTarget[]; onRun(mode: RewindMode, target: RewindTarget): void; onClose(): void }
 
@@ -19,12 +20,16 @@ export function RewindModal({ panelId, targets, onRun, onClose }: Props) {
       alive = false
     }
   }, [panelId, picked])
+  // Escape steps back from a picked message to the list, then closes.
+  const dialog = useDialogKeys(() => (picked ? setPicked(null) : onClose()))
+  // Picking/unpicking unmounts the clicked button: keep focus (and Escape) on the dialog.
+  useEffect(() => dialog.ref.current?.focus(), [picked, dialog.ref])
   const files = preview && 'canRewind' in preview ? preview : null
   const codeBlocked = !files?.canRewind
   const codeReason = preview && 'message' in preview ? preview.message : files && !files.canRewind ? (files.error ?? 'Sem checkpoint de arquivos.') : null
   return (
     <div className="absolute inset-0 z-10 flex items-start justify-center bg-black/60 pt-16" onMouseDown={onClose}>
-      <div role="dialog" aria-label="Voltar para uma mensagem" className="w-[min(560px,90%)] rounded border border-neutral-700 bg-neutral-900 p-3 text-sm" onMouseDown={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-label="Voltar para uma mensagem" {...dialog} className="w-[min(560px,90%)] rounded border outline-none border-neutral-700 bg-neutral-900 p-3 text-sm" onMouseDown={(e) => e.stopPropagation()}>
         <div className="mb-2 font-medium">Voltar para uma mensagem</div>
         {targets.length === 0 && <div className="text-neutral-500">Nenhuma mensagem para voltar.</div>}
         {!picked && (

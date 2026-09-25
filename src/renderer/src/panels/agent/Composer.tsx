@@ -24,9 +24,11 @@ type Props = {
   /** Closes an open /btw answer; returns false when none is open. */
   onEscape(): boolean
   onRewind(): void
+  /** A rewind/rename is in flight: typing stays possible, sending (and slash commands) waits. */
+  blocked?: boolean
 }
 
-export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, onBtw, onEscape, onRewind }: Props) {
+export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, onBtw, onEscape, onRewind, blocked = false }: Props) {
   const text = useAgents((s) => s.drafts[panelId] ?? '')
   const setText = (value: string) => useAgents.getState().setDraft(panelId, value)
   const [caret, setCaret] = useState(0)
@@ -102,6 +104,7 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
   }
 
   const submit = () => {
+    if (blocked) return
     const value = text.trim()
     if (!canSend({ text: value, images: images.length, reading })) return
     setNotice(null)
@@ -297,7 +300,7 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
           <button
             aria-label="Enviar"
             className="rounded bg-orange-600 px-2 py-1 text-white hover:bg-orange-500 disabled:opacity-40"
-            disabled={!canSend({ text, images: images.length, reading })}
+            disabled={blocked || !canSend({ text, images: images.length, reading })}
             onClick={submit}
           >
             ↑

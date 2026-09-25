@@ -29,12 +29,13 @@ describe('rewindTargets', () => {
 
 describe('runRewind', () => {
   const target = { id: 'u2', text: 'segunda' }
-  it('both: restores files first, then forks the conversation and puts the prompt back', async () => {
+  it('both: forks first (non-destructive), then restores files, then restarts and puts the prompt back', async () => {
     const d = deps()
     await runRewind('both', target, d)
-    expect(d.rewindFiles).toHaveBeenCalledWith('u2')
     expect(d.forkBefore).toHaveBeenCalledWith('u2')
-    expect(d.rewindFiles.mock.invocationCallOrder[0]).toBeLessThan(d.forkBefore.mock.invocationCallOrder[0]!)
+    expect(d.rewindFiles).toHaveBeenCalledWith('u2')
+    expect(d.forkBefore.mock.invocationCallOrder[0]).toBeLessThan(d.rewindFiles.mock.invocationCallOrder[0]!)
+    expect(d.rewindFiles.mock.invocationCallOrder[0]).toBeLessThan(d.restart.mock.invocationCallOrder[0]!)
     expect(d.restart).toHaveBeenCalledWith('f1', [])
     expect(d.setDraft).toHaveBeenCalledWith('segunda')
   })
@@ -51,15 +52,23 @@ describe('runRewind', () => {
     expect(d.restart).not.toHaveBeenCalled()
     expect(d.setDraft).not.toHaveBeenCalled()
   })
-  it('stops with the SDK message when restoring files is refused', async () => {
+  it('stops with the SDK message when restoring files is refused, before restarting', async () => {
     const d = deps()
     d.rewindFiles.mockResolvedValueOnce(ok({ canRewind: false, error: 'Sem checkpoint', filesChanged: [], insertions: 0, deletions: 0 }))
     await expect(runRewind('both', target, d)).rejects.toThrow('Sem checkpoint')
-    expect(d.forkBefore).not.toHaveBeenCalled()
+    expect(d.restart).not.toHaveBeenCalled()
+    expect(d.setDraft).not.toHaveBeenCalled()
   })
   it('propagates fork failures', async () => {
     const d = deps()
     d.forkBefore.mockResolvedValueOnce({ ok: false, message: 'falhou' })
     await expect(runRewind('conversation', target, d)).rejects.toThrow('falhou')
+  })
+  it('a fork failure leaves the files untouched', async () => {
+    const d = deps()
+    d.forkBefore.mockResolvedValueOnce({ ok: false, message: 'falhou' })
+    await expect(runRewind('both', target, d)).rejects.toThrow('falhou')
+    expect(d.rewindFiles).not.toHaveBeenCalled()
+    expect(d.restart).not.toHaveBeenCalled()
   })
 })

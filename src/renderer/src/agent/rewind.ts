@@ -19,16 +19,20 @@ export function rewindTargets(items: ChatItem[]): RewindTarget[] {
   return out
 }
 
-/** The CLI's /rewind: files first (needs the live session's checkpoints), then the conversation. */
+/**
+ * The CLI's /rewind. Order matters: the fork only writes a new transcript (non-destructive), so it
+ * goes first; restoring files needs the live session's checkpoints, so it runs before the restart.
+ * A failed fork therefore changes nothing on disk.
+ */
 export async function runRewind(mode: RewindMode, target: RewindTarget, deps: RewindDeps): Promise<void> {
+  const forked = mode === 'code' ? null : await deps.forkBefore(target.id)
+  if (forked && !forked.ok) throw new Error(forked.message)
   if (mode !== 'conversation') {
     const files = await deps.rewindFiles(target.id)
     if (!files.ok) throw new Error(files.message)
     if (!files.value.canRewind) throw new Error(files.value.error ?? 'Não há checkpoint de arquivos para esta mensagem.')
   }
-  if (mode === 'code') return
-  const forked = await deps.forkBefore(target.id)
-  if (!forked.ok) throw new Error(forked.message)
+  if (!forked) return
   await deps.restart(forked.value.sessionId, forked.value.history)
   deps.setDraft(target.text)
 }

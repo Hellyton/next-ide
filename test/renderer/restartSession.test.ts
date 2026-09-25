@@ -28,7 +28,7 @@ describe('restartSession', () => {
     const deps = makeDeps({ invoke, currentParams: vi.fn(() => prevParams) })
     const next: AgentPanelParams = { type: 'agent', projectPath: '/p' }
 
-    await restartSession('panel1', next, [], deps)
+    await expect(restartSession('panel1', next, [], deps)).resolves.toBe(true)
 
     expect(calls).toEqual(['agent:close', 'agent:create', 'agent:start'])
     expect(deps.clearChat).toHaveBeenCalledWith('panel1')
@@ -70,7 +70,7 @@ describe('restartSession', () => {
     })
     const next: AgentPanelParams = { type: 'agent', projectPath: '/p', sessionId: 'new-session' }
 
-    await restartSession('panel1', next, [{ kind: 'user', id: 'h1', text: 'pergunta antiga', images: 0 }], deps)
+    await expect(restartSession('panel1', next, [{ kind: 'user', id: 'h1', text: 'pergunta antiga', images: 0 }], deps)).resolves.toBe(false)
 
     expect(deps.setChat).toHaveBeenCalledWith('panel1', prevChat)
     expect(deps.replaceParams).toHaveBeenLastCalledWith('panel1', prevParams)
@@ -90,7 +90,7 @@ describe('restartSession', () => {
     const deps = makeDeps({ invoke, currentParams: vi.fn(() => prevParams) })
     const next: AgentPanelParams = { type: 'agent', projectPath: '/p', sessionId: 'new-session' }
 
-    await expect(restartSession('panel1', next, [], deps)).resolves.toBeUndefined()
+    await expect(restartSession('panel1', next, [], deps)).resolves.toBe(false)
 
     expect(deps.apply).toHaveBeenCalledTimes(2)
   })

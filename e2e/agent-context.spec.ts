@@ -17,3 +17,15 @@ test('/context mostra uso por categoria e arquivos de memória', async () => {
   await expect(dialog).toHaveCount(0)
   await app.close()
 })
+
+test('Esc fecha o /context', async () => {
+  const { app, page } = await openAgent()
+  const input = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
+  await input.fill('/context')
+  await input.press('Enter')
+  const dialog = page.getByRole('dialog', { name: 'Uso do contexto' })
+  await expect(dialog).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await app.close()
+})

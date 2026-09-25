@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ContextUsage } from '@shared/agent'
+import { useDialogKeys } from './useDialogKeys'
 
 const fmt = (n: number) => n.toLocaleString('pt-BR')
 // SDK colors are theme names from the CLI; map the common ones, fall back to a neutral tone.
@@ -18,10 +19,11 @@ export function ContextModal({ panelId, onClose }: { panelId: string; onClose():
       .then((r) => (r.ok ? setUsage(r.value) : setError(r.message)))
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
   }, [panelId])
+  const dialog = useDialogKeys(onClose)
   const used = usage?.categories.filter((c) => c.kind !== 'free') ?? []
   return (
     <div className="absolute inset-0 z-10 flex items-start justify-center bg-black/60 pt-16" onMouseDown={onClose}>
-      <div role="dialog" aria-label="Uso do contexto" className="w-[min(560px,90%)] rounded border border-neutral-700 bg-neutral-900 p-3 text-sm" onMouseDown={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-label="Uso do contexto" {...dialog} className="w-[min(560px,90%)] rounded border outline-none border-neutral-700 bg-neutral-900 p-3 text-sm" onMouseDown={(e) => e.stopPropagation()}>
         <div className="mb-2 font-medium">Uso do contexto</div>
         {error && <div className="text-amber-300">{error}</div>}
         {!usage && !error && <div className="text-neutral-500">Carregando…</div>}
@@ -31,13 +33,13 @@ export function ContextModal({ panelId, onClose }: { panelId: string; onClose():
               {fmt(usage.totalTokens)} / {fmt(usage.maxTokens)} tokens ({Math.round(usage.percentage)}%) · {usage.model}
             </div>
             <div className="mb-3 flex h-3 overflow-hidden rounded bg-neutral-800">
-              {used.map((c) => (
-                <div key={c.name} title={`${c.name}: ${fmt(c.tokens)}`} style={{ width: `${(c.tokens / usage.maxTokens) * 100}%`, background: colorOf(c.color) }} />
+              {used.map((c, i) => (
+                <div key={`${i}:${c.name}`} title={`${c.name}: ${fmt(c.tokens)}`} style={{ width: `${(c.tokens / usage.maxTokens) * 100}%`, background: colorOf(c.color) }} />
               ))}
             </div>
             <ul className="mb-3 space-y-0.5">
-              {usage.categories.map((c) => (
-                <li key={c.name} className="flex items-center gap-2 text-xs">
+              {usage.categories.map((c, i) => (
+                <li key={`${i}:${c.name}`} className="flex items-center gap-2 text-xs">
                   <span className="h-2 w-2 rounded-sm" style={{ background: colorOf(c.color) }} />
                   <span className="flex-1 text-neutral-300">{c.name}</span>
                   <span className="text-neutral-500">{fmt(c.tokens)}</span>

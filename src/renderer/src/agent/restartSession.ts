@@ -21,9 +21,9 @@ const errorText = (err: unknown): string => (err instanceof Error ? err.message 
  * Switches a panel to a different agent session (resume/clear), tearing down the
  * current one and standing up `next`. If anything in that sequence fails, the
  * previous chat and params are restored and the previous session is re-created
- * (but not started) so it can resume lazily on the next send.
+ * (but not started) so it can resume lazily on the next send. Resolves true when `next` is live.
  */
-export async function restartSession(panelId: string, next: AgentPanelParams, history: AgentEvent[], deps: RestartSessionDeps): Promise<void> {
+export async function restartSession(panelId: string, next: AgentPanelParams, history: AgentEvent[], deps: RestartSessionDeps): Promise<boolean> {
   const prevChat = deps.getChat(panelId)
   const prevParams = deps.currentParams(panelId)
   try {
@@ -34,6 +34,7 @@ export async function restartSession(panelId: string, next: AgentPanelParams, hi
     await deps.invoke('agent:create', panelId, next)
     if (!next.sessionId) await deps.invoke('agent:start', panelId)
     deps.setSessionState(panelId, 'idle')
+    return true
   } catch (err) {
     deps.setChat(panelId, prevChat)
     if (prevParams) deps.replaceParams(panelId, prevParams)
@@ -46,5 +47,6 @@ export async function restartSession(panelId: string, next: AgentPanelParams, hi
         deps.apply(panelId, { kind: 'error', message: `Não foi possível trocar de sessão: ${errorText(err2)}` })
       }
     }
+    return false
   }
 }

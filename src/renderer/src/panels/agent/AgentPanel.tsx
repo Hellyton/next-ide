@@ -31,6 +31,13 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
   const [contextOpen, setContextOpen] = useState(false)
   const [btw, setBtw] = useState<BtwState | null>(null)
   const btwSeq = useRef(0)
+  // A rewind/rename in flight: blocks sending and starting another one. The ref is the synchronous guard.
+  const [pending, setPendingState] = useState<string | null>(null)
+  const pendingRef = useRef<string | null>(null)
+  const setPending = (value: string | null) => {
+    pendingRef.current = value
+    setPendingState(value)
+  }
 
   const fail = (err: unknown) => useAgents.getState().apply(panelId, { kind: 'error', message: `Falha ao iniciar o agente: ${errorText(err)}` })
 
@@ -83,8 +90,9 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
     return true
   }
 
-  const restart = async (next: AgentPanelParams, history: AgentEvent[] = []) => {
-    await restartSession(panelId, next, history, {
+  /** Resolves false when the switch failed (restartSession already rolled back and reported it). */
+  const restart = async (next: AgentPanelParams, history: AgentEvent[] = []): Promise<boolean> => {
+    const ok = await restartSession(panelId, next, history, {
       invoke: window.api.invoke,
       getChat: (id) => useAgents.getState().chats[id],
       setChat: (id, nextChat) => useAgents.getState().setChat(id, nextChat),
@@ -98,6 +106,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
     const title = panelTitle(currentAgentParams(panelId) ?? next)
     useDock.getState().api?.getPanel(panelId)?.api.setTitle(title)
     useSessions.getState().setTitle(panelId, title)
+    return ok
   }
 
   const base = (): AgentPanelParams => {
@@ -120,45 +129,66 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
   const panelCtx = useMemo(() => ({ projectPath: params.projectPath }), [params.projectPath])
 
   const notify = (message: string) => useAgents.getState().setNotice(panelId, { text: message, command: '' })
-  const busy = chat.state === 'running' || chat.state === 'awaiting_permission'
+  const isBusy = (c: typeof chat) => c.state === 'running' || c.state === 'awaiting_permission'
+  const busy = isBusy(chat)
+  // Read from the store, not the render closure: a click can land after the state changed.
+  const liveChat = () => selectChat(panelId)(useAgents.getState())
+  const liveSessionId = () => liveChat().sessionId ?? currentAgentParams(panelId)?.sessionId
 
   const openRewind = () => {
-    if (busy) notify('Pare o agente antes de voltar para uma mensagem anterior.')
+    if (pendingRef.current) notify(pendingRef.current)
+    else if (busy) notify('Pare o agente antes de voltar para uma mensagem anterior.')
     else setRewindOpen(true)
   }
 
   const runRewindMode = (mode: RewindMode, target: RewindTarget) => {
     setRewindOpen(false)
-    const sessionId = chat.sessionId ?? currentAgentParams(panelId)?.sessionId
+    if (pendingRef.current) return notify(pendingRef.current)
+    if (isBusy(liveChat())) return notify('Pare o agente antes de voltar para uma mensagem anterior.')
+    const sessionId = liveSessionId()
+    const title = currentAgentParams(panelId)?.title
+    setPending('Voltando…')
+    notify('Voltando…')
     void runRewind(mode, target, {
       rewindFiles: (id) => window.api.invoke('agent:rewindFiles', panelId, id, false),
       forkBefore: (id) =>
         sessionId
-          ? window.api.invoke('agent:forkBefore', params.projectPath, sessionId, id)
+          ? window.api.invoke('agent:forkBefore', params.projectPath, sessionId, id, title)
           : Promise.resolve({ ok: false as const, message: 'Sessão ainda não salva.' }),
-      restart: (next, history) => restart({ ...base(), ...(next ? { sessionId: next } : {}) }, history),
+      // The fork carries the session's title, so the tab keeps it (a fresh session has none to keep).
+      restart: async (next, history) => {
+        const ok = await restart({ ...base(), ...(next ? { sessionId: next, ...(title ? { title } : {}) } : {}) }, history)
+        if (!ok) throw new Error('a sessão não pôde ser reiniciada.')
+      },
       setDraft: (text) => useAgents.getState().setDraft(panelId, text),
     })
-      .then(() => mode === 'code' && notify('Arquivos restaurados.'))
+      .then(() => (mode === 'code' ? notify('Arquivos restaurados.') : useAgents.getState().setNotice(panelId, null)))
       .catch((err) => notify(`Não foi possível voltar: ${errorText(err)}`))
+      .finally(() => setPending(null))
   }
 
   const renameSession = (title: string) => {
-    const sessionId = chat.sessionId ?? currentAgentParams(panelId)?.sessionId
+    if (pendingRef.current) return notify(pendingRef.current)
+    const sessionId = liveSessionId()
     const hasTranscript = chat.items.some((it) => it.type === 'user')
     if (!title) return notify('Uso: /rename <título>')
     if (!sessionId || !hasTranscript) return notify('Envie uma mensagem antes de renomear a sessão.')
+    setPending('Renomeando…')
     void window.api
       .invoke('agent:rename', params.projectPath, sessionId, title)
       .then((r) => {
         if (!r.ok) return notify(r.message)
+        // The panel moved to another session meanwhile: the rename applied to the old one only.
+        if (liveSessionId() !== sessionId) return
+        const clean = title.replace(/\s*[\r\n]+\s*/g, ' ').trim()
         const current = currentAgentParams(panelId)
-        if (current) replacePanelParams(panelId, { ...current, title })
-        const tabTitle = panelTitle({ ...(current ?? params), title })
+        if (current) replacePanelParams(panelId, { ...current, title: clean })
+        const tabTitle = panelTitle({ ...(current ?? params), title: clean })
         useDock.getState().api?.getPanel(panelId)?.api.setTitle(tabTitle)
         useSessions.getState().setTitle(panelId, tabTitle)
       })
       .catch((err) => notify(errorText(err)))
+      .finally(() => setPending(null))
   }
 
   const onLocalCommand = (name: LocalCommand, arg: string) => {
@@ -202,6 +232,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
         onBtw={askBtw}
         onEscape={closeBtw}
         onRewind={openRewind}
+        blocked={pending !== null}
       />
       <StatusLine
         panelId={panelId}
