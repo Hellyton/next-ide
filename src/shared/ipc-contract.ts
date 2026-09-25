@@ -6,6 +6,7 @@ import type {
   ModelOption,
   Outcome,
   PermissionDecision,
+  RewindFiles,
   SessionSummary,
   SessionUsage,
   SideAnswer,
@@ -47,6 +48,7 @@ export type InvokeMap = {
   'agent:btw': { args: [panelId: string, question: string]; result: SideAnswer }
   'agent:btwCancel': { args: [panelId: string]; result: void }
   'agent:contextUsage': { args: [panelId: string]; result: Outcome<ContextUsage> }
+  'agent:rewindFiles': { args: [panelId: string, userMessageId: string, dryRun: boolean]; result: Outcome<RewindFiles> }
   'agent:listSessions': { args: [projectPath: string]; result: SessionSummary[] }
   'agent:history': { args: [projectPath: string, sessionId: string]; result: AgentEvent[] }
   'agent:close': { args: [panelId: string]; result: void }
@@ -103,6 +105,7 @@ export const INVOKE_CHANNELS = [
   'agent:btw',
   'agent:btwCancel',
   'agent:contextUsage',
+  'agent:rewindFiles',
   'agent:listSessions',
   'agent:history',
   'agent:close',

@@ -408,6 +408,42 @@ describe('AgentSession', () => {
     await expect(s.contextUsage()).resolves.toEqual({ ok: false, message: 'boom' })
   })
 
+  it('tags each sent message with the user event id and enables file checkpointing', async () => {
+    const f = fake()
+    const { s, events } = session(f.fn)
+    s.send('oi')
+    await tick()
+    expect(f.calls[0]!.options.enableFileCheckpointing).toBe(true)
+    const user = events.find((e) => e.kind === 'user') as Extract<AgentEvent, { kind: 'user' }>
+    expect(f.received[0]!.uuid).toBe(user.id)
+  })
+
+  it('rewinds files (dry run and real), normalizing the SDK result', async () => {
+    const f = fake()
+    const rewind = vi.fn(async (_id: string, opts?: { dryRun?: boolean }) =>
+      opts?.dryRun ? { canRewind: true, filesChanged: ['/p/a.ts'], insertions: 2, deletions: 1 } : { canRewind: true, skippedLinks: 0 },
+    )
+    f.q.rewindFiles = rewind
+    const { s } = session(f.fn)
+    await expect(s.rewindFiles('u1', true)).resolves.toEqual({
+      ok: true,
+      value: { canRewind: true, filesChanged: ['/p/a.ts'], insertions: 2, deletions: 1 },
+    })
+    expect(rewind).toHaveBeenCalledWith('u1', { dryRun: true })
+    await expect(s.rewindFiles('u1', false)).resolves.toEqual({ ok: true, value: { canRewind: true, filesChanged: [], insertions: 0, deletions: 0 } })
+  })
+
+  it('surfaces canRewind false with the SDK error, and unsupported binaries', async () => {
+    const f = fake()
+    const { s } = session(f.fn)
+    await expect(s.rewindFiles('u1', true)).resolves.toMatchObject({ ok: false, message: expect.stringContaining('não é suportado') })
+    f.q.rewindFiles = async () => ({ canRewind: false, error: 'Sem checkpoint' })
+    await expect(s.rewindFiles('u1', true)).resolves.toEqual({
+      ok: true,
+      value: { canRewind: false, error: 'Sem checkpoint', filesChanged: [], insertions: 0, deletions: 0 },
+    })
+  })
+
   describe('btw', () => {
     it('answers from the side question without emitting chat events or queuing a turn', async () => {
       const f = fake()

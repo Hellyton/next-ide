@@ -56,6 +56,23 @@ describe('fakeQuery', () => {
     expect(results.map((r) => r.queued_turn_count)).toEqual([1, 0])
   })
 
+  it('supports rewindFiles for e2e', async () => {
+    const q = fakeQuery({
+      prompt: new AsyncQueue<UserMessageLike>(),
+      options: {
+        cwd: '/p',
+        permissionMode: 'default',
+        includePartialMessages: true,
+        canUseTool: async () => ({ behavior: 'allow' }),
+        settingSources: [],
+        abortController: new AbortController(),
+        enableFileCheckpointing: true,
+      },
+    })
+    await expect(q.rewindFiles!('x', { dryRun: true })).resolves.toMatchObject({ canRewind: true, filesChanged: ['/p/src/app.ts'] })
+    q.close()
+  })
+
   it('provides a scripted session list and history', async () => {
     expect((await fakeSessions.list('/p'))[0]).toMatchObject({ sessionId: 'fake-old', title: 'Sessão antiga de teste' })
     expect(await fakeSessions.history('/p', 'fake-old')).toHaveLength(2)

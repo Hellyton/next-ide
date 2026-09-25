@@ -116,6 +116,8 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
       },
     }),
     askSideQuestion: async (question: string) => ({ response: `Resposta lateral: ${question}` }),
+    rewindFiles: async (_id: string, opts?: { dryRun?: boolean }) =>
+      opts?.dryRun ? { canRewind: true, filesChanged: [`${options.cwd}/src/app.ts`], insertions: 3, deletions: 1 } : { canRewind: true, skippedLinks: 0 },
     getContextUsage: async () => ({
       model,
       totalTokens: 18000,

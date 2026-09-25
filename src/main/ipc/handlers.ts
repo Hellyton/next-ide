@@ -109,6 +109,10 @@ export function buildHandlers(d: HandlerDeps): Handlers {
       await d.agentReady()
       return d.agents.get(panelId).contextUsage()
     },
+    'agent:rewindFiles': async (panelId, userMessageId, dryRun) => {
+      await d.agentReady()
+      return d.agents.get(panelId).rewindFiles(userMessageId, dryRun)
+    },
     'agent:listSessions': async (projectPath) => {
       await d.agentReady()
       return d.sessions.list(projectPath)

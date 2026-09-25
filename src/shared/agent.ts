@@ -59,6 +59,9 @@ export type SideAnswer = { ok: true; text: string } | { ok: false; message: stri
 /** Result of a panel operation that can be unsupported by the installed Claude Code or fail. */
 export type Outcome<T> = { ok: true; value: T } | { ok: false; message: string }
 
+/** Preview (dryRun) or result of restoring files to their state before a user message. */
+export type RewindFiles = { canRewind: boolean; error?: string; filesChanged: string[]; insertions: number; deletions: number }
+
 /** Same data as the CLI's /context. */
 export type ContextUsage = {
   model: string

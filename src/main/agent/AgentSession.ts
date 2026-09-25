@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import type { AgentEvent, CommandOption, ContextUsage, ImageAttachment, ModelOption, Outcome, PermissionDecision, SessionUsage, SideAnswer } from '@shared/agent'
+import type { AgentEvent, CommandOption, ContextUsage, ImageAttachment, ModelOption, Outcome, PermissionDecision, RewindFiles, SessionUsage, SideAnswer } from '@shared/agent'
 import type { EffortLevel, PermissionMode, SessionState } from '@shared/models'
 import { AsyncQueue } from './AsyncQueue'
 import { parseContextUsage, parseSessionUsage, StreamNormalizer } from './normalize'
 
-export type UserMessageLike = { type: 'user'; message: { role: 'user'; content: unknown[] }; parent_tool_use_id: null }
+export type UserMessageLike = { type: 'user'; uuid?: string; message: { role: 'user'; content: unknown[] }; parent_tool_use_id: null }
 export type PermissionResultLike =
   | { behavior: 'allow'; updatedInput?: Record<string, unknown>; updatedPermissions?: unknown[] }
   | { behavior: 'deny'; message: string }
@@ -25,6 +25,7 @@ export type QueryOptions = {
   allowDangerouslySkipPermissions?: boolean
   resume?: string
   includePartialMessages: true
+  enableFileCheckpointing: true
   canUseTool: CanUseToolLike
   settingSources: Array<'user' | 'project' | 'local'>
   abortController: AbortController
@@ -45,6 +46,8 @@ export type QueryLike = AsyncIterable<unknown> & {
   askSideQuestion?(question: string, opts?: { signal?: AbortSignal }): Promise<{ response: string } | null>
   /** The CLI's /context: undocumented in the SDK typings, and absent on older SDKs/binaries. */
   getContextUsage?(): Promise<unknown>
+  /** The CLI's /rewind for files: undocumented in the SDK typings, and absent on older SDKs/binaries. */
+  rewindFiles?(userMessageId: string, options?: { dryRun?: boolean }): Promise<unknown>
   close(): void
 }
 export type QueryFn = (params: { prompt: AsyncIterable<UserMessageLike>; options: QueryOptions }) => QueryLike
@@ -126,6 +129,7 @@ export class AgentSession {
         permissionMode: this.mode,
         allowDangerouslySkipPermissions: true,
         includePartialMessages: true,
+        enableFileCheckpointing: true,
         settingSources: ['user', 'project', 'local'],
         abortController: abort,
         canUseTool: (toolName, toolInput, options) => this.canUseTool(toolName, toolInput, options),
@@ -150,10 +154,12 @@ export class AgentSession {
       ...images.map((img) => ({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.data } })),
       ...(text ? [{ type: 'text', text }] : []),
     ]
-    this.emit({ kind: 'user', id: this.newId(), text, images: images.length })
+    const id = this.newId()
+    this.emit({ kind: 'user', id, text, images: images.length })
     this.turnsInFlight++
     this.setState('running')
-    this.input?.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null })
+    // Same id as the chat's user item: the CLI keeps it in the transcript and checkpoints by it (/rewind).
+    this.input?.push({ type: 'user', uuid: id, message: { role: 'user', content }, parent_tool_use_id: null })
   }
 
   async interrupt(): Promise<void> {
@@ -217,6 +223,30 @@ export class AgentSession {
     try {
       const usage = parseContextUsage(await query.getContextUsage())
       return usage ? { ok: true, value: usage } : { ok: false, message: 'Resposta inesperada do Claude Code.' }
+    } catch (err) {
+      return failure(err)
+    }
+  }
+
+  /** The CLI's /rewind for files: `dryRun` previews what restoring to before `userMessageId` changes. */
+  async rewindFiles(userMessageId: string, dryRun: boolean): Promise<Outcome<RewindFiles>> {
+    if (this.closed) return { ok: false, message: 'Sessão encerrada.' }
+    this.start()
+    const query = this.query
+    if (!query?.rewindFiles) return unsupported('/rewind')
+    try {
+      const r = (await query.rewindFiles(userMessageId, { dryRun })) as Record<string, unknown> | null
+      const files = Array.isArray(r?.filesChanged) ? r.filesChanged.filter((f): f is string => typeof f === 'string') : []
+      return {
+        ok: true,
+        value: {
+          canRewind: r?.canRewind === true,
+          ...(typeof r?.error === 'string' ? { error: r.error } : {}),
+          filesChanged: files,
+          insertions: typeof r?.insertions === 'number' ? r.insertions : 0,
+          deletions: typeof r?.deletions === 'number' ? r.deletions : 0,
+        },
+      }
     } catch (err) {
       return failure(err)
     }
