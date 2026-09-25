@@ -1,8 +1,10 @@
 import type {
   AgentEvent,
+  AgentInfo,
   CommandOption,
   ContextUsage,
   ImageAttachment,
+  McpServer,
   ModelOption,
   Outcome,
   PermissionDecision,
@@ -51,6 +53,10 @@ export type InvokeMap = {
   'agent:rewindFiles': { args: [panelId: string, userMessageId: string, dryRun: boolean]; result: Outcome<RewindFiles> }
   'agent:stopTask': { args: [panelId: string, taskId: string]; result: Outcome<null> }
   'agent:background': { args: [panelId: string]; result: Outcome<boolean> }
+  'agent:mcpServers': { args: [panelId: string]; result: Outcome<McpServer[]> }
+  'agent:toggleMcp': { args: [panelId: string, name: string, enabled: boolean]; result: Outcome<null> }
+  'agent:reconnectMcp': { args: [panelId: string, name: string]; result: Outcome<null> }
+  'agent:agents': { args: [panelId: string]; result: Outcome<AgentInfo[]> }
   'agent:listSessions': { args: [projectPath: string]; result: SessionSummary[] }
   'agent:history': { args: [projectPath: string, sessionId: string]; result: AgentEvent[] }
   'agent:forkBefore': { args: [projectPath: string, sessionId: string, userMessageId: string, title?: string]; result: Outcome<{ sessionId: string | null; history: AgentEvent[] }> }
@@ -114,6 +120,10 @@ export const INVOKE_CHANNELS = [
   'agent:rewindFiles',
   'agent:stopTask',
   'agent:background',
+  'agent:mcpServers',
+  'agent:toggleMcp',
+  'agent:reconnectMcp',
+  'agent:agents',
   'agent:listSessions',
   'agent:history',
   'agent:forkBefore',

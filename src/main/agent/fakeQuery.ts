@@ -18,6 +18,10 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
   let model = options.model ?? 'fake-model'
   let turn = 0
   const runningTasks = new Set<string>()
+  const mcp = new Map<string, { status: string; error?: string; scope: string }>([
+    ['github', { status: 'connected', scope: 'user' }],
+    ['figma', { status: 'needs-auth', error: 'Autenticação necessária', scope: 'project' }],
+  ])
   out.push({
     type: 'system',
     subtype: 'init',
@@ -142,6 +146,23 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
       out.push({ type: 'system', subtype: 'task_notification', task_id: taskId, status: 'stopped', summary: 'Parada pelo usuário', output_file: '', session_id: 'fake', uuid: `n_${taskId}` })
     },
     backgroundTasks: async () => true,
+    mcpServerStatus: async () => [...mcp].map(([name, s]) => ({ name, status: s.status, scope: s.scope, ...(s.error ? { error: s.error } : {}), serverInfo: { name, version: '1.0.0' } })),
+    toggleMcpServer: async (name: string, enabled: boolean) => {
+      const s = mcp.get(name)
+      if (!s) throw new Error(`Servidor desconhecido: ${name}`)
+      mcp.set(name, { ...s, status: enabled ? 'connected' : 'disabled' })
+    },
+    reconnectMcpServer: async (name: string) => {
+      const s = mcp.get(name)
+      if (!s) throw new Error(`Servidor desconhecido: ${name}`)
+      if (s.status === 'needs-auth') throw new Error('Faça login com claude /mcp')
+      mcp.set(name, { ...s, status: 'connected' })
+    },
+    supportedAgents: async () => [
+      { name: 'Explore', description: 'Busca no código' },
+      { name: 'general-purpose', description: 'Tarefas gerais' },
+      { name: 'code-reviewer', description: 'Revisa diffs', model: 'sonnet' },
+    ],
     close: () => out.end(),
   })
   return query

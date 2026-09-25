@@ -123,6 +123,16 @@ export function buildHandlers(d: HandlerDeps): Handlers {
     },
     'agent:stopTask': (panelId, taskId) => d.agents.get(panelId).stopTask(taskId),
     'agent:background': (panelId) => d.agents.get(panelId).backgroundTasks(),
+    'agent:mcpServers': async (panelId) => {
+      await d.agentReady()
+      return d.agents.get(panelId).mcpServers()
+    },
+    'agent:toggleMcp': (panelId, name, enabled) => d.agents.get(panelId).toggleMcp(name, enabled),
+    'agent:reconnectMcp': (panelId, name) => d.agents.get(panelId).reconnectMcp(name),
+    'agent:agents': async (panelId) => {
+      await d.agentReady()
+      return d.agents.get(panelId).agents()
+    },
     'agent:listSessions': async (projectPath) => {
       await d.agentReady()
       return d.sessions.list(projectPath)

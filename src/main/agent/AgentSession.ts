@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { AgentEvent, CommandOption, ContextUsage, ImageAttachment, ModelOption, Outcome, PermissionDecision, RewindFiles, SessionUsage, SideAnswer } from '@shared/agent'
+import type { AgentEvent, AgentInfo, CommandOption, ContextUsage, ImageAttachment, McpServer, ModelOption, Outcome, PermissionDecision, RewindFiles, SessionUsage, SideAnswer } from '@shared/agent'
 import type { EffortLevel, PermissionMode, SessionState } from '@shared/models'
 import { AsyncQueue } from './AsyncQueue'
 import { parseContextUsage, parseSessionUsage, StreamNormalizer } from './normalize'
@@ -52,6 +52,14 @@ export type QueryLike = AsyncIterable<unknown> & {
   stopTask?(taskId: string): Promise<void>
   /** The CLI's Ctrl+B: moves the foreground Bash commands/subagents of the running turn to the background. */
   backgroundTasks?(): Promise<boolean>
+  /** The CLI's /mcp list: undocumented in the SDK typings, and absent on older SDKs/binaries. */
+  mcpServerStatus?(): Promise<unknown[]>
+  /** The CLI's /mcp toggle: undocumented in the SDK typings, and absent on older SDKs/binaries. */
+  toggleMcpServer?(name: string, enabled: boolean): Promise<void>
+  /** The CLI's /mcp reconnect: undocumented in the SDK typings, and absent on older SDKs/binaries. */
+  reconnectMcpServer?(name: string): Promise<void>
+  /** The CLI's /agents list: undocumented in the SDK typings, and absent on older SDKs/binaries. */
+  supportedAgents?(): Promise<unknown[]>
   close(): void
 }
 export type QueryFn = (params: { prompt: AsyncIterable<UserMessageLike>; options: QueryOptions }) => QueryLike
@@ -84,6 +92,29 @@ export const unsupported = (feature: string): { ok: false; message: string } => 
   message: `${feature} não é suportado por esta versão do Claude Code.`,
 })
 const failure = (err: unknown): { ok: false; message: string } => ({ ok: false, message: err instanceof Error ? err.message : String(err) })
+
+const MCP_STATUSES = new Set(['connected', 'failed', 'needs-auth', 'pending', 'disabled'])
+
+function toMcpServer(raw: unknown): McpServer | null {
+  if (!isRec(raw) || typeof raw.name !== 'string' || typeof raw.status !== 'string' || !MCP_STATUSES.has(raw.status)) return null
+  const version = isRec(raw.serverInfo) && typeof raw.serverInfo.version === 'string' ? raw.serverInfo.version : undefined
+  return {
+    name: raw.name,
+    status: raw.status as McpServer['status'],
+    ...(typeof raw.scope === 'string' ? { scope: raw.scope } : {}),
+    ...(typeof raw.error === 'string' ? { error: raw.error } : {}),
+    ...(version ? { version } : {}),
+  }
+}
+
+function toAgentInfo(raw: unknown): AgentInfo | null {
+  if (!isRec(raw) || typeof raw.name !== 'string' || !raw.name) return null
+  return {
+    name: raw.name,
+    description: typeof raw.description === 'string' ? raw.description : '',
+    ...(typeof raw.model === 'string' ? { model: raw.model } : {}),
+  }
+}
 
 export class AgentSession {
   private query: QueryLike | null = null
@@ -278,6 +309,60 @@ export class AgentSession {
     if (!query.backgroundTasks) return unsupported('Ctrl+B')
     try {
       return { ok: true, value: await query.backgroundTasks() }
+    } catch (err) {
+      return failure(err)
+    }
+  }
+
+  /** The CLI's /mcp list. Starts the query so servers are connected and reported. */
+  async mcpServers(): Promise<Outcome<McpServer[]>> {
+    if (this.closed) return { ok: false, message: 'Sessão encerrada.' }
+    this.start()
+    const query = this.query
+    if (!query?.mcpServerStatus) return unsupported('/mcp')
+    try {
+      const list = await query.mcpServerStatus()
+      return { ok: true, value: (Array.isArray(list) ? list : []).map(toMcpServer).filter((s): s is McpServer => s !== null) }
+    } catch (err) {
+      return failure(err)
+    }
+  }
+
+  async toggleMcp(name: string, enabled: boolean): Promise<Outcome<null>> {
+    if (this.closed) return { ok: false, message: 'Sessão encerrada.' }
+    this.start()
+    const query = this.query
+    if (!query?.toggleMcpServer) return unsupported('/mcp')
+    try {
+      await query.toggleMcpServer(name, enabled)
+      return { ok: true, value: null }
+    } catch (err) {
+      return failure(err)
+    }
+  }
+
+  async reconnectMcp(name: string): Promise<Outcome<null>> {
+    if (this.closed) return { ok: false, message: 'Sessão encerrada.' }
+    this.start()
+    const query = this.query
+    if (!query?.reconnectMcpServer) return unsupported('/mcp')
+    try {
+      await query.reconnectMcpServer(name)
+      return { ok: true, value: null }
+    } catch (err) {
+      return failure(err)
+    }
+  }
+
+  /** Subagents available to this session (the CLI's /agents list). */
+  async agents(): Promise<Outcome<AgentInfo[]>> {
+    if (this.closed) return { ok: false, message: 'Sessão encerrada.' }
+    this.start()
+    const query = this.query
+    if (!query?.supportedAgents) return unsupported('/agents')
+    try {
+      const list = await query.supportedAgents()
+      return { ok: true, value: (Array.isArray(list) ? list : []).map(toAgentInfo).filter((a): a is AgentInfo => a !== null) }
     } catch (err) {
       return failure(err)
     }

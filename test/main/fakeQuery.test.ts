@@ -94,4 +94,26 @@ describe('fakeQuery', () => {
     await expect(fakeSessions.fork('/p', 'fake-old', 'h2')).resolves.toBe('fake-fork')
     await expect(fakeSessions.rename('/p', 'fake-old', 'x')).resolves.toBeUndefined()
   })
+
+  it('lists, toggles MCP servers and supported agents for e2e', async () => {
+    const q = fakeQuery({
+      prompt: new AsyncQueue<UserMessageLike>(),
+      options: {
+        cwd: '/p',
+        permissionMode: 'default',
+        includePartialMessages: true,
+        canUseTool: async () => ({ behavior: 'allow' }),
+        settingSources: [],
+        abortController: new AbortController(),
+        enableFileCheckpointing: true,
+      },
+    })
+    await expect(q.mcpServerStatus!()).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'github', status: 'connected' }), expect.objectContaining({ name: 'figma', status: 'needs-auth' })]),
+    )
+    await q.toggleMcpServer!('github', false)
+    await expect(q.mcpServerStatus!()).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ name: 'github', status: 'disabled' })]))
+    await expect(q.supportedAgents!()).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Explore' }), expect.objectContaining({ name: 'code-reviewer' })]))
+    q.close()
+  })
 })

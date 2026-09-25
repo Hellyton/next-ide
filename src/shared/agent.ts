@@ -90,6 +90,12 @@ export type ContextUsage = {
   memoryFiles: Array<{ path: string; tokens: number }>
 }
 
+/** The CLI's /mcp list entry for one configured server. */
+export type McpServer = { name: string; status: 'connected' | 'failed' | 'needs-auth' | 'pending' | 'disabled'; scope?: string; error?: string; version?: string }
+
+/** The CLI's /agents list entry for one available subagent. */
+export type AgentInfo = { name: string; description: string; model?: string }
+
 export type CommandOption = { name: string; description: string; argumentHint: string }
 export type ModelOption = { value: string; displayName: string; description: string }
 export type SessionSummary = { sessionId: string; title: string; lastModified: number }

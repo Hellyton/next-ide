@@ -527,4 +527,42 @@ describe('AgentSession', () => {
       await expect(s.stopTask('t1')).resolves.toEqual({ ok: false, message: 'Sessão encerrada.' })
     })
   })
+
+  describe('mcp and agents', () => {
+    it('lists MCP servers (normalized) and agents, starting the query', async () => {
+      const f = fake()
+      f.q.mcpServerStatus = async () => [
+        { name: 'github', status: 'connected', serverInfo: { name: 'gh', version: '1.2.0' }, scope: 'user' },
+        { name: 'figma', status: 'needs-auth', error: 'login required' },
+        { name: 'bad' },
+      ]
+      f.q.supportedAgents = async () => [{ name: 'Explore', description: 'Busca', model: 'haiku' }, { name: 'x' }]
+      const { s } = session(f.fn)
+      await expect(s.mcpServers()).resolves.toEqual({
+        ok: true,
+        value: [
+          { name: 'github', status: 'connected', scope: 'user', version: '1.2.0' },
+          { name: 'figma', status: 'needs-auth', error: 'login required' },
+        ],
+      })
+      await expect(s.agents()).resolves.toEqual({ ok: true, value: [{ name: 'Explore', description: 'Busca', model: 'haiku' }, { name: 'x', description: '' }] })
+      expect(f.calls).toHaveLength(1)
+    })
+
+    it('toggles and reconnects servers; reports unsupported, errors and closed sessions', async () => {
+      const f = fake()
+      const toggle = vi.fn(async () => undefined)
+      f.q.toggleMcpServer = toggle
+      f.q.reconnectMcpServer = async () => {
+        throw new Error('timeout')
+      }
+      const { s } = session(f.fn)
+      await expect(s.toggleMcp('github', false)).resolves.toEqual({ ok: true, value: null })
+      expect(toggle).toHaveBeenCalledWith('github', false)
+      await expect(s.reconnectMcp('github')).resolves.toEqual({ ok: false, message: 'timeout' })
+      await expect(s.agents()).resolves.toMatchObject({ ok: false, message: expect.stringContaining('não é suportado') })
+      s.close()
+      await expect(s.mcpServers()).resolves.toEqual({ ok: false, message: 'Sessão encerrada.' })
+    })
+  })
 })
