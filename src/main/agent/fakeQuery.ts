@@ -135,10 +135,17 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
   return query
 }
 
+const FAKE_HISTORY = [
+  { type: 'user', uuid: 'h1', parent_tool_use_id: null, message: { role: 'user', content: 'pergunta antiga' } },
+  { type: 'assistant', uuid: 'h2', parent_tool_use_id: null, message: { id: 'hm1', content: [{ type: 'text', text: 'resposta antiga' }] } },
+  { type: 'user', uuid: 'h3', parent_tool_use_id: null, message: { role: 'user', content: 'segunda pergunta' } },
+  { type: 'assistant', uuid: 'h4', parent_tool_use_id: null, message: { id: 'hm2', content: [{ type: 'text', text: 'segunda resposta' }] } },
+]
+
 export const fakeSessions: SessionStoreApi = {
   list: async () => [{ sessionId: 'fake-old', title: 'Sessão antiga de teste', lastModified: Date.now() - 60_000 }],
-  history: async () => [
-    { type: 'user', uuid: 'h1', parent_tool_use_id: null, message: { role: 'user', content: 'pergunta antiga' } },
-    { type: 'assistant', uuid: 'h2', parent_tool_use_id: null, message: { id: 'hm1', content: [{ type: 'text', text: 'resposta antiga' }] } },
-  ],
+  // The fork (always cut before "segunda pergunta" in the e2e) keeps only the first turn.
+  history: async (_dir, sessionId) => (sessionId === 'fake-fork' ? FAKE_HISTORY.slice(0, 2) : FAKE_HISTORY),
+  fork: async () => 'fake-fork',
+  rename: async () => undefined,
 }

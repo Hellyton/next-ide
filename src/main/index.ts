@@ -128,7 +128,12 @@ registerHandlers(
     readTextFile: (p) => readFile(p, 'utf8'),
     gitInfo,
     agents,
-    sessions: { list: (dir) => requireSdk().list(dir), history: (dir, id) => requireSdk().history(dir, id) },
+    sessions: {
+      list: (dir) => requireSdk().list(dir),
+      history: (dir, id) => requireSdk().history(dir, id),
+      fork: (dir, id, upTo) => requireSdk().fork(dir, id, upTo),
+      rename: (dir, id, title) => requireSdk().rename(dir, id, title),
+    },
     agentReady: () => agentReady,
     runStatusLine: (input) =>
       runStatusLine(input, process.env.NEXT_IDE_CLAUDE_SETTINGS ? { settingsPath: process.env.NEXT_IDE_CLAUDE_SETTINGS } : {}),

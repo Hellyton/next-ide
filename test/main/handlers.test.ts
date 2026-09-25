@@ -153,7 +153,32 @@ describe('buildHandlers', () => {
 
   it('agent:history converts stored messages into events', async () => {
     const events = await buildHandlers(deps())['agent:history']('/proj', 'fake-old')
-    expect(events.map((e) => e.kind)).toEqual(['user', 'text'])
+    expect(events.map((e) => e.kind)).toEqual(['user', 'text', 'user', 'text'])
+  })
+
+  it('agent:forkBefore forks up to the entry before the message and returns its history', async () => {
+    const fork = vi.fn(async () => 'fake-fork')
+    const h = buildHandlers(deps({ sessions: { ...fakeSessions, fork } }))
+    const r = await h['agent:forkBefore']('/proj', 'fake-old', 'h3')
+    expect(fork).toHaveBeenCalledWith('/proj', 'fake-old', 'h2')
+    expect(r).toEqual({
+      ok: true,
+      value: { sessionId: 'fake-fork', history: [{ kind: 'user', id: 'h1', text: 'pergunta antiga', images: 0 }, { kind: 'text', key: 'hm1:final:1', text: 'resposta antiga' }] },
+    })
+  })
+
+  it('agent:forkBefore on the first message returns an empty conversation without forking', async () => {
+    const fork = vi.fn()
+    const h = buildHandlers(deps({ sessions: { ...fakeSessions, fork } }))
+    await expect(h['agent:forkBefore']('/proj', 'fake-old', 'h1')).resolves.toEqual({ ok: true, value: { sessionId: null, history: [] } })
+    expect(fork).not.toHaveBeenCalled()
+  })
+
+  it('agent:forkBefore and agent:rename report failures instead of throwing', async () => {
+    const h = buildHandlers(deps({ sessions: { ...fakeSessions, rename: async () => { throw new Error('ro') } } }))
+    await expect(h['agent:forkBefore']('/proj', 'fake-old', 'zz')).resolves.toEqual({ ok: false, message: 'Mensagem não encontrada no histórico da sessão.' })
+    await expect(h['agent:rename']('/proj', 'fake-old', 'T')).resolves.toEqual({ ok: false, message: 'ro' })
+    await expect(buildHandlers(deps())['agent:rename']('/proj', 'fake-old', 'T')).resolves.toEqual({ ok: true, value: null })
   })
 
   it('agent:create waits for the agent runtime to be ready', async () => {

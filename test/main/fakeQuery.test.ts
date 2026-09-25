@@ -75,6 +75,11 @@ describe('fakeQuery', () => {
 
   it('provides a scripted session list and history', async () => {
     expect((await fakeSessions.list('/p'))[0]).toMatchObject({ sessionId: 'fake-old', title: 'Sessão antiga de teste' })
-    expect(await fakeSessions.history('/p', 'fake-old')).toHaveLength(2)
+    expect(await fakeSessions.history('/p', 'fake-old')).toHaveLength(4)
+  })
+
+  it('forks and renames sessions for e2e', async () => {
+    await expect(fakeSessions.fork('/p', 'fake-old', 'h2')).resolves.toBe('fake-fork')
+    await expect(fakeSessions.rename('/p', 'fake-old', 'x')).resolves.toBeUndefined()
   })
 })

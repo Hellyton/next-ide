@@ -4,6 +4,7 @@ import { sanitizeLayout } from '@shared/layout'
 import { DEFAULT_SETTINGS, migrateSettings, sanitizeSegments, type GitInfo, type Workspace } from '@shared/models'
 import type { AgentManager } from '../agent/AgentManager'
 import { historyToEvents } from '../agent/normalize'
+import { forkPointBefore } from '../agent/rewind'
 import type { SessionStoreApi } from '../agent/sdk'
 import type { FilesService } from '../fs/FilesService'
 import type { PtyManager } from '../pty/PtyManager'
@@ -24,6 +25,8 @@ export type HandlerDeps = {
   files: Pick<FilesService, 'list' | 'read' | 'write' | 'index' | 'status'>
   onWorkspaces: (workspaces: Workspace[]) => void
 }
+
+const failed = (err: unknown) => ({ ok: false as const, message: err instanceof Error ? err.message : String(err) })
 
 export function buildHandlers(d: HandlerDeps): Handlers {
   return {
@@ -120,6 +123,26 @@ export function buildHandlers(d: HandlerDeps): Handlers {
     'agent:history': async (projectPath, sessionId) => {
       await d.agentReady()
       return historyToEvents(await d.sessions.history(projectPath, sessionId))
+    },
+    'agent:forkBefore': async (projectPath, sessionId, userMessageId) => {
+      await d.agentReady()
+      try {
+        const point = forkPointBefore(await d.sessions.history(projectPath, sessionId), userMessageId)
+        if (point === null) return { ok: true as const, value: { sessionId: null, history: [] } }
+        const forked = await d.sessions.fork(projectPath, sessionId, point)
+        return { ok: true as const, value: { sessionId: forked, history: historyToEvents(await d.sessions.history(projectPath, forked)) } }
+      } catch (err) {
+        return failed(err)
+      }
+    },
+    'agent:rename': async (projectPath, sessionId, title) => {
+      await d.agentReady()
+      try {
+        await d.sessions.rename(projectPath, sessionId, title)
+        return { ok: true as const, value: null }
+      } catch (err) {
+        return failed(err)
+      }
     },
     'agent:close': (panelId) => d.agents.close(panelId),
     'statusline:run': (input) => d.runStatusLine(input),
