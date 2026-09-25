@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { fixtureProject, launch } from './helpers'
+import { fixtureProject, launch, openAgent } from './helpers'
 
 test('menciona arquivo no agente pelo visualizador e pelo @ do composer', async () => {
   const { folder, name } = fixtureProject('proj-mention-')
@@ -18,8 +18,19 @@ test('menciona arquivo no agente pelo visualizador e pelo @ do composer', async 
 
   await input.fill('')
   await input.pressSequentially('veja @app')
-  await expect(page.getByRole('listbox', { name: 'Arquivos' }).getByRole('option').first()).toHaveText('@src/app.ts')
+  await expect(page.getByRole('listbox', { name: 'Menções' }).getByRole('option').first()).toHaveText('@src/app.ts')
   await input.press('Enter')
   await expect(input).toHaveValue('veja @src/app.ts ')
+  await app.close()
+})
+
+test('@agent- sugere subagentes e insere a menção', async () => {
+  const { app, page } = await openAgent()
+  const input = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
+  await input.fill('peça ao @agent-rev')
+  const menu = page.getByRole('listbox', { name: 'Menções' })
+  await expect(menu).toContainText('@agent-code-reviewer')
+  await input.press('Enter')
+  await expect(input).toHaveValue('peça ao @agent-code-reviewer ')
   await app.close()
 })

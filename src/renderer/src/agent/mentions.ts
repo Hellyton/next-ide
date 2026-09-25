@@ -29,6 +29,21 @@ export function mentionItems(
   return fuzzyFilter(mention.query, index ?? [], (s) => s, 8)
 }
 
+export const AGENT_PREFIX = 'agent-'
+
+/** `@agent-<name>` candidates (the CLI's subagent mention); only once the token looks like `@ag…`. */
+export function agentMentionItems(
+  mention: { query: string; start: number } | null,
+  dismissedAt: number | null,
+  agents: string[] | undefined,
+): string[] {
+  if (!mention || mention.start === dismissedAt || !agents?.length) return []
+  const q = mention.query
+  if (q.length < 2 || !(q.startsWith(AGENT_PREFIX) || AGENT_PREFIX.startsWith(q))) return []
+  const rest = q.startsWith(AGENT_PREFIX) ? q.slice(AGENT_PREFIX.length) : ''
+  return fuzzyFilter(rest, agents, (s) => s, 8).map((name) => `${AGENT_PREFIX}${name}`)
+}
+
 export function applyMention(text: string, start: number, caret: number, rel: string): { text: string; caret: number } {
   const insert = `@${rel} `
   const rest = text.slice(caret).replace(/^\S*/, '').replace(/^ /, '')

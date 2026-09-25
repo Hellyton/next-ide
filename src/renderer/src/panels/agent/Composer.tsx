@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ImageAttachment } from '@shared/agent'
-import { applyMention, mentionItems as computeMentionItems, mentionQuery } from '../../agent/mentions'
+import { agentMentionItems, applyMention, mentionItems as computeMentionItems, mentionQuery } from '../../agent/mentions'
 import type { ChatState } from '../../agent/chatReducer'
 import { composerKeyAction, isBackgroundKey, isDoubleEscape } from '../../agent/composerKeys'
 import { canSend, pickImageFiles, readImage, validateImage } from '../../agent/images'
@@ -50,15 +50,24 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
   const menuItems = query === null ? [] : filterCommands(commands ?? mergeCommands([], chat.slashCommands), query)
   const mention = query === null ? mentionQuery(text, caret) : null
   const index = useFiles((s) => s.indexes[projectPath])
+  const [agentNames, setAgentNames] = useState<string[] | undefined>(undefined)
   const mentionItems = useMemo(
-    () => computeMentionItems(mention, dismissedAt, index),
-    [mention?.query, mention?.start, dismissedAt, index],
+    () => [...agentMentionItems(mention, dismissedAt, agentNames), ...computeMentionItems(mention, dismissedAt, index)].slice(0, 8),
+    [mention?.query, mention?.start, dismissedAt, agentNames, index],
   )
   const activeIndex = (n: number) => Math.min(menuIndex, Math.max(n - 1, 0))
 
   useEffect(() => {
     if (mention) void useFiles.getState().ensureIndex(projectPath)
   }, [mention !== null, projectPath])
+
+  useEffect(() => {
+    if (!mention || agentNames !== undefined) return
+    window.api
+      .invoke('agent:agents', panelId)
+      .then((r) => setAgentNames(r.ok ? r.value.map((a) => a.name) : []))
+      .catch(() => setAgentNames([]))
+  }, [mention !== null, agentNames, panelId])
 
   const pickMention = (rel: string) => {
     if (!mention) return

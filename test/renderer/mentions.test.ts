@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appendSnippet, applyMention, formatMention, mentionItems, mentionQuery, pickAgentPanel } from '@renderer/agent/mentions'
+import { agentMentionItems, appendSnippet, applyMention, formatMention, mentionItems, mentionQuery, pickAgentPanel } from '@renderer/agent/mentions'
 
 describe('formatMention', () => {
   it('uses project-relative paths and optional line ranges', () => {
@@ -49,6 +49,21 @@ describe('mentionItems', () => {
   it('is empty with no active mention or no index yet', () => {
     expect(mentionItems(null, null, ['src/app.ts'])).toEqual([])
     expect(mentionItems({ query: '', start: 3 }, null, undefined)).toEqual([])
+  })
+})
+
+describe('agentMentionItems', () => {
+  const agents = ['Explore', 'general-purpose', 'code-reviewer']
+  it('offers agents once the token looks like @agent-', () => {
+    expect(agentMentionItems({ query: 'agent-', start: 0 }, null, agents)).toEqual(['agent-Explore', 'agent-general-purpose', 'agent-code-reviewer'])
+    expect(agentMentionItems({ query: 'agent-rev', start: 0 }, null, agents)).toEqual(['agent-code-reviewer'])
+    expect(agentMentionItems({ query: 'ag', start: 0 }, null, agents)).toHaveLength(3)
+  })
+  it('stays out of plain file mentions, dismissed tokens and missing lists', () => {
+    expect(agentMentionItems({ query: 'src/app', start: 0 }, null, agents)).toEqual([])
+    expect(agentMentionItems({ query: '', start: 0 }, null, agents)).toEqual([])
+    expect(agentMentionItems({ query: 'agent-', start: 4 }, 4, agents)).toEqual([])
+    expect(agentMentionItems({ query: 'agent-', start: 0 }, null, undefined)).toEqual([])
   })
 })
 
