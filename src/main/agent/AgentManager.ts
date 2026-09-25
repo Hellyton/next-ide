@@ -20,6 +20,7 @@ export class AgentManager {
           cwd: params.projectPath,
           permissionMode,
           ...(params.model ? { model: params.model } : {}),
+          ...(params.effort ? { effort: params.effort } : {}),
           ...(params.sessionId ? { resume: params.sessionId } : {}),
         },
         {
@@ -33,6 +34,7 @@ export class AgentManager {
     // The real CLI only reports the mode in its first `init` (i.e. after the first message), so
     // tell the panel now — otherwise a fresh panel would show the wrong mode until it is used.
     this.deps.emit(panelId, { kind: 'mode', permissionMode })
+    this.deps.emit(panelId, { kind: 'effort', effort: params.effort ?? null })
   }
 
   get(panelId: string): AgentSession {

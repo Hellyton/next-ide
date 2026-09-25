@@ -1,6 +1,6 @@
 import type { AgentEvent, CommandOption, ImageAttachment, ModelOption, PermissionDecision, SessionSummary, SessionUsage, SideAnswer, StatusLineInput } from './agent'
 import type { FileContent, FsEntry, GitFileStatus } from './files'
-import type { AgentPanelParams, GitInfo, LayoutState, PermissionMode, Settings, Workspace } from './models'
+import type { AgentPanelParams, EffortLevel, GitInfo, LayoutState, PermissionMode, Settings, Workspace } from './models'
 
 export type InvokeMap = {
   'workspace:get': { args: []; result: Workspace[] }
@@ -27,6 +27,7 @@ export type InvokeMap = {
   'agent:interrupt': { args: [panelId: string]; result: void }
   'agent:setModel': { args: [panelId: string, model: string]; result: void }
   'agent:setMode': { args: [panelId: string, mode: PermissionMode]; result: void }
+  'agent:setEffort': { args: [panelId: string, effort: EffortLevel | null]; result: void }
   'agent:respondPermission': { args: [panelId: string, requestId: string, decision: PermissionDecision]; result: void }
   'agent:commands': { args: [panelId: string]; result: CommandOption[] }
   'agent:models': { args: [panelId: string]; result: ModelOption[] }
@@ -81,6 +82,7 @@ export const INVOKE_CHANNELS = [
   'agent:interrupt',
   'agent:setModel',
   'agent:setMode',
+  'agent:setEffort',
   'agent:respondPermission',
   'agent:commands',
   'agent:models',

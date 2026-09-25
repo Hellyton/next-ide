@@ -1,7 +1,7 @@
 import type { IDockviewPanelProps } from 'dockview-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentEvent, ImageAttachment } from '@shared/agent'
-import type { AgentPanelParams } from '@shared/models'
+import { isEffortLevel, type AgentPanelParams } from '@shared/models'
 import { restartSession } from '../../agent/restartSession'
 import type { LocalCommand } from '../../agent/slash'
 import { currentAgentParams, replacePanelParams, selectChat, useAgents } from '../../stores/agentStore'
@@ -102,11 +102,19 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
   const actions = useMemo<ChatActions>(() => ({ newSession: () => newSessionRef.current() }), [])
   const panelCtx = useMemo(() => ({ projectPath: params.projectPath }), [params.projectPath])
 
-  const onLocalCommand = (name: LocalCommand, _arg: string) => {
+  const notify = (message: string) => useAgents.getState().apply(panelId, { kind: 'error', message })
+
+  const onLocalCommand = (name: LocalCommand, arg: string) => {
     if (name === 'resume') setResumeOpen(true)
     else if (name === 'clear') void restart(base()).catch(fail)
     else if (name === 'model') document.getElementById(`model-select-${panelId}`)?.focus()
     else if (name === 'statusline') setStatusConfig(true)
+    else if (name === 'effort') {
+      if (!arg) document.getElementById(`effort-select-${panelId}`)?.focus()
+      else if (arg === 'auto' || isEffortLevel(arg))
+        void window.api.invoke('agent:setEffort', panelId, arg === 'auto' ? null : arg).catch((err) => notify(errorText(err)))
+      else notify(`Esforço inválido: ${arg}. Use low, medium, high, xhigh, max ou auto.`)
+    }
   }
 
   const resume = (sessionId: string) => {

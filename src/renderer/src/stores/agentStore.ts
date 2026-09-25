@@ -110,6 +110,7 @@ export function handleAgentEvent(panelId: string, event: AgentEvent): void {
   }
   if (event.kind === 'model') persistParams(panelId, { model: event.model })
   if (event.kind === 'mode') persistParams(panelId, { permissionMode: event.permissionMode })
+  if (event.kind === 'effort') persistParams(panelId, { effort: event.effort ?? undefined })
 }
 
 let subscribed = false

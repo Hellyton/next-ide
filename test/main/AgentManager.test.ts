@@ -25,9 +25,12 @@ describe('AgentManager', () => {
   it('announces the session mode right away, so a fresh panel shows it', () => {
     const { m, events } = manager()
     m.create('p1', { type: 'agent', projectPath: '/proj', permissionMode: 'auto' })
-    expect(events).toEqual([['p1', { kind: 'mode', permissionMode: 'auto' }]])
+    expect(events).toEqual([
+      ['p1', { kind: 'mode', permissionMode: 'auto' }],
+      ['p1', { kind: 'effort', effort: null }],
+    ])
     m.create('p2', { type: 'agent', projectPath: '/proj' })
-    expect(events.at(-1)).toEqual(['p2', { kind: 'mode', permissionMode: 'default' }])
+    expect(events.at(-1)).toEqual(['p2', { kind: 'effort', effort: null }])
   })
 
   it('throws for unknown panels, reports busy sessions, closes one and all', () => {

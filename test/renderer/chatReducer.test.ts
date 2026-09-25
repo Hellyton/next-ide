@@ -91,6 +91,12 @@ describe('reduceChat', () => {
     expect(s.totalCostUsd).toBeCloseTo(0.75)
   })
 
+  it('tracks the effort level', () => {
+    const s = reduceChat(initialChat, { kind: 'effort', effort: 'high' })
+    expect(s.effort).toBe('high')
+    expect(reduceChat(s, { kind: 'effort', effort: null }).effort).toBeNull()
+  })
+
   it('carries a new-session action on errors, inferring it for missing conversations', () => {
     const s = reduceAll([
       { kind: 'error', message: 'Sessão anterior não encontrada.', action: 'new-session' },

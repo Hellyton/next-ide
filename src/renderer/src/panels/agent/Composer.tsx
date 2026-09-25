@@ -8,6 +8,7 @@ import { classifySlash, filterCommands, mergeCommands, slashQuery, type LocalCom
 import { useDock } from '../../dock/dockStore'
 import { useAgents } from '../../stores/agentStore'
 import { useFiles } from '../../stores/filesStore'
+import { EffortSelect } from './EffortSelect'
 import { MentionMenu } from './MentionMenu'
 import { ModelSelect } from './ModelSelect'
 import { ModeSelect } from './ModeSelect'
@@ -272,6 +273,7 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
         />
         {reading > 0 && <span data-testid="image-reading-hint">carregando imagem…</span>}
         <ModelSelect panelId={panelId} model={chat.model} />
+        <EffortSelect panelId={panelId} effort={chat.effort} />
         <ModeSelect panelId={panelId} mode={chat.permissionMode} />
         <span className="flex-1" />
         {busy ? (

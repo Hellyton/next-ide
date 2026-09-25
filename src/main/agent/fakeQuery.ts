@@ -97,6 +97,7 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
       model = next ?? model
     },
     setPermissionMode: async () => undefined,
+    applyFlagSettings: async () => undefined,
     supportedCommands: async () => [
       { name: 'compact', description: 'Compacta a conversa', argumentHint: '' },
       { name: 'review', description: 'Revisa o código', argumentHint: '[pr]' },

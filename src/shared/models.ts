@@ -4,12 +4,17 @@ export type Workspace = { id: string; name: string; projects: Project[]; collaps
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'auto' | 'bypassPermissions' | 'dontAsk'
 
+export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+export type EffortLevel = (typeof EFFORT_LEVELS)[number]
+export const isEffortLevel = (v: string): v is EffortLevel => (EFFORT_LEVELS as readonly string[]).includes(v)
+
 export type AgentPanelParams = {
   type: 'agent'
   projectPath: string
   sessionId?: string
   model?: string
   permissionMode?: PermissionMode
+  effort?: EffortLevel
 }
 export type TerminalPanelParams = { type: 'terminal'; projectPath: string; initialCommand?: string }
 export type FilePanelParams = { type: 'file'; projectPath: string; filePath: string; line?: number }

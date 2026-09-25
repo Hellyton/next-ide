@@ -1,5 +1,5 @@
 import type { AgentEvent, ErrorAction, PermissionDecision, StatsEvent } from '@shared/agent'
-import type { PermissionMode, SessionState } from '@shared/models'
+import type { EffortLevel, PermissionMode, SessionState } from '@shared/models'
 
 export type TextItem = { type: 'text'; key: string; text: string; final: boolean; parentToolUseId?: string }
 export type ToolItem = { type: 'tool'; id: string; name: string; input: unknown; output?: string; isError?: boolean; parentToolUseId?: string }
@@ -26,6 +26,7 @@ export type ChatState = {
   sessionId?: string
   model?: string
   permissionMode?: PermissionMode
+  effort?: EffortLevel | null
   slashCommands: string[]
   /** Claude Code version reported by the session's init. */
   version?: string
@@ -79,6 +80,8 @@ export function reduceChat(s: ChatState, e: AgentEvent): ChatState {
       return { ...s, permissionMode: e.permissionMode }
     case 'model':
       return { ...s, model: e.model }
+    case 'effort':
+      return { ...s, effort: e.effort }
     case 'user':
       return push(s, { type: 'user', id: e.id, text: e.text, images: e.images })
     case 'text-delta': {

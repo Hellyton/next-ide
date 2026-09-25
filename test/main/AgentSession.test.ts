@@ -354,6 +354,39 @@ describe('AgentSession', () => {
     await expect(decision).resolves.toMatchObject({ behavior: 'allow' })
     expect(spy).toHaveBeenCalledWith('abort', expect.any(Function))
   })
+  it('passes effort on start and applies it live through applyFlagSettings', async () => {
+    const f = fake()
+    const apply = vi.fn(async () => undefined)
+    f.q.applyFlagSettings = apply
+    const { s, events } = session(f.fn, { effort: 'high' })
+    s.start()
+    expect(f.calls[0]!.options.effort).toBe('high')
+    await s.setEffort('low')
+    expect(apply).toHaveBeenCalledWith({ effortLevel: 'low' })
+    expect(events).toContainEqual({ kind: 'effort', effort: 'low' })
+    await s.setEffort(null)
+    expect(apply).toHaveBeenLastCalledWith({ effortLevel: null })
+  })
+
+  it('keeps effort for the next query when set before start, and survives a restart', async () => {
+    const f = fake()
+    const { s } = session(f.fn)
+    await s.setEffort('max')
+    s.start()
+    expect(f.calls[0]!.options.effort).toBe('max')
+  })
+
+  it('rejects and keeps the previous effort when applyFlagSettings fails', async () => {
+    const f = fake()
+    f.q.applyFlagSettings = async () => {
+      throw new Error('nope')
+    }
+    const { s, events } = session(f.fn, { effort: 'medium' })
+    s.start()
+    await expect(s.setEffort('max')).rejects.toThrow('nope')
+    expect(events.some((e) => e.kind === 'effort')).toBe(false)
+  })
+
   describe('btw', () => {
     it('answers from the side question without emitting chat events or queuing a turn', async () => {
       const f = fake()

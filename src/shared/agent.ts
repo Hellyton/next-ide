@@ -1,4 +1,4 @@
-import type { PermissionMode, SessionState } from './models'
+import type { EffortLevel, PermissionMode, SessionState } from './models'
 
 export type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
 export type ImageAttachment = { name: string; mediaType: ImageMediaType; data: string /* base64, no data: prefix */ }
@@ -40,6 +40,7 @@ export type AgentEvent =
   | { kind: 'permission-resolved'; requestId: string; decision: PermissionDecision | 'cancelled' }
   | { kind: 'mode'; permissionMode: PermissionMode }
   | { kind: 'model'; model: string }
+  | { kind: 'effort'; effort: EffortLevel | null }
   | StatsEvent
   | { kind: 'error'; message: string; action?: ErrorAction }
 

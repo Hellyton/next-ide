@@ -86,6 +86,7 @@ export function buildHandlers(d: HandlerDeps): Handlers {
     'agent:interrupt': (panelId) => d.agents.get(panelId).interrupt(),
     'agent:setModel': (panelId, model) => d.agents.get(panelId).setModel(model),
     'agent:setMode': (panelId, mode) => d.agents.get(panelId).setMode(mode),
+    'agent:setEffort': (panelId, effort) => d.agents.get(panelId).setEffort(effort),
     'agent:respondPermission': (panelId, requestId, decision) => d.agents.get(panelId).respondPermission(requestId, decision),
     'agent:commands': async (panelId) => {
       await d.agentReady()

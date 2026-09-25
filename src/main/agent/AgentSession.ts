@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { AgentEvent, CommandOption, ImageAttachment, ModelOption, PermissionDecision, SessionUsage, SideAnswer } from '@shared/agent'
-import type { PermissionMode, SessionState } from '@shared/models'
+import type { EffortLevel, PermissionMode, SessionState } from '@shared/models'
 import { AsyncQueue } from './AsyncQueue'
 import { parseSessionUsage, StreamNormalizer } from './normalize'
 
@@ -16,6 +16,7 @@ export type CanUseToolLike = (
 export type QueryOptions = {
   cwd: string
   model?: string
+  effort?: EffortLevel
   permissionMode: PermissionMode
   /**
    * Required by the SDK to PERMIT permissionMode 'bypassPermissions'; it does not itself turn
@@ -34,6 +35,8 @@ export type QueryLike = AsyncIterable<unknown> & {
   interrupt(): Promise<unknown>
   setModel(model?: string): Promise<void>
   setPermissionMode(mode: PermissionMode): Promise<void>
+  /** Live equivalent of the CLI's /effort. Absent on older SDKs/binaries. */
+  applyFlagSettings?(settings: { effortLevel?: EffortLevel | null }): Promise<void>
   supportedCommands(): Promise<CommandOption[]>
   supportedModels(): Promise<ModelOption[]>
   /** Experimental in the SDK (name included), and absent on older Claude Code binaries. */
@@ -44,7 +47,7 @@ export type QueryLike = AsyncIterable<unknown> & {
 }
 export type QueryFn = (params: { prompt: AsyncIterable<UserMessageLike>; options: QueryOptions }) => QueryLike
 
-export type SessionConfig = { cwd: string; model?: string; permissionMode: PermissionMode; resume?: string }
+export type SessionConfig = { cwd: string; model?: string; effort?: EffortLevel; permissionMode: PermissionMode; resume?: string }
 export type SessionDeps = {
   queryFn: QueryFn
   emit(event: AgentEvent): void
@@ -77,6 +80,7 @@ export class AgentSession {
   private turnsInFlight = 0
   private closed = false
   private model?: string
+  private effort?: EffortLevel
   private mode: PermissionMode
   private sessionId?: string
   private readonly newId: () => string
@@ -89,6 +93,7 @@ export class AgentSession {
     private readonly deps: SessionDeps,
   ) {
     this.model = config.model
+    this.effort = config.effort
     this.mode = config.permissionMode
     this.sessionId = config.resume
     this.newId = deps.newId ?? randomUUID
@@ -117,6 +122,7 @@ export class AgentSession {
         abortController: abort,
         canUseTool: (toolName, toolInput, options) => this.canUseTool(toolName, toolInput, options),
         ...(this.model ? { model: this.model } : {}),
+        ...(this.effort ? { effort: this.effort } : {}),
         ...(this.sessionId ? { resume: this.sessionId } : {}),
         ...(this.deps.claudePath ? { pathToClaudeCodeExecutable: this.deps.claudePath } : {}),
         ...(this.deps.env ? { env: this.deps.env } : {}),
@@ -160,6 +166,17 @@ export class AgentSession {
     if (this.closed) return
     this.mode = mode
     this.emit({ kind: 'mode', permissionMode: mode })
+  }
+
+  /** Live via applyFlagSettings (the CLI's /effort); always kept for the next query's `effort`. null = automatic. */
+  async setEffort(effort: EffortLevel | null): Promise<void> {
+    if (this.query) {
+      if (!this.query.applyFlagSettings) throw new Error('Esforço não é suportado por esta versão do Claude Code.')
+      await this.query.applyFlagSettings({ effortLevel: effort })
+    }
+    if (this.closed) return
+    this.effort = effort ?? undefined
+    this.emit({ kind: 'effort', effort })
   }
 
   async commands(): Promise<CommandOption[]> {
