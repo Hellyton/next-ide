@@ -20,6 +20,7 @@ import { RewindModal } from './RewindModal'
 import { StatusLine } from './StatusLine'
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
+const cleanTitle = (title: string): string => title.replace(/\s*[\r\n]+\s*/g, ' ').trim()
 const MISSING_SESSION: AgentEvent = { kind: 'error', message: 'Sessão anterior não encontrada.', action: 'new-session' }
 
 export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams>) {
@@ -50,6 +51,9 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
         // `chats[panelId]` may already exist here — agent:create's synchronous `mode`/`effort`
         // events can land before this await resolves — but that entry never has a `user` item,
         // so it's never a loaded transcript; only a real (StrictMode) double-run of this effect is.
+        // The other half of double-invoke safety is the `cancelled` flag below: the first run's
+        // in-flight `agent:history` awaits still resolve, but its `cancelled` closure is true by
+        // then, so it bails out before touching the store a second time.
         if (useAgents.getState().chats[panelId]?.items.some((it) => it.type === 'user')) return
         const history = await window.api.invoke('agent:history', params.projectPath, params.sessionId)
         if (cancelled) return
@@ -183,7 +187,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
         if (!r.ok) return notify(r.message)
         // The panel moved to another session meanwhile: the rename applied to the old one only.
         if (liveSessionId() !== sessionId) return
-        const clean = title.replace(/\s*[\r\n]+\s*/g, ' ').trim()
+        const clean = cleanTitle(title)
         const current = currentAgentParams(panelId)
         if (current) replacePanelParams(panelId, { ...current, title: clean })
         const tabTitle = panelTitle({ ...(current ?? params), title: clean })
@@ -206,6 +210,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
       .then((r) => {
         if (!r.ok) return notify(r.message)
         const current = currentAgentParams(panelId) ?? params
+        const clean = title ? cleanTitle(title) : ''
         useDock.getState().openBeside(panelId, {
           type: 'agent',
           projectPath: current.projectPath,
@@ -213,8 +218,9 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
           ...(current.model ? { model: current.model } : {}),
           ...(current.permissionMode ? { permissionMode: current.permissionMode } : {}),
           ...(current.effort ? { effort: current.effort } : {}),
-          ...(title ? { title } : {}),
+          ...(clean ? { title: clean } : {}),
         })
+        useAgents.getState().setNotice(panelId, null)
       })
       .catch((err) => notify(errorText(err)))
       .finally(() => setPending(null))

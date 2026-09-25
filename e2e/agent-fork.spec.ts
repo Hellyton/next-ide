@@ -19,5 +19,7 @@ test('/fork abre a sessão copiada num painel ao lado; antes da primeira mensage
   await expect(page.getByTestId('panel-tab').filter({ hasText: `${name} · claude` })).toBeVisible()
   // fakeSessions: the 'fake-fork' transcript is the first turn of the fake history.
   await expect(page.getByTestId('agent-panel').last().getByTestId('chat-view')).toContainText('resposta antiga')
+  // The original panel's "Copiando sessão…" notice must clear once the fork lands.
+  await expect(page.getByTestId('agent-panel').first().getByTestId('composer-notice')).toHaveCount(0)
   await app.close()
 })
