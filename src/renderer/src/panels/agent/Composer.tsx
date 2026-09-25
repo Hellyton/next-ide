@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ImageAttachment } from '@shared/agent'
 import { applyMention, mentionItems as computeMentionItems, mentionQuery } from '../../agent/mentions'
 import type { ChatState } from '../../agent/chatReducer'
-import { composerKeyAction, isDoubleEscape } from '../../agent/composerKeys'
+import { composerKeyAction, isBackgroundKey, isDoubleEscape } from '../../agent/composerKeys'
 import { canSend, pickImageFiles, readImage, validateImage } from '../../agent/images'
 import { classifySlash, filterCommands, mergeCommands, slashQuery, type LocalCommand, type SlashItem } from '../../agent/slash'
 import { useDock } from '../../dock/dockStore'
@@ -24,11 +24,13 @@ type Props = {
   /** Closes an open /btw answer; returns false when none is open. */
   onEscape(): boolean
   onRewind(): void
+  /** Ctrl+B: moves the running turn's foreground Bash commands/subagents to the background. */
+  onBackground(): void
   /** A rewind/rename is in flight: typing stays possible, sending (and slash commands) waits. */
   blocked?: boolean
 }
 
-export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, onBtw, onEscape, onRewind, blocked = false }: Props) {
+export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, onBtw, onEscape, onRewind, onBackground, blocked = false }: Props) {
   const text = useAgents((s) => s.drafts[panelId] ?? '')
   const setText = (value: string) => useAgents.getState().setDraft(panelId, value)
   const [caret, setCaret] = useState(0)
@@ -244,6 +246,13 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
           }
           if (e.key === 'Escape' && onEscape()) {
             e.preventDefault()
+            return
+          }
+          if (isBackgroundKey({ key: e.key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey })) {
+            if (busy) {
+              e.preventDefault()
+              onBackground()
+            }
             return
           }
           if (e.key === 'Escape' && !busy && text === '') {

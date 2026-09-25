@@ -497,4 +497,34 @@ describe('AgentSession', () => {
       await expect(s.btw('d')).resolves.toEqual({ ok: false, message: 'Sessão encerrada.' })
     })
   })
+
+  describe('background tasks', () => {
+    it('stops a task and backgrounds the running ones', async () => {
+      const f = fake()
+      const stop = vi.fn(async () => undefined)
+      const bg = vi.fn(async () => true)
+      f.q.stopTask = stop
+      f.q.backgroundTasks = bg
+      const { s } = session(f.fn)
+      await expect(s.backgroundTasks()).resolves.toEqual({ ok: true, value: false })
+      expect(bg).not.toHaveBeenCalled()
+      s.start()
+      await expect(s.stopTask('t1')).resolves.toEqual({ ok: true, value: null })
+      expect(stop).toHaveBeenCalledWith('t1')
+      await expect(s.backgroundTasks()).resolves.toEqual({ ok: true, value: true })
+    })
+
+    it('degrades when unsupported, failing or closed', async () => {
+      const f = fake()
+      const { s } = session(f.fn)
+      s.start()
+      await expect(s.stopTask('t1')).resolves.toMatchObject({ ok: false, message: expect.stringContaining('não é suportado') })
+      f.q.backgroundTasks = async () => {
+        throw new Error('Background tasks are disabled')
+      }
+      await expect(s.backgroundTasks()).resolves.toEqual({ ok: false, message: 'Background tasks are disabled' })
+      s.close()
+      await expect(s.stopTask('t1')).resolves.toEqual({ ok: false, message: 'Sessão encerrada.' })
+    })
+  })
 })

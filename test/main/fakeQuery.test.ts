@@ -41,6 +41,18 @@ describe('fakeQuery', () => {
     })
   })
 
+  it('runs a background task and stops it on "tarefa"', async () => {
+    const events: AgentEvent[] = []
+    const s = new AgentSession({ cwd: '/p', permissionMode: 'default' }, { queryFn: fakeQuery, emit: (e) => events.push(e) })
+    s.send('rode uma tarefa')
+    await tick()
+    expect(events).toContainEqual(expect.objectContaining({ kind: 'task-started', id: 'fake_task_bg_1' }))
+    await expect(s.stopTask('fake_task_bg_1')).resolves.toEqual({ ok: true, value: null })
+    await tick()
+    expect(events).toContainEqual(expect.objectContaining({ kind: 'task-done', id: 'fake_task_bg_1', status: 'stopped' }))
+    await expect(s.backgroundTasks()).resolves.toEqual({ ok: true, value: true })
+  })
+
   it('reports cumulative cost and the sends still queued on each result', async () => {
     const prompt = new AsyncQueue<UserMessageLike>()
     const msg = (text: string): UserMessageLike => ({ type: 'user', message: { role: 'user', content: [{ type: 'text', text }] }, parent_tool_use_id: null })

@@ -48,6 +48,10 @@ export type QueryLike = AsyncIterable<unknown> & {
   getContextUsage?(): Promise<unknown>
   /** The CLI's /rewind for files: undocumented in the SDK typings, and absent on older SDKs/binaries. */
   rewindFiles?(userMessageId: string, options?: { dryRun?: boolean }): Promise<unknown>
+  /** Stops a background task (the CLI then emits task_notification 'stopped'). */
+  stopTask?(taskId: string): Promise<void>
+  /** The CLI's Ctrl+B: moves the foreground Bash commands/subagents of the running turn to the background. */
+  backgroundTasks?(): Promise<boolean>
   close(): void
 }
 export type QueryFn = (params: { prompt: AsyncIterable<UserMessageLike>; options: QueryOptions }) => QueryLike
@@ -248,6 +252,32 @@ export class AgentSession {
           deletions: typeof r?.deletions === 'number' ? r.deletions : 0,
         },
       }
+    } catch (err) {
+      return failure(err)
+    }
+  }
+
+  /** Stops a background task (the CLI then emits task_notification 'stopped'). */
+  async stopTask(taskId: string): Promise<Outcome<null>> {
+    if (this.closed) return { ok: false, message: 'Sessão encerrada.' }
+    const query = this.query
+    if (!query?.stopTask) return unsupported('Parar tarefa')
+    try {
+      await query.stopTask(taskId)
+      return { ok: true, value: null }
+    } catch (err) {
+      return failure(err)
+    }
+  }
+
+  /** The CLI's Ctrl+B: moves the foreground Bash commands/subagents of the running turn to the background. */
+  async backgroundTasks(): Promise<Outcome<boolean>> {
+    if (this.closed) return { ok: false, message: 'Sessão encerrada.' }
+    const query = this.query
+    if (!query) return { ok: true, value: false }
+    if (!query.backgroundTasks) return unsupported('Ctrl+B')
+    try {
+      return { ok: true, value: await query.backgroundTasks() }
     } catch (err) {
       return failure(err)
     }

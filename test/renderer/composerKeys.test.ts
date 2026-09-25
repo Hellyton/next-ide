@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { composerKeyAction, isDoubleEscape } from '@renderer/agent/composerKeys'
+import { composerKeyAction, isBackgroundKey, isDoubleEscape } from '@renderer/agent/composerKeys'
 
 const base = { key: 'a', shiftKey: false, isComposing: false, text: 'oi', busy: false, hasHistory: true }
 
@@ -17,6 +17,16 @@ describe('composerKeyAction', () => {
     expect(composerKeyAction({ ...base, key: 'ArrowUp', text: '' })).toBe('history')
     expect(composerKeyAction({ ...base, key: 'ArrowUp' })).toBeNull()
     expect(composerKeyAction({ ...base, key: 'ArrowUp', text: '', hasHistory: false })).toBeNull()
+  })
+})
+
+describe('isBackgroundKey', () => {
+  it('is Ctrl+B only', () => {
+    expect(isBackgroundKey({ key: 'b', ctrlKey: true, metaKey: false, altKey: false })).toBe(true)
+    expect(isBackgroundKey({ key: 'B', ctrlKey: true, metaKey: false, altKey: false })).toBe(true)
+    expect(isBackgroundKey({ key: 'b', ctrlKey: false, metaKey: true, altKey: false })).toBe(false)
+    expect(isBackgroundKey({ key: 'b', ctrlKey: true, metaKey: true, altKey: false })).toBe(false)
+    expect(isBackgroundKey({ key: 'x', ctrlKey: true, metaKey: false, altKey: false })).toBe(false)
   })
 })
 

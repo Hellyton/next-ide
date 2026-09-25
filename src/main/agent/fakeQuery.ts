@@ -17,6 +17,7 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
   const out = new AsyncQueue<unknown>()
   let model = options.model ?? 'fake-model'
   let turn = 0
+  const runningTasks = new Set<string>()
   out.push({
     type: 'system',
     subtype: 'init',
@@ -52,6 +53,12 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
         const input = { file_path: '/tmp/exemplo.ts', old_string: 'const a = 1', new_string: 'const a = 2' }
         out.push({ type: 'assistant', parent_tool_use_id: null, message: { id, content: [{ type: 'tool_use', id: toolId, name: 'Edit', input }] } })
         out.push({ type: 'user', parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolId, content: 'ok' }] } })
+      }
+      if (text.includes('tarefa')) {
+        const taskId = `fake_task_bg_${turn}`
+        out.push({ type: 'system', subtype: 'task_started', task_id: taskId, tool_use_id: `fake_bg_tool_${turn}`, description: 'npm run build', task_type: 'local_bash', session_id: 'fake', uuid: `u_${taskId}` })
+        out.push({ type: 'system', subtype: 'task_progress', task_id: taskId, description: 'npm run build', last_tool_name: 'Bash', usage: { total_tokens: 0, tool_uses: 1, duration_ms: 1200 }, session_id: 'fake', uuid: `p_${taskId}` })
+        runningTasks.add(taskId)
       }
       if (text.includes('subagente')) {
         const taskId = `fake_task_${turn}`
@@ -130,6 +137,11 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
       ],
       memoryFiles: [{ path: `${options.cwd}/CLAUDE.md`, type: 'Project', tokens: 300 }],
     }),
+    stopTask: async (taskId: string) => {
+      if (!runningTasks.delete(taskId)) return
+      out.push({ type: 'system', subtype: 'task_notification', task_id: taskId, status: 'stopped', summary: 'Parada pelo usuário', output_file: '', session_id: 'fake', uuid: `n_${taskId}` })
+    },
+    backgroundTasks: async () => true,
     close: () => out.end(),
   })
   return query

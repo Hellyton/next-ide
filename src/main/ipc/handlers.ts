@@ -121,6 +121,8 @@ export function buildHandlers(d: HandlerDeps): Handlers {
       await d.agentReady()
       return d.agents.get(panelId).rewindFiles(userMessageId, dryRun)
     },
+    'agent:stopTask': (panelId, taskId) => d.agents.get(panelId).stopTask(taskId),
+    'agent:background': (panelId) => d.agents.get(panelId).backgroundTasks(),
     'agent:listSessions': async (projectPath) => {
       await d.agentReady()
       return d.sessions.list(projectPath)

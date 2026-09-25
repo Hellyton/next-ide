@@ -18,6 +18,7 @@ import { ContextModal } from './ContextModal'
 import { ResumeModal } from './ResumeModal'
 import { RewindModal } from './RewindModal'
 import { StatusLine } from './StatusLine'
+import { TasksBar } from './TasksBar'
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
 const cleanTitle = (title: string): string => title.replace(/\s*[\r\n]+\s*/g, ' ').trim()
@@ -77,6 +78,14 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
     void window.api
       .invoke('agent:send', panelId, text, images)
       .catch((err) => useAgents.getState().apply(panelId, { kind: 'error', message: `Falha ao enviar: ${errorText(err)}` }))
+
+  const background = () =>
+    void window.api
+      .invoke('agent:background', panelId)
+      .then((r) => {
+        if (!r.ok) notify(r.message)
+      })
+      .catch((err) => notify(errorText(err)))
 
   const askBtw = (question: string) => {
     const seq = ++btwSeq.current
@@ -258,6 +267,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
           <ChatView items={chat.items} panelId={panelId} running={chat.state === 'running'} />
         </ChatActionsContext.Provider>
       </AgentPanelContext.Provider>
+      <TasksBar panelId={panelId} tasks={chat.tasks} />
       {btw && <BtwCard btw={btw} onClose={closeBtw} />}
       <Composer
         panelId={panelId}
@@ -268,6 +278,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
         onBtw={askBtw}
         onEscape={closeBtw}
         onRewind={openRewind}
+        onBackground={background}
         blocked={pending !== null}
       />
       <StatusLine
