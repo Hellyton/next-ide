@@ -14,7 +14,9 @@ import { BtwCard, type BtwState } from './BtwCard'
 import { ChatActionsContext, type ChatActions } from './chatActions'
 import { ChatView } from './ChatView'
 import { Composer } from './Composer'
+import { AgentsModal } from './AgentsModal'
 import { ContextModal } from './ContextModal'
+import { McpModal } from './McpModal'
 import { ResumeModal } from './ResumeModal'
 import { RewindModal } from './RewindModal'
 import { StatusLine } from './StatusLine'
@@ -31,6 +33,8 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
   const [rewindOpen, setRewindOpen] = useState(false)
   const [statusConfig, setStatusConfig] = useState(false)
   const [contextOpen, setContextOpen] = useState(false)
+  const [mcpOpen, setMcpOpen] = useState(false)
+  const [agentsOpen, setAgentsOpen] = useState(false)
   const [btw, setBtw] = useState<BtwState | null>(null)
   const btwSeq = useRef(0)
   // A rewind/rename in flight: blocks sending and starting another one. The ref is the synchronous guard.
@@ -245,6 +249,8 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
     else if (name === 'rewind') openRewind()
     else if (name === 'rename') renameSession(arg)
     else if (name === 'fork') forkSession(arg)
+    else if (name === 'mcp') setMcpOpen(true)
+    else if (name === 'agents') setAgentsOpen(true)
     else if (name === 'effort') {
       if (!arg) document.getElementById(`effort-select-${panelId}`)?.focus()
       else if (arg === 'auto' || isEffortLevel(arg))
@@ -293,6 +299,8 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
       {resumeOpen && <ResumeModal projectPath={params.projectPath} onPick={resume} onClose={() => setResumeOpen(false)} />}
       {contextOpen && <ContextModal panelId={panelId} onClose={() => setContextOpen(false)} />}
       {rewindOpen && <RewindModal panelId={panelId} targets={rewindTargets(chat.items)} onRun={runRewindMode} onClose={() => setRewindOpen(false)} />}
+      {mcpOpen && <McpModal panelId={panelId} projectPath={params.projectPath} onClose={() => setMcpOpen(false)} />}
+      {agentsOpen && <AgentsModal panelId={panelId} projectPath={params.projectPath} onClose={() => setAgentsOpen(false)} />}
     </div>
   )
 }

@@ -1,7 +1,7 @@
 import type { CommandOption } from '@shared/agent'
 
 export type SlashItem = { name: string; description: string; argumentHint: string; local: boolean }
-export type LocalCommand = 'resume' | 'clear' | 'model' | 'statusline' | 'rewind' | 'context' | 'effort' | 'rename' | 'fork'
+export type LocalCommand = 'resume' | 'clear' | 'model' | 'statusline' | 'rewind' | 'context' | 'effort' | 'rename' | 'fork' | 'mcp' | 'agents'
 export type SlashAction =
   | { kind: 'local'; name: LocalCommand; arg: string }
   | { kind: 'btw'; question: string }
@@ -19,13 +19,15 @@ export const LOCAL_COMMANDS: SlashItem[] = [
   { name: 'effort', description: 'Nível de esforço do modelo', argumentHint: '[low|medium|high|xhigh|max|auto]', local: true },
   { name: 'rename', description: 'Renomear esta sessão', argumentHint: '<título>', local: true },
   { name: 'fork', description: 'Copiar esta conversa para um painel novo ao lado', argumentHint: '[título]', local: true },
+  { name: 'mcp', description: 'Servidores MCP: status, ligar/desligar, reconectar', argumentHint: '', local: true },
+  { name: 'agents', description: 'Subagentes disponíveis', argumentHint: '', local: true },
 ]
 
 const LOCAL_NAMES = new Set<string>(LOCAL_COMMANDS.map((c) => c.name))
 const BTW = /^\/btw(?:\s+([\s\S]*))?$/
 const TUI_ONLY = new Set([
-  'login', 'logout', 'mcp', 'config', 'usage', 'doctor', 'permissions', 'hooks',
-  'agents', 'ide', 'vim', 'terminal-setup', 'upgrade', 'status', 'bug',
+  'login', 'logout', 'config', 'usage', 'doctor', 'permissions', 'hooks',
+  'ide', 'vim', 'terminal-setup', 'upgrade', 'status', 'bug',
 ])
 
 export function slashQuery(text: string): string | null {
