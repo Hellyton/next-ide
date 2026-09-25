@@ -64,7 +64,7 @@ const lastIndexWhere = (s: ChatState, match: (item: ChatItem) => boolean): numbe
 export function reduceChat(s: ChatState, e: AgentEvent): ChatState {
   switch (e.kind) {
     case 'status':
-      return { ...s, state: e.state, ...(e.state === 'exited' ? { tasks: [] } : {}) }
+      return { ...s, state: e.state, ...(e.state === 'exited' || e.state === 'error' ? { tasks: [] } : {}) }
     case 'query-start':
       // A new query (resume, /clear, or a crash-restart) starts its running total from zero;
       // fold whatever the previous query last reported into the base so it isn't lost.
@@ -136,7 +136,7 @@ export function reduceChat(s: ChatState, e: AgentEvent): ChatState {
     case 'task-started':
       return {
         ...s,
-        tasks: [...s.tasks.filter((t) => t.id !== e.id), { id: e.id, description: e.description, status: 'running', ...(e.toolUseId ? { toolUseId: e.toolUseId } : {}) }],
+        tasks: [...s.tasks.filter((t) => t.id !== e.id), { id: e.id, description: e.description, status: 'running', ...(e.toolUseId ? { toolUseId: e.toolUseId } : {}), ...(e.taskType ? { taskType: e.taskType } : {}), ...(e.subagentType ? { subagentType: e.subagentType } : {}) }],
       }
     case 'task-progress': {
       if (!s.tasks.some((t) => t.id === e.id)) return s

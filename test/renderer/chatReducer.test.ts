@@ -133,4 +133,10 @@ describe('tasks', () => {
     s = reduceChat(s, { kind: 'status', state: 'exited' })
     expect(s.tasks).toEqual([])
   })
+  it('clears tasks when status becomes error', () => {
+    let s = reduceChat(initialChat, { kind: 'task-started', id: 't1', description: 'a' })
+    expect(s.tasks).toEqual([{ id: 't1', description: 'a', status: 'running' }])
+    s = reduceChat(s, { kind: 'status', state: 'error' })
+    expect(s.tasks).toEqual([])
+  })
 })

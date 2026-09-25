@@ -11,6 +11,8 @@ export type TaskInfo = {
   description: string
   status: TaskStatus
   toolUseId?: string
+  taskType?: string
+  subagentType?: string
   lastToolName?: string
   totalTokens?: number
   toolUses?: number
@@ -54,7 +56,7 @@ export type AgentEvent =
   | { kind: 'mode'; permissionMode: PermissionMode }
   | { kind: 'model'; model: string }
   | { kind: 'effort'; effort: EffortLevel | null }
-  | { kind: 'task-started'; id: string; description: string; toolUseId?: string }
+  | { kind: 'task-started'; id: string; description: string; toolUseId?: string; taskType?: string; subagentType?: string }
   | { kind: 'task-progress'; id: string; description?: string; lastToolName?: string; totalTokens: number; toolUses: number; durationMs: number }
   | { kind: 'task-done'; id: string; status: TaskStatus; summary: string }
   | StatsEvent

@@ -198,13 +198,15 @@ export class StreamNormalizer {
     return events
   }
 
-  private task(m: Record<string, unknown>): AgentEvent[] {
+  private task(m: Rec): AgentEvent[] {
     const id = str(m.task_id)
     if (!id) return []
     const toolUseId = str(m.tool_use_id)
     const description = typeof m.description === 'string' ? m.description : undefined
     if (m.subtype === 'task_started') {
-      return [{ kind: 'task-started', id, description: description ?? 'Tarefa', ...(toolUseId ? { toolUseId } : {}) }]
+      const taskType = str(m.task_type)
+      const subagentType = str(m.subagent_type)
+      return [{ kind: 'task-started', id, description: description ?? 'Tarefa', ...(toolUseId ? { toolUseId } : {}), ...(taskType ? { taskType } : {}), ...(subagentType ? { subagentType } : {}) }]
     }
     if (m.subtype === 'task_progress') {
       const u = isRec(m.usage) ? m.usage : {}
