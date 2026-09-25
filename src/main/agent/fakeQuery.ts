@@ -114,6 +114,7 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
         seven_day: { utilization: 17, resets_at: '2100-01-02T00:00:00.000Z' },
       },
     }),
+    askSideQuestion: async (question: string) => ({ response: `Resposta lateral: ${question}` }),
     close: () => out.end(),
   })
   return query

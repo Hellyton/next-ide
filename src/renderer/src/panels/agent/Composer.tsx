@@ -19,9 +19,12 @@ type Props = {
   projectPath: string
   onSend(text: string, images: ImageAttachment[]): void
   onLocalCommand(name: LocalCommand): void
+  onBtw(question: string): void
+  /** Closes an open /btw answer; returns false when none is open. */
+  onEscape(): boolean
 }
 
-export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }: Props) {
+export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, onBtw, onEscape }: Props) {
   const text = useAgents((s) => s.drafts[panelId] ?? '')
   const setText = (value: string) => useAgents.getState().setDraft(panelId, value)
   const [caret, setCaret] = useState(0)
@@ -103,6 +106,16 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }:
       if (action.kind === 'local') {
         setText('')
         onLocalCommand(action.name)
+        return
+      }
+      if (action.kind === 'btw') {
+        if (!action.question) {
+          setNotice({ text: 'Uso: /btw <pergunta>', command: '' })
+          return
+        }
+        onBtw(action.question)
+        history.current.push(value)
+        setText('')
         return
       }
       if (action.kind === 'tui') {
@@ -221,6 +234,10 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand }:
                 return
               }
             }
+          }
+          if (e.key === 'Escape' && onEscape()) {
+            e.preventDefault()
+            return
           }
           const action = composerKeyAction({
             key: e.key,

@@ -15,7 +15,7 @@ describe('mergeCommands / filterCommands', () => {
   it('puts local commands first, dedupes, and appends init-only names', () => {
     expect(merged.slice(0, LOCAL_COMMANDS.length).every((c) => c.local)).toBe(true)
     expect(merged.filter((c) => c.name === 'clear')).toHaveLength(1)
-    expect(merged.map((c) => c.name)).toEqual(['resume', 'clear', 'model', 'statusline', 'compact', 'review'])
+    expect(merged.map((c) => c.name)).toEqual(['resume', 'clear', 'model', 'statusline', 'btw', 'compact', 'review'])
   })
   it('ranks prefix matches first and caps at 8', () => {
     expect(filterCommands(merged, 're').map((c) => c.name)).toEqual(['resume', 'review'])
@@ -30,5 +30,11 @@ describe('classifySlash', () => {
     expect(classifySlash('/login')).toEqual({ kind: 'tui', name: 'login' })
     expect(classifySlash('/compact foco em testes')).toEqual({ kind: 'send' })
     expect(classifySlash('oi')).toEqual({ kind: 'send' })
+  })
+  it('routes /btw with its (multi-line) question, even an empty one', () => {
+    expect(classifySlash('/btw qual arquivo você está editando?')).toEqual({ kind: 'btw', question: 'qual arquivo você está editando?' })
+    expect(classifySlash('/btw linha 1\nlinha 2')).toEqual({ kind: 'btw', question: 'linha 1\nlinha 2' })
+    expect(classifySlash('/btw')).toEqual({ kind: 'btw', question: '' })
+    expect(classifySlash('/btwx')).toEqual({ kind: 'send' })
   })
 })

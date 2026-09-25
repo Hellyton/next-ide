@@ -7,6 +7,7 @@ import type { LocalCommand } from '../../agent/slash'
 import { currentAgentParams, replacePanelParams, selectChat, useAgents } from '../../stores/agentStore'
 import { useSessions } from '../../stores/sessionsStore'
 import { AgentPanelContext } from './agentPanelContext'
+import { BtwCard, type BtwState } from './BtwCard'
 import { ChatActionsContext, type ChatActions } from './chatActions'
 import { ChatView } from './ChatView'
 import { Composer } from './Composer'
@@ -21,6 +22,8 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
   const chat = useAgents(selectChat(panelId))
   const [resumeOpen, setResumeOpen] = useState(false)
   const [statusConfig, setStatusConfig] = useState(false)
+  const [btw, setBtw] = useState<BtwState | null>(null)
+  const btwSeq = useRef(0)
 
   const fail = (err: unknown) => useAgents.getState().apply(panelId, { kind: 'error', message: `Falha ao iniciar o agente: ${errorText(err)}` })
 
@@ -53,6 +56,25 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
     void window.api
       .invoke('agent:send', panelId, text, images)
       .catch((err) => useAgents.getState().apply(panelId, { kind: 'error', message: `Falha ao enviar: ${errorText(err)}` }))
+
+  const askBtw = (question: string) => {
+    const seq = ++btwSeq.current
+    setBtw({ question, answer: null })
+    void window.api
+      .invoke('agent:btw', panelId, question)
+      .catch((err) => ({ ok: false as const, message: errorText(err) }))
+      .then((answer) => {
+        if (btwSeq.current === seq) setBtw({ question, answer })
+      })
+  }
+
+  const closeBtw = (): boolean => {
+    if (!btw) return false
+    if (btw.answer === null) void window.api.invoke('agent:btwCancel', panelId).catch(() => undefined)
+    btwSeq.current++
+    setBtw(null)
+    return true
+  }
 
   const restart = (next: AgentPanelParams, history: AgentEvent[] = []) =>
     restartSession(panelId, next, history, {
@@ -102,7 +124,16 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
           <ChatView items={chat.items} panelId={panelId} running={chat.state === 'running'} />
         </ChatActionsContext.Provider>
       </AgentPanelContext.Provider>
-      <Composer panelId={panelId} chat={chat} projectPath={params.projectPath} onSend={send} onLocalCommand={onLocalCommand} />
+      {btw && <BtwCard btw={btw} onClose={closeBtw} />}
+      <Composer
+        panelId={panelId}
+        chat={chat}
+        projectPath={params.projectPath}
+        onSend={send}
+        onLocalCommand={onLocalCommand}
+        onBtw={askBtw}
+        onEscape={closeBtw}
+      />
       <StatusLine
         panelId={panelId}
         projectPath={params.projectPath}

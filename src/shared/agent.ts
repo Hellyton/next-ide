@@ -52,6 +52,9 @@ export type SessionUsage = {
   rateLimits: RateLimits
 }
 
+/** Answer to a /btw side question: uses the session context but never enters its history. */
+export type SideAnswer = { ok: true; text: string } | { ok: false; message: string }
+
 export type CommandOption = { name: string; description: string; argumentHint: string }
 export type ModelOption = { value: string; displayName: string; description: string }
 export type SessionSummary = { sessionId: string; title: string; lastModified: number }

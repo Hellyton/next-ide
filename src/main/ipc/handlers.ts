@@ -99,6 +99,11 @@ export function buildHandlers(d: HandlerDeps): Handlers {
       await d.agentReady()
       return d.agents.get(panelId).usage()
     },
+    'agent:btw': async (panelId, question) => {
+      await d.agentReady()
+      return d.agents.get(panelId).btw(question)
+    },
+    'agent:btwCancel': (panelId) => d.agents.get(panelId).cancelBtw(),
     'agent:listSessions': async (projectPath) => {
       await d.agentReady()
       return d.sessions.list(projectPath)

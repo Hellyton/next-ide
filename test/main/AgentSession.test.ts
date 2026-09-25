@@ -354,4 +354,49 @@ describe('AgentSession', () => {
     await expect(decision).resolves.toMatchObject({ behavior: 'allow' })
     expect(spy).toHaveBeenCalledWith('abort', expect.any(Function))
   })
+  describe('btw', () => {
+    it('answers from the side question without emitting chat events or queuing a turn', async () => {
+      const f = fake()
+      const ask = vi.fn(async (q: string) => ({ response: `r: ${q}` }))
+      f.q.askSideQuestion = ask
+      const { s, events } = session(f.fn)
+      await expect(s.btw('qual arquivo?')).resolves.toEqual({ ok: true, text: 'r: qual arquivo?' })
+      expect(ask).toHaveBeenCalledWith('qual arquivo?', { signal: expect.any(AbortSignal) })
+      expect(f.received).toHaveLength(0)
+      expect(events.filter((e) => e.kind === 'user')).toHaveLength(0)
+    })
+
+    it('reports unsupported binaries, null answers and errors', async () => {
+      const f = fake()
+      const { s } = session(f.fn)
+      await expect(s.btw('x')).resolves.toMatchObject({ ok: false, message: expect.stringContaining('não é suportado') })
+      f.q.askSideQuestion = async () => null
+      await expect(s.btw('x')).resolves.toEqual({ ok: false, message: 'Sem resposta.' })
+      f.q.askSideQuestion = async () => {
+        throw new Error('boom')
+      }
+      await expect(s.btw('x')).resolves.toEqual({ ok: false, message: 'boom' })
+    })
+
+    it('cancels the in-flight question on cancelBtw, a newer question, or close', async () => {
+      const f = fake()
+      const signals: AbortSignal[] = []
+      f.q.askSideQuestion = (_q, opts) =>
+        new Promise((_resolve, reject) => {
+          signals.push(opts!.signal!)
+          opts!.signal!.addEventListener('abort', () => reject(new Error('aborted')))
+        })
+      const { s } = session(f.fn)
+      const first = s.btw('a')
+      const second = s.btw('b')
+      await expect(first).resolves.toEqual({ ok: false, message: 'Cancelado.' })
+      s.cancelBtw()
+      await expect(second).resolves.toEqual({ ok: false, message: 'Cancelado.' })
+      const third = s.btw('c')
+      s.close()
+      await expect(third).resolves.toEqual({ ok: false, message: 'Cancelado.' })
+      expect(signals.every((sig) => sig.aborted)).toBe(true)
+      await expect(s.btw('d')).resolves.toEqual({ ok: false, message: 'Sessão encerrada.' })
+    })
+  })
 })

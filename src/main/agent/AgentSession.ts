@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { AgentEvent, CommandOption, ImageAttachment, ModelOption, PermissionDecision, SessionUsage } from '@shared/agent'
+import type { AgentEvent, CommandOption, ImageAttachment, ModelOption, PermissionDecision, SessionUsage, SideAnswer } from '@shared/agent'
 import type { PermissionMode, SessionState } from '@shared/models'
 import { AsyncQueue } from './AsyncQueue'
 import { parseSessionUsage, StreamNormalizer } from './normalize'
@@ -38,6 +38,8 @@ export type QueryLike = AsyncIterable<unknown> & {
   supportedModels(): Promise<ModelOption[]>
   /** Experimental in the SDK (name included), and absent on older Claude Code binaries. */
   usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET?(opts?: { skipBehaviors?: boolean }): Promise<unknown>
+  /** The CLI's /btw: undocumented in the SDK typings, and absent on older SDKs/binaries. */
+  askSideQuestion?(question: string, opts?: { signal?: AbortSignal }): Promise<{ response: string } | null>
   close(): void
 }
 export type QueryFn = (params: { prompt: AsyncIterable<UserMessageLike>; options: QueryOptions }) => QueryLike
@@ -80,6 +82,7 @@ export class AgentSession {
   private readonly newId: () => string
   private pendingDelta: TextDelta | null = null
   private deltaTimer: ReturnType<typeof setTimeout> | null = null
+  private sideAbort: AbortController | null = null
 
   constructor(
     private readonly config: SessionConfig,
@@ -181,6 +184,34 @@ export class AgentSession {
     }
   }
 
+  /**
+   * /btw: a quick tool-less answer from the session's context, even mid-turn. It never enters
+   * the conversation history. A newer question cancels the one still in flight.
+   */
+  async btw(question: string): Promise<SideAnswer> {
+    if (this.closed) return { ok: false, message: 'Sessão encerrada.' }
+    this.start()
+    const query = this.query
+    if (!query?.askSideQuestion) return { ok: false, message: '/btw não é suportado por esta versão do Claude Code.' }
+    this.sideAbort?.abort()
+    const abort = new AbortController()
+    this.sideAbort = abort
+    try {
+      const answer = await query.askSideQuestion(question, { signal: abort.signal })
+      if (abort.signal.aborted) return { ok: false, message: 'Cancelado.' }
+      return answer?.response ? { ok: true, text: answer.response } : { ok: false, message: 'Sem resposta.' }
+    } catch (err) {
+      if (abort.signal.aborted) return { ok: false, message: 'Cancelado.' }
+      return { ok: false, message: err instanceof Error ? err.message : String(err) }
+    } finally {
+      if (this.sideAbort === abort) this.sideAbort = null
+    }
+  }
+
+  cancelBtw(): void {
+    this.sideAbort?.abort()
+  }
+
   respondPermission(requestId: string, decision: PermissionDecision): void {
     const pending = this.pending.get(requestId)
     if (!pending) return
@@ -202,6 +233,7 @@ export class AgentSession {
   close(): void {
     if (this.closed) return
     this.closed = true
+    this.sideAbort?.abort()
     for (const id of [...this.pending.keys()]) this.cancelPermission(id)
     this.input?.end()
     this.query?.close()
