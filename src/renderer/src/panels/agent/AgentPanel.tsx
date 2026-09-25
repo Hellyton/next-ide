@@ -47,7 +47,10 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
       await window.api.invoke('agent:create', panelId, params)
       if (params.sessionId) {
         // Restored panel: show history now, spawn `claude --resume` only on the first send.
-        if (useAgents.getState().chats[panelId]) return
+        // `chats[panelId]` may already exist here — agent:create's synchronous `mode`/`effort`
+        // events can land before this await resolves — but that entry never has a `user` item,
+        // so it's never a loaded transcript; only a real (StrictMode) double-run of this effect is.
+        if (useAgents.getState().chats[panelId]?.items.some((it) => it.type === 'user')) return
         const history = await window.api.invoke('agent:history', params.projectPath, params.sessionId)
         if (cancelled) return
         useAgents.getState().load(panelId, history)
@@ -191,6 +194,32 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
       .finally(() => setPending(null))
   }
 
+  const forkSession = (title: string) => {
+    if (pendingRef.current) return
+    const sessionId = liveSessionId()
+    const hasTranscript = liveChat().items.some((it) => it.type === 'user')
+    if (!sessionId || !hasTranscript) return notify('Envie uma mensagem antes de copiar a sessão.')
+    setPending('Copiando sessão…')
+    notify('Copiando sessão…')
+    void window.api
+      .invoke('agent:fork', params.projectPath, sessionId, title || undefined)
+      .then((r) => {
+        if (!r.ok) return notify(r.message)
+        const current = currentAgentParams(panelId) ?? params
+        useDock.getState().openBeside(panelId, {
+          type: 'agent',
+          projectPath: current.projectPath,
+          sessionId: r.value,
+          ...(current.model ? { model: current.model } : {}),
+          ...(current.permissionMode ? { permissionMode: current.permissionMode } : {}),
+          ...(current.effort ? { effort: current.effort } : {}),
+          ...(title ? { title } : {}),
+        })
+      })
+      .catch((err) => notify(errorText(err)))
+      .finally(() => setPending(null))
+  }
+
   const onLocalCommand = (name: LocalCommand, arg: string) => {
     if (name === 'resume') setResumeOpen(true)
     else if (name === 'clear') void restart(base()).catch(fail)
@@ -199,6 +228,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
     else if (name === 'context') setContextOpen(true)
     else if (name === 'rewind') openRewind()
     else if (name === 'rename') renameSession(arg)
+    else if (name === 'fork') forkSession(arg)
     else if (name === 'effort') {
       if (!arg) document.getElementById(`effort-select-${panelId}`)?.focus()
       else if (arg === 'auto' || isEffortLevel(arg))

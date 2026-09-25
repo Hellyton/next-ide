@@ -16,7 +16,7 @@ describe('mergeCommands / filterCommands', () => {
     expect(merged.slice(0, LOCAL_COMMANDS.length).every((c) => c.local)).toBe(true)
     expect(merged.filter((c) => c.name === 'clear')).toHaveLength(1)
     expect(merged.map((c) => c.name)).toEqual([
-      'resume', 'clear', 'model', 'statusline', 'btw', 'rewind', 'context', 'effort', 'rename', 'compact', 'review',
+      'resume', 'clear', 'model', 'statusline', 'btw', 'rewind', 'context', 'effort', 'rename', 'fork', 'compact', 'review',
     ])
   })
   it('ranks prefix matches first and caps at 50', () => {
@@ -48,6 +48,8 @@ describe('classifySlash', () => {
     expect(classifySlash('/effort high')).toEqual({ kind: 'local', name: 'effort', arg: 'high' })
     expect(classifySlash('/rewind')).toEqual({ kind: 'local', name: 'rewind', arg: '' })
     expect(classifySlash('/context')).toEqual({ kind: 'local', name: 'context', arg: '' })
+    expect(classifySlash('/fork')).toEqual({ kind: 'local', name: 'fork', arg: '' })
+    expect(classifySlash('/fork Experimento A')).toEqual({ kind: 'local', name: 'fork', arg: 'Experimento A' })
   })
   it('routes /btw with its (multi-line) question, even an empty one', () => {
     expect(classifySlash('/btw qual arquivo você está editando?')).toEqual({ kind: 'btw', question: 'qual arquivo você está editando?' })

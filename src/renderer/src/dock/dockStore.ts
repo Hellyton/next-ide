@@ -13,6 +13,7 @@ type DockState = {
   lastAgent: Record<string, string>
   setApi(api: DockviewApi): void
   open(params: PanelParams): string | null
+  openBeside(referencePanelId: string, params: PanelParams): string | null
   openFile(params: FilePanelParams): void
   noteActive(panelId: string): void
   split(direction: 'right' | 'below'): void
@@ -31,6 +32,14 @@ export const useDock = create<DockState>()((set, get) => ({
     if (!api) return null
     const id = newPanelId(params.type)
     api.addPanel(buildAddPanelOptions(params, id, { kind: 'activeGroup', groupId: api.activeGroup?.id }))
+    return id
+  },
+  openBeside: (referencePanelId, params) => {
+    const api = get().api
+    if (!api) return null
+    if (!api.getPanel(referencePanelId)) return get().open(params)
+    const id = newPanelId(params.type)
+    api.addPanel(buildAddPanelOptions(params, id, { kind: 'split', referencePanelId, direction: 'right' }))
     return id
   },
   openFile: (params) => {

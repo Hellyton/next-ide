@@ -37,6 +37,15 @@ describe('dockStore', () => {
     expect(addPanel).toHaveBeenCalledWith(expect.objectContaining({ component: 'file', title: 'b.ts' }))
   })
 
+  it('openBeside splits to the right of the reference panel', () => {
+    const { addPanel } = fakeApi([{ id: 'agent-1', params: { type: 'agent', projectPath: '/g/api' } }])
+    const id = useDock.getState().openBeside('agent-1', { type: 'agent', projectPath: '/g/api', sessionId: 's2' })
+    expect(id).toMatch(/^agent-/)
+    expect(addPanel).toHaveBeenLastCalledWith(
+      expect.objectContaining({ params: { type: 'agent', projectPath: '/g/api', sessionId: 's2' }, position: { referencePanel: 'agent-1', direction: 'right' } }),
+    )
+  })
+
   it('noteActive remembers the last active agent per project', () => {
     fakeApi([
       { id: 'a1', params: { type: 'agent', projectPath: '/p' } },

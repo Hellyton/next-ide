@@ -188,6 +188,20 @@ describe('buildHandlers', () => {
     expect(fork).toHaveBeenCalledWith('/proj', 'fake-old', 'h2', 'Refactor')
   })
 
+  it('agent:fork copies the whole session, forwarding the title', async () => {
+    const fork = vi.fn(async () => 'fake-fork')
+    const h = buildHandlers(deps({ sessions: { ...fakeSessions, fork } }))
+    await expect(h['agent:fork']('/proj', 'fake-old', ' Experimento ')).resolves.toEqual({ ok: true, value: 'fake-fork' })
+    expect(fork).toHaveBeenCalledWith('/proj', 'fake-old', undefined, 'Experimento')
+    await h['agent:fork']('/proj', 'fake-old')
+    expect(fork).toHaveBeenLastCalledWith('/proj', 'fake-old', undefined, undefined)
+  })
+
+  it('agent:fork reports failures', async () => {
+    const h = buildHandlers(deps({ sessions: { ...fakeSessions, fork: async () => { throw new Error('sem transcript') } } }))
+    await expect(h['agent:fork']('/proj', 'x')).resolves.toEqual({ ok: false, message: 'sem transcript' })
+  })
+
   it('agent:rename trims the title, collapses newlines and rejects an empty one', async () => {
     const rename = vi.fn(async () => undefined)
     const h = buildHandlers(deps({ sessions: { ...fakeSessions, rename } }))

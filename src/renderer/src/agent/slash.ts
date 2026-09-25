@@ -1,7 +1,7 @@
 import type { CommandOption } from '@shared/agent'
 
 export type SlashItem = { name: string; description: string; argumentHint: string; local: boolean }
-export type LocalCommand = 'resume' | 'clear' | 'model' | 'statusline' | 'rewind' | 'context' | 'effort' | 'rename'
+export type LocalCommand = 'resume' | 'clear' | 'model' | 'statusline' | 'rewind' | 'context' | 'effort' | 'rename' | 'fork'
 export type SlashAction =
   | { kind: 'local'; name: LocalCommand; arg: string }
   | { kind: 'btw'; question: string }
@@ -18,6 +18,7 @@ export const LOCAL_COMMANDS: SlashItem[] = [
   { name: 'context', description: 'Ver o uso do contexto', argumentHint: '', local: true },
   { name: 'effort', description: 'Nível de esforço do modelo', argumentHint: '[low|medium|high|xhigh|max|auto]', local: true },
   { name: 'rename', description: 'Renomear esta sessão', argumentHint: '<título>', local: true },
+  { name: 'fork', description: 'Copiar esta conversa para um painel novo ao lado', argumentHint: '[título]', local: true },
 ]
 
 const LOCAL_NAMES = new Set<string>(LOCAL_COMMANDS.map((c) => c.name))

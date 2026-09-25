@@ -52,6 +52,7 @@ export type InvokeMap = {
   'agent:listSessions': { args: [projectPath: string]; result: SessionSummary[] }
   'agent:history': { args: [projectPath: string, sessionId: string]; result: AgentEvent[] }
   'agent:forkBefore': { args: [projectPath: string, sessionId: string, userMessageId: string, title?: string]; result: Outcome<{ sessionId: string | null; history: AgentEvent[] }> }
+  'agent:fork': { args: [projectPath: string, sessionId: string, title?: string]; result: Outcome<string> }
   'agent:rename': { args: [projectPath: string, sessionId: string, title: string]; result: Outcome<null> }
   'agent:close': { args: [panelId: string]; result: void }
   'statusline:run': { args: [input: StatusLineInput]; result: string | null }
@@ -112,6 +113,7 @@ export const INVOKE_CHANNELS = [
   'agent:listSessions',
   'agent:history',
   'agent:forkBefore',
+  'agent:fork',
   'agent:rename',
   'agent:close',
   'statusline:run',

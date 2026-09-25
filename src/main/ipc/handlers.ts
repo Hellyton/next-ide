@@ -27,6 +27,7 @@ export type HandlerDeps = {
 }
 
 const failed = (err: unknown) => ({ ok: false as const, message: err instanceof Error ? err.message : String(err) })
+const cleanTitle = (title: string): string => title.replace(/\s*[\r\n]+\s*/g, ' ').trim()
 
 export function buildHandlers(d: HandlerDeps): Handlers {
   return {
@@ -139,8 +140,17 @@ export function buildHandlers(d: HandlerDeps): Handlers {
         return failed(err)
       }
     },
+    'agent:fork': async (projectPath, sessionId, title) => {
+      await d.agentReady()
+      try {
+        const clean = title === undefined ? undefined : cleanTitle(title) || undefined
+        return { ok: true as const, value: await d.sessions.fork(projectPath, sessionId, undefined, clean) }
+      } catch (err) {
+        return failed(err)
+      }
+    },
     'agent:rename': async (projectPath, sessionId, title) => {
-      const clean = title.replace(/\s*[\r\n]+\s*/g, ' ').trim()
+      const clean = cleanTitle(title)
       if (!clean) return { ok: false as const, message: 'Título vazio.' }
       await d.agentReady()
       try {
