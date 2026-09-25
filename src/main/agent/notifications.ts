@@ -5,12 +5,15 @@ import type { SessionState } from '@shared/models'
 export type NotificationReason = 'done' | 'permission' | 'error'
 
 const WORKING: ReadonlySet<SessionState | undefined> = new Set(['running', 'awaiting_permission'])
+// Spec §5.1: `* → error` notifies whenever the panel was in a live state — i.e. not a synthetic
+// transition (undefined), not a repeat (error), and not from an already-closed panel (exited).
+const LIVE: ReadonlySet<SessionState | undefined> = new Set(['idle', 'starting', 'running', 'awaiting_permission'])
 
 /** What to tell the user about a panel's state change; null for synthetic/boring transitions. */
 export function notificationFor(prev: SessionState | undefined, next: SessionState): { reason: NotificationReason } | null {
   if (prev === next) return null
   if (next === 'awaiting_permission') return { reason: 'permission' }
-  if (next === 'error') return WORKING.has(prev) ? { reason: 'error' } : null
+  if (next === 'error') return LIVE.has(prev) ? { reason: 'error' } : null
   if (next === 'idle') return WORKING.has(prev) ? { reason: 'done' } : null
   return null
 }

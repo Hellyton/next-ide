@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { AgentNotifier, notificationFor } from '../../src/main/agent/notifications'
 
 describe('notificationFor', () => {
@@ -7,6 +7,7 @@ describe('notificationFor', () => {
     expect(notificationFor('awaiting_permission', 'idle')).toEqual({ reason: 'done' })
     expect(notificationFor('running', 'awaiting_permission')).toEqual({ reason: 'permission' })
     expect(notificationFor('running', 'error')).toEqual({ reason: 'error' })
+    expect(notificationFor('idle', 'error')).toEqual({ reason: 'error' })
   })
   it('ignores synthetic or repeated transitions', () => {
     expect(notificationFor(undefined, 'idle')).toBeNull()
@@ -14,6 +15,8 @@ describe('notificationFor', () => {
     expect(notificationFor('idle', 'running')).toBeNull()
     expect(notificationFor('error', 'error')).toBeNull()
     expect(notificationFor('running', 'exited')).toBeNull()
+    expect(notificationFor('exited', 'error')).toBeNull()
+    expect(notificationFor(undefined, 'error')).toBeNull()
   })
 })
 

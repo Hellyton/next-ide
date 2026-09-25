@@ -96,13 +96,20 @@ const requireSdk = (): Sdk => {
 
 let notificationsEnabled = true
 
+// Electron's Notification has no owner on the JS side once `show()` returns; without a strong
+// reference here it can be GC'd before the user clicks it, silently dropping the click → focus
+// behavior. Keep every live one until it resolves (click, close, or failure).
+const liveNotifications = new Set<Notification>()
+
 const notifier = new AgentNotifier({
   isFocused: () => Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()),
   enabled: () => notificationsEnabled && Notification.isSupported(),
   projectOf: (panelId) => agents.projectOf(panelId),
   show: ({ title, body, panelId }) => {
     const n = new Notification({ title, body, silent: false })
+    liveNotifications.add(n)
     n.on('click', () => {
+      liveNotifications.delete(n)
       const win = mainWindow
       if (!win || win.isDestroyed()) return
       if (win.isMinimized()) win.restore()
@@ -110,6 +117,8 @@ const notifier = new AgentNotifier({
       win.focus()
       send('agent:focus', panelId)
     })
+    n.on('close', () => liveNotifications.delete(n))
+    n.on('failed', () => liveNotifications.delete(n))
     n.show()
   },
 })
