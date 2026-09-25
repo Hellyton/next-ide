@@ -28,15 +28,22 @@ describe('AgentManager', () => {
     expect(events).toEqual([
       ['p1', { kind: 'mode', permissionMode: 'auto' }],
       ['p1', { kind: 'effort', effort: null }],
+      ['p1', { kind: 'dirs', dirs: [] }],
     ])
     m.create('p2', { type: 'agent', projectPath: '/proj' })
-    expect(events.at(-1)).toEqual(['p2', { kind: 'effort', effort: null }])
+    expect(events.at(-1)).toEqual(['p2', { kind: 'dirs', dirs: [] }])
   })
 
   it('drops an effort that is not a known level', () => {
     const { m, events } = manager()
     m.create('p1', { type: 'agent', projectPath: '/proj', effort: 'turbo' as never })
-    expect(events.at(-1)).toEqual(['p1', { kind: 'effort', effort: null }])
+    expect(events).toContainEqual(['p1', { kind: 'effort', effort: null }])
+  })
+
+  it('announces additional directories right away', () => {
+    const { m, events } = manager()
+    m.create('p1', { type: 'agent', projectPath: '/proj', additionalDirectories: ['/extra/a'] })
+    expect(events.at(-1)).toEqual(['p1', { kind: 'dirs', dirs: ['/extra/a'] }])
   })
 
   it('throws for unknown panels, reports busy sessions, closes one and all', () => {

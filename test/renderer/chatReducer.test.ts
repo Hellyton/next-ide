@@ -91,6 +91,10 @@ describe('reduceChat', () => {
     expect(s.totalCostUsd).toBeCloseTo(0.75)
   })
 
+  it('tracks additional directories', () => {
+    expect(reduceChat(initialChat, { kind: 'dirs', dirs: ['/a'] }).dirs).toEqual(['/a'])
+  })
+
   it('tracks the effort level', () => {
     const s = reduceChat(initialChat, { kind: 'effort', effort: 'high' })
     expect(s.effort).toBe('high')

@@ -43,6 +43,7 @@ export type InvokeMap = {
   'agent:setModel': { args: [panelId: string, model: string]; result: void }
   'agent:setMode': { args: [panelId: string, mode: PermissionMode]; result: void }
   'agent:setEffort': { args: [panelId: string, effort: EffortLevel | null]; result: void }
+  'agent:setDirs': { args: [panelId: string, dirs: string[]]; result: Outcome<string[]> }
   'agent:respondPermission': { args: [panelId: string, requestId: string, decision: PermissionDecision]; result: void }
   'agent:commands': { args: [panelId: string]; result: CommandOption[] }
   'agent:models': { args: [panelId: string]; result: ModelOption[] }
@@ -110,6 +111,7 @@ export const INVOKE_CHANNELS = [
   'agent:setModel',
   'agent:setMode',
   'agent:setEffort',
+  'agent:setDirs',
   'agent:respondPermission',
   'agent:commands',
   'agent:models',

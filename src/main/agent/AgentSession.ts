@@ -24,6 +24,7 @@ export type QueryOptions = {
    */
   allowDangerouslySkipPermissions?: boolean
   resume?: string
+  additionalDirectories?: string[]
   includePartialMessages: true
   enableFileCheckpointing: true
   canUseTool: CanUseToolLike
@@ -64,7 +65,14 @@ export type QueryLike = AsyncIterable<unknown> & {
 }
 export type QueryFn = (params: { prompt: AsyncIterable<UserMessageLike>; options: QueryOptions }) => QueryLike
 
-export type SessionConfig = { cwd: string; model?: string; effort?: EffortLevel; permissionMode: PermissionMode; resume?: string }
+export type SessionConfig = {
+  cwd: string
+  model?: string
+  effort?: EffortLevel
+  permissionMode: PermissionMode
+  resume?: string
+  additionalDirectories?: string[]
+}
 export type SessionDeps = {
   queryFn: QueryFn
   emit(event: AgentEvent): void
@@ -129,6 +137,7 @@ export class AgentSession {
   private effort?: EffortLevel
   private mode: PermissionMode
   private sessionId?: string
+  private dirs: string[]
   private readonly newId: () => string
   private pendingDelta: TextDelta | null = null
   private deltaTimer: ReturnType<typeof setTimeout> | null = null
@@ -142,6 +151,7 @@ export class AgentSession {
     this.effort = config.effort
     this.mode = config.permissionMode
     this.sessionId = config.resume
+    this.dirs = config.additionalDirectories ?? []
     this.newId = deps.newId ?? randomUUID
   }
 
@@ -171,6 +181,7 @@ export class AgentSession {
         ...(this.model ? { model: this.model } : {}),
         ...(this.effort ? { effort: this.effort } : {}),
         ...(this.sessionId ? { resume: this.sessionId } : {}),
+        ...(this.dirs.length ? { additionalDirectories: this.dirs } : {}),
         ...(this.deps.claudePath ? { pathToClaudeCodeExecutable: this.deps.claudePath } : {}),
         ...(this.deps.env ? { env: this.deps.env } : {}),
       },
@@ -226,6 +237,24 @@ export class AgentSession {
     if (this.closed) return
     this.effort = effort ?? undefined
     this.emit({ kind: 'effort', effort })
+  }
+
+  /** additionalDirectories only apply when a query starts: drop the current one; the next send resumes it with the new list. */
+  setDirectories(dirs: string[]): Outcome<null> {
+    if (this.closed) return { ok: false, message: 'Sessão encerrada.' }
+    if (this.state === 'running' || this.state === 'awaiting_permission') return { ok: false, message: 'Pare o agente antes de mudar as pastas.' }
+    this.dirs = [...dirs]
+    const query = this.query
+    if (query) {
+      this.input?.end()
+      this.query = null
+      this.input = null
+      this.abort = null
+      this.turnsInFlight = 0
+      query.close()
+    }
+    this.emit({ kind: 'dirs', dirs: this.dirs })
+    return { ok: true, value: null }
   }
 
   async commands(): Promise<CommandOption[]> {
@@ -485,9 +514,11 @@ export class AgentSession {
           if (this.pending.size === 0) this.setState(this.turnsInFlight > 0 ? 'running' : 'idle')
         }
       }
-      if (!this.closed) this.reset('idle')
+      // setDirectories drops the current query without resetting sessionId, so it isn't `closed`
+      // and its own natural end (via query.close()) must not reset the query started after it.
+      if (!this.closed && this.query === query) this.reset('idle')
     } catch (err) {
-      if (this.closed) return
+      if (this.closed || this.query !== query) return
       this.emit({ kind: 'error', message: err instanceof Error ? err.message : String(err) })
       this.reset('error')
     }

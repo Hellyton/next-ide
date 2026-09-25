@@ -16,6 +16,7 @@ import { ChatView } from './ChatView'
 import { Composer } from './Composer'
 import { AgentsModal } from './AgentsModal'
 import { ContextModal } from './ContextModal'
+import { DirsBar } from './DirsBar'
 import { McpModal } from './McpModal'
 import { ResumeModal } from './ResumeModal'
 import { RewindModal } from './RewindModal'
@@ -138,6 +139,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
       ...(p.model ? { model: p.model } : {}),
       ...(p.permissionMode ? { permissionMode: p.permissionMode } : {}),
       ...(p.effort ? { effort: p.effort } : {}),
+      ...(p.additionalDirectories?.length ? { additionalDirectories: p.additionalDirectories } : {}),
     }
   }
 
@@ -240,6 +242,22 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
       .finally(() => setPending(null))
   }
 
+  const setDirs = (dirs: string[]) =>
+    void window.api
+      .invoke('agent:setDirs', panelId, dirs)
+      .then((r) => {
+        if (!r.ok) notify(r.message)
+      })
+      .catch((err) => notify(errorText(err)))
+
+  const addDir = (arg: string) => {
+    if (pendingRef.current) return notify(pendingRef.current)
+    if (isBusy(liveChat())) return notify('Pare o agente antes de mudar as pastas.')
+    const current = liveChat().dirs
+    if (arg) return setDirs([...current, arg])
+    void window.api.invoke('fs:pickFolder').then((picked) => picked.length && setDirs([...current, ...picked]))
+  }
+
   const onLocalCommand = (name: LocalCommand, arg: string) => {
     if (name === 'resume') setResumeOpen(true)
     else if (name === 'clear') void restart(base()).catch(fail)
@@ -251,6 +269,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
     else if (name === 'fork') forkSession(arg)
     else if (name === 'mcp') setMcpOpen(true)
     else if (name === 'agents') setAgentsOpen(true)
+    else if (name === 'add-dir') addDir(arg)
     else if (name === 'effort') {
       if (!arg) document.getElementById(`effort-select-${panelId}`)?.focus()
       else if (arg === 'auto' || isEffortLevel(arg))
@@ -274,6 +293,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
           <ChatView items={chat.items} panelId={panelId} running={chat.state === 'running'} />
         </ChatActionsContext.Provider>
       </AgentPanelContext.Provider>
+      <DirsBar dirs={chat.dirs} onRemove={(dir) => setDirs(chat.dirs.filter((d) => d !== dir))} />
       <TasksBar panelId={panelId} tasks={chat.tasks} />
       {btw && <BtwCard btw={btw} onClose={closeBtw} />}
       <Composer

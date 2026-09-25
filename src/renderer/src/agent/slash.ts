@@ -1,7 +1,7 @@
 import type { CommandOption } from '@shared/agent'
 
 export type SlashItem = { name: string; description: string; argumentHint: string; local: boolean }
-export type LocalCommand = 'resume' | 'clear' | 'model' | 'statusline' | 'rewind' | 'context' | 'effort' | 'rename' | 'fork' | 'mcp' | 'agents'
+export type LocalCommand = 'resume' | 'clear' | 'model' | 'statusline' | 'rewind' | 'context' | 'effort' | 'rename' | 'fork' | 'mcp' | 'agents' | 'add-dir'
 export type SlashAction =
   | { kind: 'local'; name: LocalCommand; arg: string }
   | { kind: 'btw'; question: string }
@@ -21,6 +21,7 @@ export const LOCAL_COMMANDS: SlashItem[] = [
   { name: 'fork', description: 'Copiar esta conversa para um painel novo ao lado', argumentHint: '[título]', local: true },
   { name: 'mcp', description: 'Servidores MCP: status, ligar/desligar, reconectar', argumentHint: '', local: true },
   { name: 'agents', description: 'Subagentes disponíveis', argumentHint: '', local: true },
+  { name: 'add-dir', description: 'Dar acesso a outra pasta', argumentHint: '[caminho]', local: true },
 ]
 
 const LOCAL_NAMES = new Set<string>(LOCAL_COMMANDS.map((c) => c.name))

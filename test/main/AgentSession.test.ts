@@ -39,6 +39,37 @@ function fake() {
   return { fn, out, q, calls, received }
 }
 
+/** Like `fake()`, but each call to `fn` gets its own queue/query, so a stale pump from an old
+ *  query can be distinguished (by reference) from the query started after it. */
+function fake2() {
+  const outs: AsyncQueue<unknown>[] = []
+  const qs: QueryLike[] = []
+  const calls: Array<{ options: QueryOptions }> = []
+  const received: UserMessageLike[][] = []
+  const fn: QueryFn = ({ prompt, options }) => {
+    calls.push({ options })
+    const out = new AsyncQueue<unknown>()
+    outs.push(out)
+    const msgs: UserMessageLike[] = []
+    received.push(msgs)
+    void (async () => {
+      for await (const m of prompt) msgs.push(m)
+    })()
+    const q: QueryLike = {
+      [Symbol.asyncIterator]: () => out[Symbol.asyncIterator](),
+      interrupt: vi.fn(async () => undefined),
+      setModel: vi.fn(async () => undefined),
+      setPermissionMode: vi.fn(async () => undefined),
+      supportedCommands: async () => [],
+      supportedModels: async () => [],
+      close: vi.fn(() => out.end()),
+    }
+    qs.push(q)
+    return q
+  }
+  return { fn, outs, qs, calls, received }
+}
+
 function session(fn: QueryFn, over: Partial<ConstructorParameters<typeof AgentSession>[0]> = {}) {
   const events: AgentEvent[] = []
   let n = 0
@@ -532,6 +563,42 @@ describe('AgentSession', () => {
       await expect(s.backgroundTasks()).resolves.toEqual({ ok: false, message: 'Background tasks are disabled' })
       s.close()
       await expect(s.stopTask('t1')).resolves.toEqual({ ok: false, message: 'Sessão encerrada.' })
+    })
+  })
+
+  describe('additional directories', () => {
+    it('passes directories on start and restarts the query (same session) when they change', async () => {
+      const f = fake()
+      const { s, events } = session(f.fn, { additionalDirectories: ['/extra/a'] })
+      s.send('oi')
+      await tick()
+      expect(f.calls[0]!.options.additionalDirectories).toEqual(['/extra/a'])
+      f.out.push(INIT)
+      f.out.push(RESULT)
+      await tick()
+      expect(s.setDirectories(['/extra/a', '/extra/b'])).toEqual({ ok: true, value: null })
+      expect(f.q.close).toHaveBeenCalled()
+      expect(events).toContainEqual({ kind: 'dirs', dirs: ['/extra/a', '/extra/b'] })
+      s.send('de novo')
+      await tick()
+      expect(f.calls).toHaveLength(2)
+      expect(f.calls[1]!.options).toMatchObject({ resume: 'sess-9', additionalDirectories: ['/extra/a', '/extra/b'] })
+    })
+
+    it('refuses while running and survives the old pump ending after the restart', async () => {
+      const f = fake2()
+      const { s } = session(f.fn)
+      s.send('oi')
+      await tick()
+      expect(s.setDirectories(['/x'])).toEqual({ ok: false, message: 'Pare o agente antes de mudar as pastas.' })
+      f.outs[0]!.push(RESULT)
+      await tick()
+      expect(s.setDirectories(['/x'])).toEqual({ ok: true, value: null })
+      s.send('depois')
+      await tick()
+      // the first query's pump finishing late must not drop the new query
+      await tick()
+      expect(s.isStarted).toBe(true)
     })
   })
 

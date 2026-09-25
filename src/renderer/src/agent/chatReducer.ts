@@ -39,9 +39,11 @@ export type ChatState = {
   costBaseUsd: number
   /** Background tasks tracked during this session. */
   tasks: TaskInfo[]
+  /** Extra folders the agent can access, beyond the project (/add-dir). */
+  dirs: string[]
 }
 
-export const initialChat: ChatState = { items: [], state: 'idle', slashCommands: [], totalCostUsd: 0, lastQueryCostUsd: 0, costBaseUsd: 0, tasks: [] }
+export const initialChat: ChatState = { items: [], state: 'idle', slashCommands: [], totalCostUsd: 0, lastQueryCostUsd: 0, costBaseUsd: 0, tasks: [], dirs: [] }
 
 const push = (s: ChatState, item: ChatItem): ChatState => ({ ...s, items: [...s.items, item] })
 const replaceAt = (s: ChatState, index: number, item: ChatItem): ChatState => {
@@ -84,6 +86,8 @@ export function reduceChat(s: ChatState, e: AgentEvent): ChatState {
       return { ...s, model: e.model }
     case 'effort':
       return { ...s, effort: e.effort }
+    case 'dirs':
+      return { ...s, dirs: e.dirs }
     case 'user':
       return push(s, { type: 'user', id: e.id, text: e.text, images: e.images })
     case 'text-delta': {

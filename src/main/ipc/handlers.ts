@@ -1,3 +1,5 @@
+import { stat, realpath } from 'node:fs/promises'
+import { isAbsolute } from 'node:path'
 import type { StatusLineInput } from '@shared/agent'
 import type { Handlers } from '@shared/ipc-contract'
 import { sanitizeLayout } from '@shared/layout'
@@ -99,6 +101,22 @@ export function buildHandlers(d: HandlerDeps): Handlers {
       // null = automatic; anything else must be a known level.
       if (effort !== null && !isEffortLevel(effort)) return
       await d.agents.get(panelId).setEffort(effort)
+    },
+    'agent:setDirs': async (panelId, dirs) => {
+      await d.agentReady()
+      const resolved: string[] = []
+      for (const dir of dirs) {
+        if (!isAbsolute(dir)) return { ok: false as const, message: `Use um caminho absoluto: ${dir}` }
+        try {
+          const real = await realpath(dir)
+          if (!(await stat(real)).isDirectory()) return { ok: false as const, message: `${dir} não é uma pasta.` }
+          if (!resolved.includes(real)) resolved.push(real)
+        } catch {
+          return { ok: false as const, message: `Pasta não encontrada: ${dir}` }
+        }
+      }
+      const r = d.agents.get(panelId).setDirectories(resolved)
+      return r.ok ? { ok: true as const, value: resolved } : r
     },
     'agent:respondPermission': (panelId, requestId, decision) => d.agents.get(panelId).respondPermission(requestId, decision),
     'agent:commands': async (panelId) => {

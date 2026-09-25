@@ -56,6 +56,7 @@ export type AgentEvent =
   | { kind: 'mode'; permissionMode: PermissionMode }
   | { kind: 'model'; model: string }
   | { kind: 'effort'; effort: EffortLevel | null }
+  | { kind: 'dirs'; dirs: string[] }
   | { kind: 'task-started'; id: string; description: string; toolUseId?: string; taskType?: string; subagentType?: string }
   | { kind: 'task-progress'; id: string; description?: string; lastToolName?: string; totalTokens: number; toolUses: number; durationMs: number }
   | { kind: 'task-done'; id: string; status: TaskStatus; summary: string }

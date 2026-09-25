@@ -26,6 +26,7 @@ export class AgentManager {
           ...(params.model ? { model: params.model } : {}),
           ...(effort ? { effort } : {}),
           ...(params.sessionId ? { resume: params.sessionId } : {}),
+          ...(params.additionalDirectories?.length ? { additionalDirectories: params.additionalDirectories } : {}),
         },
         {
           queryFn: runtime.queryFn,
@@ -39,6 +40,7 @@ export class AgentManager {
     // tell the panel now — otherwise a fresh panel would show the wrong mode until it is used.
     this.deps.emit(panelId, { kind: 'mode', permissionMode })
     this.deps.emit(panelId, { kind: 'effort', effort: effort ?? null })
+    this.deps.emit(panelId, { kind: 'dirs', dirs: params.additionalDirectories ?? [] })
   }
 
   get(panelId: string): AgentSession {

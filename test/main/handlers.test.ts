@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -158,6 +158,18 @@ describe('buildHandlers', () => {
     expect((await h['agent:commands']('p1')).map((c) => c.name)).toEqual(['compact', 'review'])
     await h['agent:close']('p1')
     await expect(Promise.resolve().then(() => h['agent:interrupt']('p1'))).rejects.toThrow('Sessão de agente não encontrada')
+  })
+
+  it('agent:setDirs validates, resolves and dedupes directories', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'dirs-'))
+    const file = join(base, 'f.txt')
+    writeFileSync(file, 'x')
+    const h = buildHandlers(deps())
+    await h['agent:create']('p1', { type: 'agent', projectPath: '/p' })
+    await expect(h['agent:setDirs']('p1', [base, `${base}/`, base])).resolves.toEqual({ ok: true, value: [realpathSync(base)] })
+    await expect(h['agent:setDirs']('p1', ['relativo'])).resolves.toMatchObject({ ok: false, message: expect.stringContaining('relativo') })
+    await expect(h['agent:setDirs']('p1', [join(base, 'nao-existe')])).resolves.toMatchObject({ ok: false })
+    await expect(h['agent:setDirs']('p1', [file])).resolves.toMatchObject({ ok: false, message: expect.stringContaining('não é uma pasta') })
   })
 
   it('agent:history converts stored messages into events', async () => {
