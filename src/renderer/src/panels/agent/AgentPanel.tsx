@@ -11,6 +11,7 @@ import { BtwCard, type BtwState } from './BtwCard'
 import { ChatActionsContext, type ChatActions } from './chatActions'
 import { ChatView } from './ChatView'
 import { Composer } from './Composer'
+import { ContextModal } from './ContextModal'
 import { ResumeModal } from './ResumeModal'
 import { StatusLine } from './StatusLine'
 
@@ -22,6 +23,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
   const chat = useAgents(selectChat(panelId))
   const [resumeOpen, setResumeOpen] = useState(false)
   const [statusConfig, setStatusConfig] = useState(false)
+  const [contextOpen, setContextOpen] = useState(false)
   const [btw, setBtw] = useState<BtwState | null>(null)
   const btwSeq = useRef(0)
 
@@ -115,6 +117,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
     else if (name === 'clear') void restart(base()).catch(fail)
     else if (name === 'model') document.getElementById(`model-select-${panelId}`)?.focus()
     else if (name === 'statusline') setStatusConfig(true)
+    else if (name === 'context') setContextOpen(true)
     else if (name === 'effort') {
       if (!arg) document.getElementById(`effort-select-${panelId}`)?.focus()
       else if (arg === 'auto' || isEffortLevel(arg))
@@ -157,6 +160,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
         onConfigClose={() => setStatusConfig(false)}
       />
       {resumeOpen && <ResumeModal projectPath={params.projectPath} onPick={resume} onClose={() => setResumeOpen(false)} />}
+      {contextOpen && <ContextModal panelId={panelId} onClose={() => setContextOpen(false)} />}
     </div>
   )
 }

@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import type { AgentEvent, CommandOption, ImageAttachment, ModelOption, PermissionDecision, SessionUsage, SideAnswer } from '@shared/agent'
+import type { AgentEvent, CommandOption, ContextUsage, ImageAttachment, ModelOption, Outcome, PermissionDecision, SessionUsage, SideAnswer } from '@shared/agent'
 import type { EffortLevel, PermissionMode, SessionState } from '@shared/models'
 import { AsyncQueue } from './AsyncQueue'
-import { parseSessionUsage, StreamNormalizer } from './normalize'
+import { parseContextUsage, parseSessionUsage, StreamNormalizer } from './normalize'
 
 export type UserMessageLike = { type: 'user'; message: { role: 'user'; content: unknown[] }; parent_tool_use_id: null }
 export type PermissionResultLike =
@@ -43,6 +43,8 @@ export type QueryLike = AsyncIterable<unknown> & {
   usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET?(opts?: { skipBehaviors?: boolean }): Promise<unknown>
   /** The CLI's /btw: undocumented in the SDK typings, and absent on older SDKs/binaries. */
   askSideQuestion?(question: string, opts?: { signal?: AbortSignal }): Promise<{ response: string } | null>
+  /** The CLI's /context: undocumented in the SDK typings, and absent on older SDKs/binaries. */
+  getContextUsage?(): Promise<unknown>
   close(): void
 }
 export type QueryFn = (params: { prompt: AsyncIterable<UserMessageLike>; options: QueryOptions }) => QueryLike
@@ -69,6 +71,12 @@ const isMainLoopActivity = (m: unknown): boolean => {
   if (m.type === 'assistant') return true
   return m.type === 'stream_event' && isRec(m.event) && m.event.type === 'message_start'
 }
+
+export const unsupported = (feature: string): { ok: false; message: string } => ({
+  ok: false,
+  message: `${feature} não é suportado por esta versão do Claude Code.`,
+})
+const failure = (err: unknown): { ok: false; message: string } => ({ ok: false, message: err instanceof Error ? err.message : String(err) })
 
 export class AgentSession {
   private query: QueryLike | null = null
@@ -201,6 +209,19 @@ export class AgentSession {
     }
   }
 
+  /** The CLI's /context. Starts the query so a fresh panel shows its baseline cost. */
+  async contextUsage(): Promise<Outcome<ContextUsage>> {
+    this.start()
+    const query = this.query
+    if (!query?.getContextUsage) return unsupported('/context')
+    try {
+      const usage = parseContextUsage(await query.getContextUsage())
+      return usage ? { ok: true, value: usage } : { ok: false, message: 'Resposta inesperada do Claude Code.' }
+    } catch (err) {
+      return failure(err)
+    }
+  }
+
   /**
    * /btw: a quick tool-less answer from the session's context, even mid-turn. It never enters
    * the conversation history. A newer question cancels the one still in flight.
@@ -209,7 +230,7 @@ export class AgentSession {
     if (this.closed) return { ok: false, message: 'Sessão encerrada.' }
     this.start()
     const query = this.query
-    if (!query?.askSideQuestion) return { ok: false, message: '/btw não é suportado por esta versão do Claude Code.' }
+    if (!query?.askSideQuestion) return unsupported('/btw')
     this.sideAbort?.abort()
     const abort = new AbortController()
     this.sideAbort = abort

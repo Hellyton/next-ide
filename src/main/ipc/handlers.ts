@@ -105,6 +105,10 @@ export function buildHandlers(d: HandlerDeps): Handlers {
       return d.agents.get(panelId).btw(question)
     },
     'agent:btwCancel': (panelId) => d.agents.get(panelId).cancelBtw(),
+    'agent:contextUsage': async (panelId) => {
+      await d.agentReady()
+      return d.agents.get(panelId).contextUsage()
+    },
     'agent:listSessions': async (projectPath) => {
       await d.agentReady()
       return d.sessions.list(projectPath)

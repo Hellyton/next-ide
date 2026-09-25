@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent } from '@shared/agent'
-import { StreamNormalizer, flattenToolOutput, historyToEvents, parseSessionUsage } from '../../src/main/agent/normalize'
+import { StreamNormalizer, flattenToolOutput, historyToEvents, parseContextUsage, parseSessionUsage } from '../../src/main/agent/normalize'
 
 const fixture = readFileSync(join(__dirname, '../fixtures/stream-read.jsonl'), 'utf8')
   .trim()
@@ -176,6 +176,34 @@ describe('parseSessionUsage', () => {
       totalCostUsd: 0, totalDurationMs: 0, totalLinesAdded: 0, totalLinesRemoved: 0, rateLimits: {},
     })
     expect(parseSessionUsage('nope')).toBeNull()
+  })
+})
+
+describe('parseContextUsage', () => {
+  it('keeps the fields the modal shows and drops malformed entries', () => {
+    expect(
+      parseContextUsage({
+        model: 'opus',
+        totalTokens: 18000,
+        maxTokens: 200000,
+        percentage: 9,
+        categories: [
+          { name: 'Messages', tokens: 1000, color: 'blue', kind: 'used' },
+          { name: 'bad', tokens: 'x' },
+        ],
+        memoryFiles: [{ path: '/p/CLAUDE.md', type: 'Project', tokens: 300 }],
+        gridRows: [],
+      }),
+    ).toEqual({
+      model: 'opus',
+      totalTokens: 18000,
+      maxTokens: 200000,
+      percentage: 9,
+      categories: [{ name: 'Messages', tokens: 1000, color: 'blue', kind: 'used' }],
+      memoryFiles: [{ path: '/p/CLAUDE.md', tokens: 300 }],
+    })
+    expect(parseContextUsage(null)).toBeNull()
+    expect(parseContextUsage({ totalTokens: 'x' })).toBeNull()
   })
 })
 

@@ -116,6 +116,18 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
       },
     }),
     askSideQuestion: async (question: string) => ({ response: `Resposta lateral: ${question}` }),
+    getContextUsage: async () => ({
+      model,
+      totalTokens: 18000,
+      maxTokens: 200000,
+      percentage: 9,
+      categories: [
+        { name: 'System tools', tokens: 12000, color: 'gray', kind: 'used' },
+        { name: 'Messages', tokens: 6000, color: 'purple', kind: 'used' },
+        { name: 'Free space', tokens: 182000, color: 'gray', kind: 'free' },
+      ],
+      memoryFiles: [{ path: `${options.cwd}/CLAUDE.md`, type: 'Project', tokens: 300 }],
+    }),
     close: () => out.end(),
   })
   return query

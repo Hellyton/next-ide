@@ -1,10 +1,33 @@
-import type { AgentEvent, RateWindow, SessionUsage, Usage } from '@shared/agent'
+import type { AgentEvent, ContextUsage, RateWindow, SessionUsage, Usage } from '@shared/agent'
 import type { PermissionMode } from '@shared/models'
 
 type Rec = Record<string, unknown>
 const isRec = (v: unknown): v is Rec => typeof v === 'object' && v !== null
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+const CATEGORY_KINDS = new Set(['used', 'free', 'buffer', 'deferred'])
+
+/** Validates the SDK's getContextUsage() response down to what the /context modal shows. */
+export function parseContextUsage(raw: unknown): ContextUsage | null {
+  if (!isRec(raw) || !finite(raw.totalTokens) || !finite(raw.maxTokens)) return null
+  const categories = (Array.isArray(raw.categories) ? raw.categories : []).flatMap((c) =>
+    isRec(c) && typeof c.name === 'string' && finite(c.tokens) && typeof c.kind === 'string' && CATEGORY_KINDS.has(c.kind)
+      ? [{ name: c.name, tokens: c.tokens, color: typeof c.color === 'string' ? c.color : '', kind: c.kind as ContextUsage['categories'][number]['kind'] }]
+      : [],
+  )
+  const memoryFiles = (Array.isArray(raw.memoryFiles) ? raw.memoryFiles : []).flatMap((m) =>
+    isRec(m) && typeof m.path === 'string' && finite(m.tokens) ? [{ path: m.path, tokens: m.tokens }] : [],
+  )
+  return {
+    model: typeof raw.model === 'string' ? raw.model : '',
+    totalTokens: raw.totalTokens,
+    maxTokens: raw.maxTokens,
+    percentage: finite(raw.percentage) ? raw.percentage : (raw.totalTokens / raw.maxTokens) * 100,
+    categories,
+    memoryFiles,
+  }
+}
 
 export function flattenToolOutput(content: unknown): string {
   if (typeof content === 'string') return content

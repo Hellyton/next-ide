@@ -387,6 +387,27 @@ describe('AgentSession', () => {
     expect(events.some((e) => e.kind === 'effort')).toBe(false)
   })
 
+  it('reports context usage, starting the query if needed', async () => {
+    const f = fake()
+    f.q.getContextUsage = async () => ({ model: 'opus', totalTokens: 10, maxTokens: 100, percentage: 10, categories: [], memoryFiles: [] })
+    const { s } = session(f.fn)
+    await expect(s.contextUsage()).resolves.toEqual({
+      ok: true,
+      value: { model: 'opus', totalTokens: 10, maxTokens: 100, percentage: 10, categories: [], memoryFiles: [] },
+    })
+    expect(f.calls).toHaveLength(1)
+  })
+
+  it('context usage degrades when unsupported or failing', async () => {
+    const f = fake()
+    const { s } = session(f.fn)
+    await expect(s.contextUsage()).resolves.toMatchObject({ ok: false, message: expect.stringContaining('não é suportado') })
+    f.q.getContextUsage = async () => {
+      throw new Error('boom')
+    }
+    await expect(s.contextUsage()).resolves.toEqual({ ok: false, message: 'boom' })
+  })
+
   describe('btw', () => {
     it('answers from the side question without emitting chat events or queuing a turn', async () => {
       const f = fake()

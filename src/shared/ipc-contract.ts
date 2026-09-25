@@ -1,4 +1,16 @@
-import type { AgentEvent, CommandOption, ImageAttachment, ModelOption, PermissionDecision, SessionSummary, SessionUsage, SideAnswer, StatusLineInput } from './agent'
+import type {
+  AgentEvent,
+  CommandOption,
+  ContextUsage,
+  ImageAttachment,
+  ModelOption,
+  Outcome,
+  PermissionDecision,
+  SessionSummary,
+  SessionUsage,
+  SideAnswer,
+  StatusLineInput,
+} from './agent'
 import type { FileContent, FsEntry, GitFileStatus } from './files'
 import type { AgentPanelParams, EffortLevel, GitInfo, LayoutState, PermissionMode, Settings, Workspace } from './models'
 
@@ -34,6 +46,7 @@ export type InvokeMap = {
   'agent:usage': { args: [panelId: string]; result: SessionUsage | null }
   'agent:btw': { args: [panelId: string, question: string]; result: SideAnswer }
   'agent:btwCancel': { args: [panelId: string]; result: void }
+  'agent:contextUsage': { args: [panelId: string]; result: Outcome<ContextUsage> }
   'agent:listSessions': { args: [projectPath: string]; result: SessionSummary[] }
   'agent:history': { args: [projectPath: string, sessionId: string]; result: AgentEvent[] }
   'agent:close': { args: [panelId: string]; result: void }
@@ -89,6 +102,7 @@ export const INVOKE_CHANNELS = [
   'agent:usage',
   'agent:btw',
   'agent:btwCancel',
+  'agent:contextUsage',
   'agent:listSessions',
   'agent:history',
   'agent:close',

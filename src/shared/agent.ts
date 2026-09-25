@@ -56,6 +56,19 @@ export type SessionUsage = {
 /** Answer to a /btw side question: uses the session context but never enters its history. */
 export type SideAnswer = { ok: true; text: string } | { ok: false; message: string }
 
+/** Result of a panel operation that can be unsupported by the installed Claude Code or fail. */
+export type Outcome<T> = { ok: true; value: T } | { ok: false; message: string }
+
+/** Same data as the CLI's /context. */
+export type ContextUsage = {
+  model: string
+  totalTokens: number
+  maxTokens: number
+  percentage: number
+  categories: Array<{ name: string; tokens: number; color: string; kind: 'used' | 'free' | 'buffer' | 'deferred' }>
+  memoryFiles: Array<{ path: string; tokens: number }>
+}
+
 export type CommandOption = { name: string; description: string; argumentHint: string }
 export type ModelOption = { value: string; displayName: string; description: string }
 export type SessionSummary = { sessionId: string; title: string; lastModified: number }
