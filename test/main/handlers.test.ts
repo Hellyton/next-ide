@@ -36,6 +36,7 @@ function deps(over: Partial<HandlerDeps> = {}): HandlerDeps & { ptyCalls: unknow
       status: async () => ({ 'a.ts': 'M' }),
     },
     onWorkspaces: () => undefined,
+    notificationsEnabled: () => true,
     ptyCalls,
     agentEvents,
     ...over,
@@ -48,6 +49,14 @@ describe('buildHandlers (settings)', () => {
     await d.stores.settings.writeNow({ ...DEFAULT_SETTINGS, statusline: { segments: ['project', 'cost', 'state', 'model'] as never, customScript: true } })
     const s = await buildHandlers(d)['settings:get']()
     expect(s.statusline.segments).toEqual(['project', 'model'])
+  })
+
+  it('settings:save always persists notifications from the dependency, never the payload', async () => {
+    const d = deps({ notificationsEnabled: () => false })
+    const h = buildHandlers(d)
+    const { notifications: _drop, ...withoutNotifications } = { ...DEFAULT_SETTINGS, notifications: true }
+    await h['settings:save'](withoutNotifications)
+    expect((await d.stores.settings.read()).notifications).toBe(false)
   })
 })
 

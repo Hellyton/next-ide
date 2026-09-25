@@ -24,6 +24,8 @@ export type HandlerDeps = {
   runStatusLine: (input: StatusLineInput) => Promise<string | null>
   files: Pick<FilesService, 'list' | 'read' | 'write' | 'index' | 'status'>
   onWorkspaces: (workspaces: Workspace[]) => void
+  /** Main owns the notifications toggle (menu + settings), so `settings:save` never lets a stale renderer copy clobber it. */
+  notificationsEnabled: () => boolean
 }
 
 const failed = (err: unknown) => ({ ok: false as const, message: err instanceof Error ? err.message : String(err) })
@@ -46,7 +48,10 @@ export function buildHandlers(d: HandlerDeps): Handlers {
       if (settings.settingsVersion !== stored.settingsVersion) await d.stores.settings.writeNow(settings)
       return settings
     },
-    'settings:save': (settings) => d.stores.settings.writeNow(settings),
+    // `notifications` is main's, not the renderer's: the renderer caches its whole Settings snapshot once
+    // and re-sends it on every unrelated change (e.g. a sidebar resize), which would otherwise overwrite a
+    // menu toggle made after that snapshot was taken.
+    'settings:save': (settings) => d.stores.settings.writeNow({ ...settings, notifications: d.notificationsEnabled() }),
     'layout:get': async () => sanitizeLayout(await d.stores.layout.read()),
     'layout:save': (layout) => d.stores.layout.schedule(layout),
     'fs:pickFolder': () => d.pickFolders(),

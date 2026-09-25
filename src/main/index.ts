@@ -95,21 +95,32 @@ const requireSdk = (): Sdk => {
 }
 
 let notificationsEnabled = true
+// Serializes the menu toggle's read-modify-write of settings.json so rapid clicks can't race each
+// other (a `read()` started before an earlier toggle's `writeNow()` lands would otherwise clobber it).
+let settingsWriteChain: Promise<unknown> = Promise.resolve()
 
 // Electron's Notification has no owner on the JS side once `show()` returns; without a strong
 // reference here it can be GC'd before the user clicks it, silently dropping the click → focus
-// behavior. Keep every live one until it resolves (click, close, or failure).
-const liveNotifications = new Set<Notification>()
+// behavior. Keep every live one until it resolves (click, close, or failure). Keyed by panelId
+// (not a Set) so a busy panel can't stack up an unbounded pile of notifications: a new one for
+// the same panel closes the previous one first.
+const liveNotifications = new Map<string, Notification>()
 
 const notifier = new AgentNotifier({
   isFocused: () => Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()),
   enabled: () => notificationsEnabled && Notification.isSupported(),
   projectOf: (panelId) => agents.projectOf(panelId),
   show: ({ title, body, panelId }) => {
+    liveNotifications.get(panelId)?.close()
     const n = new Notification({ title, body, silent: false })
-    liveNotifications.add(n)
+    liveNotifications.set(panelId, n)
+    // Guard every removal: `close()` above fires its old notification's own 'close' handler
+    // asynchronously, which must not delete the new entry it raced with.
+    const forget = () => {
+      if (liveNotifications.get(panelId) === n) liveNotifications.delete(panelId)
+    }
     n.on('click', () => {
-      liveNotifications.delete(n)
+      forget()
       const win = mainWindow
       if (!win || win.isDestroyed()) return
       if (win.isMinimized()) win.restore()
@@ -117,17 +128,23 @@ const notifier = new AgentNotifier({
       win.focus()
       send('agent:focus', panelId)
     })
-    n.on('close', () => liveNotifications.delete(n))
-    n.on('failed', () => liveNotifications.delete(n))
+    n.on('close', forget)
+    n.on('failed', forget)
     n.show()
   },
 })
 
 const agents = new AgentManager({
   emit: (panelId, event) => {
-    notifier.onEvent(panelId, event)
-    if (event.kind === 'status' && event.state === 'exited') notifier.forget(panelId)
+    // The renderer must always get the event; a Notification failure (unsupported platform,
+    // OS-level error) can't be allowed to desync it.
     send('agent:event', panelId, event)
+    try {
+      notifier.onEvent(panelId, event)
+    } catch (err) {
+      console.error('[next-ide] notifier failed', err)
+    }
+    if (event.kind === 'status' && event.state === 'exited') notifier.forget(panelId)
   },
   runtime: () => ({
     queryFn: (params) => requireSdk().queryFn(params),
@@ -173,6 +190,7 @@ registerHandlers(
       runStatusLine(input, process.env.NEXT_IDE_CLAUDE_SETTINGS ? { settingsPath: process.env.NEXT_IDE_CLAUDE_SETTINGS } : {}),
     files,
     onWorkspaces: (ws) => setProjects(projectPaths(ws)),
+    notificationsEnabled: () => notificationsEnabled,
   }),
 )
 
@@ -237,13 +255,24 @@ void app.whenReady().then(async () => {
       console.error('[next-ide] failed to set dock icon', err)
     }
   }
-  const settings = await stores.settings.read()
-  notificationsEnabled = settings.notifications !== false
+  // A settings.json read failure (bad permissions, disk hiccup, or an on-disk value that parses
+  // but isn't the object we expect) must never block the window from opening.
+  let settingsNotifications: boolean | undefined
+  try {
+    const settings: unknown = await stores.settings.read()
+    if (settings && typeof settings === 'object') settingsNotifications = (settings as { notifications?: boolean }).notifications
+  } catch (err) {
+    console.error('[next-ide] failed to read settings at startup', err)
+  }
+  notificationsEnabled = settingsNotifications !== false
   installMenu({
     notifications: notificationsEnabled,
     onToggleNotifications: (enabled) => {
       notificationsEnabled = enabled
-      void stores.settings.read().then((s) => stores.settings.writeNow({ ...s, notifications: enabled }))
+      settingsWriteChain = settingsWriteChain
+        .then(() => stores.settings.read())
+        .then((s) => stores.settings.writeNow({ ...s, notifications: enabled }))
+        .catch((err) => console.error('[next-ide] failed to persist notifications setting', err))
     },
   })
   mainWindow = createWindow()
