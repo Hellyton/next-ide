@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { TaskInfo } from '@shared/agent'
+import { visibleTasks } from '../../agent/tasks'
 import { useAgents } from '../../stores/agentStore'
 
 const FINISHED_VISIBLE_MS = 4000
-const secs = (ms?: number) => (ms ? `${Math.round(ms / 1000)}s` : '')
+const secs = (ms?: number) => (ms === undefined ? '' : `${Math.round(ms / 1000)}s`)
 const STATUS: Record<Exclude<TaskInfo['status'], 'running'>, string> = { completed: 'concluída', failed: 'falhou', stopped: 'parada' }
 const label = (t: TaskInfo) => (t.subagentType ? `${t.subagentType} · ${t.description}` : t.description)
 
@@ -13,11 +14,18 @@ export function TasksBar({ panelId, tasks }: { panelId: string; tasks: TaskInfo[
   const finishedIds = tasks.filter((t) => t.status !== 'running').map((t) => t.id).join('|')
   useEffect(() => {
     const ids = finishedIds ? finishedIds.split('|') : []
+    const idSet = new Set(ids)
+    // Drop ids no longer finished (running again, or gone) so a re-finished task can hide again
+    // and `hidden` doesn't grow forever.
+    setHidden((h) => {
+      const next = new Set([...h].filter((id) => idSet.has(id)))
+      return next.size === h.size ? h : next
+    })
     const timers = ids.filter((id) => !hidden.has(id)).map((id) => setTimeout(() => setHidden((h) => new Set(h).add(id)), FINISHED_VISIBLE_MS))
     return () => timers.forEach(clearTimeout)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [finishedIds])
-  const visible = tasks.filter((t) => !hidden.has(t.id))
+  const visible = visibleTasks(tasks, hidden)
   if (visible.length === 0) return null
   const stop = (t: TaskInfo) =>
     void window.api
