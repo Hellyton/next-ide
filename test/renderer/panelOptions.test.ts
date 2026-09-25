@@ -4,6 +4,7 @@ import { buildAddPanelOptions, newPanelId, panelTitle } from '@renderer/dock/pan
 describe('panelOptions', () => {
   it('panelTitle per type', () => {
     expect(panelTitle({ type: 'agent', projectPath: '/g/api' })).toBe('api · claude')
+    expect(panelTitle({ type: 'agent', projectPath: '/g/api', title: 'Refactor login' })).toBe('Refactor login · claude')
     expect(panelTitle({ type: 'terminal', projectPath: '/g/api' })).toBe('api · zsh')
     expect(panelTitle({ type: 'file', projectPath: '/g/api', filePath: '/g/api/src/a.ts' })).toBe('a.ts')
   })

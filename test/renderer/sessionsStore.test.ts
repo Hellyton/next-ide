@@ -28,4 +28,12 @@ describe('sessionsStore', () => {
     expect(useSessions.getState().order).toEqual([])
     expect(useSessions.getState().byId).toEqual({})
   })
+
+  it('renames a session', () => {
+    useSessions.getState().add({ panelId: 'r1', type: 'agent', projectPath: '/p', title: 'p · claude', state: 'idle' })
+    useSessions.getState().setTitle('r1', 'Novo · claude')
+    expect(useSessions.getState().byId.r1!.title).toBe('Novo · claude')
+    useSessions.getState().setTitle('missing', 'x')
+    expect(useSessions.getState().byId.missing).toBeUndefined()
+  })
 })

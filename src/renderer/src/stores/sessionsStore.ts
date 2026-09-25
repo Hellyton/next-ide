@@ -15,6 +15,7 @@ type SessionsState = {
   add(session: SessionInfo): void
   remove(panelId: string): void
   setState(panelId: string, state: SessionState): void
+  setTitle(panelId: string, title: string): void
 }
 
 export const useSessions = create<SessionsState>()((set) => ({
@@ -36,5 +37,10 @@ export const useSessions = create<SessionsState>()((set) => ({
     set((st) => {
       const current = st.byId[panelId]
       return current ? { byId: { ...st.byId, [panelId]: { ...current, state } } } : st
+    }),
+  setTitle: (panelId, title) =>
+    set((st) => {
+      const current = st.byId[panelId]
+      return current ? { byId: { ...st.byId, [panelId]: { ...current, title } } } : st
     }),
 }))

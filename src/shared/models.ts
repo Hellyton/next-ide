@@ -15,6 +15,7 @@ export type AgentPanelParams = {
   model?: string
   permissionMode?: PermissionMode
   effort?: EffortLevel
+  title?: string
 }
 export type TerminalPanelParams = { type: 'terminal'; projectPath: string; initialCommand?: string }
 export type FilePanelParams = { type: 'file'; projectPath: string; filePath: string; line?: number }

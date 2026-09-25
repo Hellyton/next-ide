@@ -4,7 +4,8 @@ import { basename } from '@shared/workspaces'
 
 export function panelTitle(p: PanelParams): string {
   if (p.type === 'file') return basename(p.filePath)
-  return `${basename(p.projectPath)} · ${p.type === 'agent' ? 'claude' : 'zsh'}`
+  if (p.type === 'agent') return `${p.title ?? basename(p.projectPath)} · claude`
+  return `${basename(p.projectPath)} · zsh`
 }
 
 export function newPanelId(type: PanelType, uuid: () => string = () => crypto.randomUUID()): string {
