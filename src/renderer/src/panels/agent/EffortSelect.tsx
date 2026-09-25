@@ -1,6 +1,8 @@
 import { EFFORT_LEVELS, type EffortLevel } from '@shared/models'
+import { useAgents } from '../../stores/agentStore'
 
 const LABEL: Record<EffortLevel, string> = { low: 'baixo', medium: 'médio', high: 'alto', xhigh: 'muito alto', max: 'máximo' }
+const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
 export function EffortSelect({ panelId, effort }: { panelId: string; effort: EffortLevel | null | undefined }) {
   return (
@@ -13,7 +15,7 @@ export function EffortSelect({ panelId, effort }: { panelId: string; effort: Eff
         const value = e.target.value
         void window.api
           .invoke('agent:setEffort', panelId, value ? (value as EffortLevel) : null)
-          .catch((err) => console.error('[next-ide] setEffort failed', err))
+          .catch((err) => useAgents.getState().setNotice(panelId, { text: errorText(err), command: '' }))
       }}
     >
       <option value="">esforço auto</option>

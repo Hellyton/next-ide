@@ -91,7 +91,13 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
 
   const base = (): AgentPanelParams => {
     const p = currentAgentParams(panelId) ?? params
-    return { type: 'agent', projectPath: p.projectPath, ...(p.model ? { model: p.model } : {}), ...(p.permissionMode ? { permissionMode: p.permissionMode } : {}) }
+    return {
+      type: 'agent',
+      projectPath: p.projectPath,
+      ...(p.model ? { model: p.model } : {}),
+      ...(p.permissionMode ? { permissionMode: p.permissionMode } : {}),
+      ...(p.effort ? { effort: p.effort } : {}),
+    }
   }
 
   // Stable object for the (memoized) chat cards; the ref always points at the latest closure.
@@ -102,7 +108,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
   const actions = useMemo<ChatActions>(() => ({ newSession: () => newSessionRef.current() }), [])
   const panelCtx = useMemo(() => ({ projectPath: params.projectPath }), [params.projectPath])
 
-  const notify = (message: string) => useAgents.getState().apply(panelId, { kind: 'error', message })
+  const notify = (message: string) => useAgents.getState().setNotice(panelId, { text: message, command: '' })
 
   const onLocalCommand = (name: LocalCommand, arg: string) => {
     if (name === 'resume') setResumeOpen(true)

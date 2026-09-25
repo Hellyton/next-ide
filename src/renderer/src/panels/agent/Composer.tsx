@@ -35,7 +35,8 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
   const busy = chat.state === 'running' || chat.state === 'awaiting_permission'
   const [commands, setCommands] = useState<SlashItem[] | null>(null)
   const [menuIndex, setMenuIndex] = useState(0)
-  const [notice, setNotice] = useState<{ text: string; command: string } | null>(null)
+  const notice = useAgents((s) => s.notices[panelId] ?? null)
+  const setNotice = (value: { text: string; command: string } | null) => useAgents.getState().setNotice(panelId, value)
   const [images, setImages] = useState<ImageAttachment[]>([])
   const [reading, setReading] = useState(0)
   const fileInput = useRef<HTMLInputElement>(null)

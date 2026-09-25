@@ -13,6 +13,8 @@ type AgentsState = {
   rateLimits: RateLimits
   /** Composer text per panel; lives here so other panels (file viewer) can insert @mentions. */
   drafts: Record<string, string>
+  /** Composer's transient notice banner per panel (invalid slash args, TUI-only commands, image errors). */
+  notices: Record<string, { text: string; command: string }>
   apply(panelId: string, event: AgentEvent): void
   load(panelId: string, events: AgentEvent[]): void
   clear(panelId: string): void
@@ -20,12 +22,14 @@ type AgentsState = {
   setChat(panelId: string, chat: ChatState | undefined): void
   setDraft(panelId: string, text: string): void
   insertIntoDraft(panelId: string, snippet: string): void
+  setNotice(panelId: string, notice: { text: string; command: string } | null): void
 }
 
 export const useAgents = create<AgentsState>()((set) => ({
   chats: {},
   rateLimits: {},
   drafts: {},
+  notices: {},
   apply: (panelId, event) => set((s) => ({ chats: { ...s.chats, [panelId]: reduceChat(s.chats[panelId] ?? initialChat, event) } })),
   load: (panelId, events) => set((s) => ({ chats: { ...s.chats, [panelId]: reduceAll(events, s.chats[panelId] ?? initialChat) } })),
   clear: (panelId) => {
@@ -39,7 +43,8 @@ export const useAgents = create<AgentsState>()((set) => ({
       pendingSessionId.delete(panelId)
       const { [panelId]: _removed, ...rest } = s.chats
       const { [panelId]: _draft, ...drafts } = s.drafts
-      return { chats: rest, drafts }
+      const { [panelId]: _notice, ...notices } = s.notices
+      return { chats: rest, drafts, notices }
     }),
   setChat: (panelId, chat) =>
     set((s) => {
@@ -52,6 +57,14 @@ export const useAgents = create<AgentsState>()((set) => ({
   setDraft: (panelId, text) => set((s) => ({ drafts: { ...s.drafts, [panelId]: text } })),
   insertIntoDraft: (panelId, snippet) =>
     set((s) => ({ drafts: { ...s.drafts, [panelId]: appendSnippet(s.drafts[panelId] ?? '', snippet) } })),
+  setNotice: (panelId, notice) =>
+    set((s) => {
+      if (notice === null) {
+        const { [panelId]: _removed, ...notices } = s.notices
+        return { notices }
+      }
+      return { notices: { ...s.notices, [panelId]: notice } }
+    }),
 }))
 
 export const selectChat =

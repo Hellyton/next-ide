@@ -17,7 +17,7 @@ function fakeDockApi(panelId: string, extraParams: Record<string, unknown> = {})
 
 describe('agentStore', () => {
   beforeEach(() => {
-    useAgents.setState({ chats: {}, drafts: {} })
+    useAgents.setState({ chats: {}, drafts: {}, notices: {} })
     useSessions.setState({ byId: {}, order: [] })
     useDock.setState({ api: null })
   })
@@ -95,6 +95,18 @@ describe('agentStore', () => {
     expect(useAgents.getState().chats.p1!.items).toEqual([])
     useAgents.getState().remove('p1')
     expect(useAgents.getState().chats.p1).toBeUndefined()
+  })
+
+  it('sets and clears a notice per panel, dropping it on remove', () => {
+    useAgents.getState().setNotice('p1', { text: 'Esforço inválido: turbo', command: '' })
+    expect(useAgents.getState().notices.p1).toEqual({ text: 'Esforço inválido: turbo', command: '' })
+    useAgents.getState().setNotice('p2', { text: 'abra em terminal', command: 'claude /mcp' })
+    expect(useAgents.getState().notices.p2).toEqual({ text: 'abra em terminal', command: 'claude /mcp' })
+    useAgents.getState().setNotice('p1', null)
+    expect(useAgents.getState().notices.p1).toBeUndefined()
+    expect(useAgents.getState().notices.p2).toEqual({ text: 'abra em terminal', command: 'claude /mcp' })
+    useAgents.getState().remove('p2')
+    expect(useAgents.getState().notices.p2).toBeUndefined()
   })
 
   it('keeps a draft per panel, appends snippets, and drops it on remove', () => {

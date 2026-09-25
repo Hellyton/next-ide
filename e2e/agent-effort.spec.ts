@@ -10,14 +10,19 @@ test('seletor de esforço e /effort persistem no layout', async () => {
   await select.selectOption('high')
   await expect(select).toHaveValue('high')
 
+  // /clear tears down and re-creates the session: the CLI keeps the effort level across it.
   const input = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
+  await input.fill('/clear')
+  await input.press('Enter')
+  await expect(select).toHaveValue('high')
+
   await input.fill('/effort max')
   await input.press('Enter')
   await expect(select).toHaveValue('max')
 
   await input.fill('/effort turbo')
   await input.press('Enter')
-  await expect(page.getByTestId('chat-view')).toContainText('Esforço inválido: turbo')
+  await expect(page.getByTestId('composer-notice')).toContainText('Esforço inválido: turbo')
 
   await expect
     .poll(() => {

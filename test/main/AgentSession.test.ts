@@ -368,7 +368,7 @@ describe('AgentSession', () => {
     expect(apply).toHaveBeenLastCalledWith({ effortLevel: null })
   })
 
-  it('keeps effort for the next query when set before start, and survives a restart', async () => {
+  it('keeps effort for the next query when set before start', async () => {
     const f = fake()
     const { s } = session(f.fn)
     await s.setEffort('max')
