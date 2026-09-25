@@ -258,6 +258,12 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
     void window.api.invoke('fs:pickFolder').then((picked) => picked.length && setDirs([...current, ...picked]))
   }
 
+  const removeDir = (dir: string) => {
+    if (pendingRef.current) return notify(pendingRef.current)
+    if (isBusy(liveChat())) return notify('Pare o agente antes de mudar as pastas.')
+    setDirs(liveChat().dirs.filter((d) => d !== dir))
+  }
+
   const onLocalCommand = (name: LocalCommand, arg: string) => {
     if (name === 'resume') setResumeOpen(true)
     else if (name === 'clear') void restart(base()).catch(fail)
@@ -293,7 +299,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
           <ChatView items={chat.items} panelId={panelId} running={chat.state === 'running'} />
         </ChatActionsContext.Provider>
       </AgentPanelContext.Provider>
-      <DirsBar dirs={chat.dirs} onRemove={(dir) => setDirs(chat.dirs.filter((d) => d !== dir))} />
+      <DirsBar dirs={chat.dirs} onRemove={removeDir} />
       <TasksBar panelId={panelId} tasks={chat.tasks} />
       {btw && <BtwCard btw={btw} onClose={closeBtw} />}
       <Composer

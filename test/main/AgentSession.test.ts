@@ -600,6 +600,51 @@ describe('AgentSession', () => {
       await tick()
       expect(s.isStarted).toBe(true)
     })
+
+    it('refuses while a background task is running (idle otherwise), allows once it finishes', async () => {
+      const f = fake()
+      const { s } = session(f.fn)
+      s.send('a')
+      f.out.push({ ...RESULT, queued_turn_count: 0 })
+      await tick()
+      expect(s.currentState).toBe('idle')
+      f.out.push({ type: 'system', subtype: 'task_started', task_id: 't1', description: 'npm run build' })
+      await tick()
+      expect(s.currentState).toBe('idle')
+      expect(s.setDirectories(['/x'])).toEqual({ ok: false, message: 'Pare as tarefas em segundo plano antes de mudar as pastas.' })
+      f.out.push({ type: 'system', subtype: 'task_notification', task_id: 't1', status: 'completed', summary: '' })
+      await tick()
+      expect(s.setDirectories(['/x'])).toEqual({ ok: true, value: null })
+    })
+
+    it('is a no-op when the new list equals the current one: no query drop, no event', async () => {
+      const f = fake()
+      const { s, events } = session(f.fn, { additionalDirectories: ['/a', '/b'] })
+      s.send('oi')
+      await tick()
+      f.out.push(RESULT)
+      await tick()
+      events.length = 0
+      expect(s.setDirectories(['/a', '/b'])).toEqual({ ok: true, value: null })
+      expect(f.q.close).not.toHaveBeenCalled()
+      expect(events).toEqual([])
+    })
+
+    it('aborts the dropped query\'s AbortController before closing it', async () => {
+      const f = fake()
+      const { s } = session(f.fn)
+      const abortSpy = vi.spyOn(AbortController.prototype, 'abort')
+      try {
+        s.send('oi')
+        await tick()
+        f.out.push(RESULT)
+        await tick()
+        expect(s.setDirectories(['/x'])).toEqual({ ok: true, value: null })
+        expect(abortSpy).toHaveBeenCalled()
+      } finally {
+        abortSpy.mockRestore()
+      }
+    })
   })
 
   describe('mcp and agents', () => {

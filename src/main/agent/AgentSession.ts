@@ -100,6 +100,7 @@ export const unsupported = (feature: string): { ok: false; message: string } => 
   message: `${feature} não é suportado por esta versão do Claude Code.`,
 })
 const failure = (err: unknown): { ok: false; message: string } => ({ ok: false, message: err instanceof Error ? err.message : String(err) })
+const sameDirs = (a: string[], b: string[]): boolean => a.length === b.length && a.every((d, i) => d === b[i])
 
 const MCP_STATUSES = new Set(['connected', 'failed', 'needs-auth', 'pending', 'disabled'])
 
@@ -138,6 +139,8 @@ export class AgentSession {
   private mode: PermissionMode
   private sessionId?: string
   private dirs: string[]
+  /** Ids of background tasks (Task tool / Ctrl+B) currently running, tracked from task-started/task-done. */
+  private readonly runningTasks = new Set<string>()
   private readonly newId: () => string
   private pendingDelta: TextDelta | null = null
   private deltaTimer: ReturnType<typeof setTimeout> | null = null
@@ -165,6 +168,7 @@ export class AgentSession {
 
   start(): void {
     if (this.query || this.closed) return
+    this.runningTasks.clear()
     const input = new AsyncQueue<UserMessageLike>()
     const abort = new AbortController()
     const query = this.deps.queryFn({
@@ -242,15 +246,22 @@ export class AgentSession {
   /** additionalDirectories only apply when a query starts: drop the current one; the next send resumes it with the new list. */
   setDirectories(dirs: string[]): Outcome<null> {
     if (this.closed) return { ok: false, message: 'Sessão encerrada.' }
+    if (sameDirs(this.dirs, dirs)) return { ok: true, value: null }
     if (this.state === 'running' || this.state === 'awaiting_permission') return { ok: false, message: 'Pare o agente antes de mudar as pastas.' }
+    // Background tasks (Task tool / Ctrl+B) keep running while the session shows 'idle'; dropping
+    // the query would kill them silently, and the pump guard above means their task-done would
+    // never arrive to clear TasksBar.
+    if (this.runningTasks.size > 0) return { ok: false, message: 'Pare as tarefas em segundo plano antes de mudar as pastas.' }
     this.dirs = [...dirs]
     const query = this.query
     if (query) {
       this.input?.end()
+      this.abort?.abort()
       this.query = null
       this.input = null
       this.abort = null
       this.turnsInFlight = 0
+      this.runningTasks.clear()
       query.close()
     }
     this.emit({ kind: 'dirs', dirs: this.dirs })
@@ -452,6 +463,7 @@ export class AgentSession {
     this.input?.end()
     this.query?.close()
     this.abort?.abort()
+    this.runningTasks.clear()
     this.setState('exited')
   }
 
@@ -503,6 +515,8 @@ export class AgentSession {
         }
         for (const event of this.normalizer.push(message)) {
           if (event.kind === 'init') this.sessionId = event.sessionId
+          if (event.kind === 'task-started') this.runningTasks.add(event.id)
+          if (event.kind === 'task-done') this.runningTasks.delete(event.id)
           this.emit(event)
         }
         if (isResult(message)) {
@@ -532,6 +546,7 @@ export class AgentSession {
     this.input = null
     this.abort = null
     this.turnsInFlight = 0
+    this.runningTasks.clear()
     this.setState(state)
   }
 
