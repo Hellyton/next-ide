@@ -84,6 +84,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
       .invoke('agent:background', panelId)
       .then((r) => {
         if (!r.ok) notify(r.message)
+        else if (!r.value) notify('Nada para mandar para segundo plano.')
       })
       .catch((err) => notify(errorText(err)))
 
