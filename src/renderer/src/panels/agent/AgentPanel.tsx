@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentEvent, ImageAttachment } from '@shared/agent'
 import { isEffortLevel, type AgentPanelParams } from '@shared/models'
 import { restartSession } from '../../agent/restartSession'
+import { rewindTargets, runRewind, type RewindMode, type RewindTarget } from '../../agent/rewind'
 import type { LocalCommand } from '../../agent/slash'
 import { currentAgentParams, replacePanelParams, selectChat, useAgents } from '../../stores/agentStore'
 import { useSessions } from '../../stores/sessionsStore'
@@ -13,6 +14,7 @@ import { ChatView } from './ChatView'
 import { Composer } from './Composer'
 import { ContextModal } from './ContextModal'
 import { ResumeModal } from './ResumeModal'
+import { RewindModal } from './RewindModal'
 import { StatusLine } from './StatusLine'
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
@@ -22,6 +24,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
   const panelId = api.id
   const chat = useAgents(selectChat(panelId))
   const [resumeOpen, setResumeOpen] = useState(false)
+  const [rewindOpen, setRewindOpen] = useState(false)
   const [statusConfig, setStatusConfig] = useState(false)
   const [contextOpen, setContextOpen] = useState(false)
   const [btw, setBtw] = useState<BtwState | null>(null)
@@ -111,6 +114,28 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
   const panelCtx = useMemo(() => ({ projectPath: params.projectPath }), [params.projectPath])
 
   const notify = (message: string) => useAgents.getState().setNotice(panelId, { text: message, command: '' })
+  const busy = chat.state === 'running' || chat.state === 'awaiting_permission'
+
+  const openRewind = () => {
+    if (busy) notify('Pare o agente antes de voltar para uma mensagem anterior.')
+    else setRewindOpen(true)
+  }
+
+  const runRewindMode = (mode: RewindMode, target: RewindTarget) => {
+    setRewindOpen(false)
+    const sessionId = chat.sessionId ?? currentAgentParams(panelId)?.sessionId
+    void runRewind(mode, target, {
+      rewindFiles: (id) => window.api.invoke('agent:rewindFiles', panelId, id, false),
+      forkBefore: (id) =>
+        sessionId
+          ? window.api.invoke('agent:forkBefore', params.projectPath, sessionId, id)
+          : Promise.resolve({ ok: false as const, message: 'Sessão ainda não salva.' }),
+      restart: (next, history) => restart({ ...base(), ...(next ? { sessionId: next } : {}) }, history),
+      setDraft: (text) => useAgents.getState().setDraft(panelId, text),
+    })
+      .then(() => mode === 'code' && notify('Arquivos restaurados.'))
+      .catch((err) => notify(`Não foi possível voltar: ${errorText(err)}`))
+  }
 
   const onLocalCommand = (name: LocalCommand, arg: string) => {
     if (name === 'resume') setResumeOpen(true)
@@ -118,6 +143,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
     else if (name === 'model') document.getElementById(`model-select-${panelId}`)?.focus()
     else if (name === 'statusline') setStatusConfig(true)
     else if (name === 'context') setContextOpen(true)
+    else if (name === 'rewind') openRewind()
     else if (name === 'effort') {
       if (!arg) document.getElementById(`effort-select-${panelId}`)?.focus()
       else if (arg === 'auto' || isEffortLevel(arg))
@@ -150,6 +176,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
         onLocalCommand={onLocalCommand}
         onBtw={askBtw}
         onEscape={closeBtw}
+        onRewind={openRewind}
       />
       <StatusLine
         panelId={panelId}
@@ -161,6 +188,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
       />
       {resumeOpen && <ResumeModal projectPath={params.projectPath} onPick={resume} onClose={() => setResumeOpen(false)} />}
       {contextOpen && <ContextModal panelId={panelId} onClose={() => setContextOpen(false)} />}
+      {rewindOpen && <RewindModal panelId={panelId} targets={rewindTargets(chat.items)} onRun={runRewindMode} onClose={() => setRewindOpen(false)} />}
     </div>
   )
 }

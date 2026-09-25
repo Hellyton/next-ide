@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ImageAttachment } from '@shared/agent'
 import { applyMention, mentionItems as computeMentionItems, mentionQuery } from '../../agent/mentions'
 import type { ChatState } from '../../agent/chatReducer'
-import { composerKeyAction } from '../../agent/composerKeys'
+import { composerKeyAction, isDoubleEscape } from '../../agent/composerKeys'
 import { canSend, pickImageFiles, readImage, validateImage } from '../../agent/images'
 import { classifySlash, filterCommands, mergeCommands, slashQuery, type LocalCommand, type SlashItem } from '../../agent/slash'
 import { useDock } from '../../dock/dockStore'
@@ -23,14 +23,16 @@ type Props = {
   onBtw(question: string): void
   /** Closes an open /btw answer; returns false when none is open. */
   onEscape(): boolean
+  onRewind(): void
 }
 
-export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, onBtw, onEscape }: Props) {
+export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, onBtw, onEscape, onRewind }: Props) {
   const text = useAgents((s) => s.drafts[panelId] ?? '')
   const setText = (value: string) => useAgents.getState().setDraft(panelId, value)
   const [caret, setCaret] = useState(0)
   const [dismissedAt, setDismissedAt] = useState<number | null>(null)
   const history = useRef<string[]>([])
+  const lastEsc = useRef<number | null>(null)
   const textarea = useRef<HTMLTextAreaElement>(null)
   const busy = chat.state === 'running' || chat.state === 'awaiting_permission'
   const [commands, setCommands] = useState<SlashItem[] | null>(null)
@@ -240,6 +242,16 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
           if (e.key === 'Escape' && onEscape()) {
             e.preventDefault()
             return
+          }
+          if (e.key === 'Escape' && !busy && text === '') {
+            const now = Date.now()
+            if (isDoubleEscape(lastEsc.current, now)) {
+              e.preventDefault()
+              lastEsc.current = null
+              onRewind()
+              return
+            }
+            lastEsc.current = now
           }
           const action = composerKeyAction({
             key: e.key,
