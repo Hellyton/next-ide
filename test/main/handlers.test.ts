@@ -160,7 +160,7 @@ describe('buildHandlers', () => {
     const fork = vi.fn(async () => 'fake-fork')
     const h = buildHandlers(deps({ sessions: { ...fakeSessions, fork } }))
     const r = await h['agent:forkBefore']('/proj', 'fake-old', 'h3')
-    expect(fork).toHaveBeenCalledWith('/proj', 'fake-old', 'h2')
+    expect(fork).toHaveBeenCalledWith('/proj', 'fake-old', 'h2', undefined)
     expect(r).toEqual({
       ok: true,
       value: { sessionId: 'fake-fork', history: [{ kind: 'user', id: 'h1', text: 'pergunta antiga', images: 0 }, { kind: 'text', key: 'hm1:final:1', text: 'resposta antiga' }] },
@@ -179,6 +179,33 @@ describe('buildHandlers', () => {
     await expect(h['agent:forkBefore']('/proj', 'fake-old', 'zz')).resolves.toEqual({ ok: false, message: 'Mensagem não encontrada no histórico da sessão.' })
     await expect(h['agent:rename']('/proj', 'fake-old', 'T')).resolves.toEqual({ ok: false, message: 'ro' })
     await expect(buildHandlers(deps())['agent:rename']('/proj', 'fake-old', 'T')).resolves.toEqual({ ok: true, value: null })
+  })
+
+  it('agent:forkBefore forwards the session title to the fork', async () => {
+    const fork = vi.fn(async () => 'fake-fork')
+    const h = buildHandlers(deps({ sessions: { ...fakeSessions, fork } }))
+    await h['agent:forkBefore']('/proj', 'fake-old', 'h3', 'Refactor')
+    expect(fork).toHaveBeenCalledWith('/proj', 'fake-old', 'h2', 'Refactor')
+  })
+
+  it('agent:rename trims the title, collapses newlines and rejects an empty one', async () => {
+    const rename = vi.fn(async () => undefined)
+    const h = buildHandlers(deps({ sessions: { ...fakeSessions, rename } }))
+    await expect(h['agent:rename']('/proj', 'fake-old', '  Linha 1\n\nLinha 2 ')).resolves.toEqual({ ok: true, value: null })
+    expect(rename).toHaveBeenCalledWith('/proj', 'fake-old', 'Linha 1 Linha 2')
+    await expect(h['agent:rename']('/proj', 'fake-old', ' \n ')).resolves.toEqual({ ok: false, message: 'Título vazio.' })
+    expect(rename).toHaveBeenCalledTimes(1)
+  })
+
+  it('agent:setEffort ignores values that are not effort levels', async () => {
+    const setEffort = vi.fn(async () => undefined)
+    const d = deps({ agents: { create: vi.fn(), get: () => ({ setEffort }), close: vi.fn() } as unknown as HandlerDeps['agents'] })
+    const h = buildHandlers(d)
+    await h['agent:setEffort']('p1', 'turbo' as never)
+    expect(setEffort).not.toHaveBeenCalled()
+    await h['agent:setEffort']('p1', null)
+    await h['agent:setEffort']('p1', 'high')
+    expect(setEffort.mock.calls).toEqual([[null], ['high']])
   })
 
   it('agent:create waits for the agent runtime to be ready', async () => {

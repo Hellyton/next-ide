@@ -217,6 +217,7 @@ export class AgentSession {
 
   /** The CLI's /context. Starts the query so a fresh panel shows its baseline cost. */
   async contextUsage(): Promise<Outcome<ContextUsage>> {
+    if (this.closed) return { ok: false, message: 'Sessão encerrada.' }
     this.start()
     const query = this.query
     if (!query?.getContextUsage) return unsupported('/context')

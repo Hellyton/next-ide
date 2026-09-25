@@ -1,7 +1,7 @@
 import type { StatusLineInput } from '@shared/agent'
 import type { Handlers } from '@shared/ipc-contract'
 import { sanitizeLayout } from '@shared/layout'
-import { DEFAULT_SETTINGS, migrateSettings, sanitizeSegments, type GitInfo, type Workspace } from '@shared/models'
+import { DEFAULT_SETTINGS, isEffortLevel, migrateSettings, sanitizeSegments, type GitInfo, type Workspace } from '@shared/models'
 import type { AgentManager } from '../agent/AgentManager'
 import { historyToEvents } from '../agent/normalize'
 import { forkPointBefore } from '../agent/rewind'
@@ -89,7 +89,11 @@ export function buildHandlers(d: HandlerDeps): Handlers {
     'agent:interrupt': (panelId) => d.agents.get(panelId).interrupt(),
     'agent:setModel': (panelId, model) => d.agents.get(panelId).setModel(model),
     'agent:setMode': (panelId, mode) => d.agents.get(panelId).setMode(mode),
-    'agent:setEffort': (panelId, effort) => d.agents.get(panelId).setEffort(effort),
+    'agent:setEffort': async (panelId, effort) => {
+      // null = automatic; anything else must be a known level.
+      if (effort !== null && !isEffortLevel(effort)) return
+      await d.agents.get(panelId).setEffort(effort)
+    },
     'agent:respondPermission': (panelId, requestId, decision) => d.agents.get(panelId).respondPermission(requestId, decision),
     'agent:commands': async (panelId) => {
       await d.agentReady()
@@ -124,21 +128,23 @@ export function buildHandlers(d: HandlerDeps): Handlers {
       await d.agentReady()
       return historyToEvents(await d.sessions.history(projectPath, sessionId))
     },
-    'agent:forkBefore': async (projectPath, sessionId, userMessageId) => {
+    'agent:forkBefore': async (projectPath, sessionId, userMessageId, title) => {
       await d.agentReady()
       try {
         const point = forkPointBefore(await d.sessions.history(projectPath, sessionId), userMessageId)
         if (point === null) return { ok: true as const, value: { sessionId: null, history: [] } }
-        const forked = await d.sessions.fork(projectPath, sessionId, point)
+        const forked = await d.sessions.fork(projectPath, sessionId, point, title)
         return { ok: true as const, value: { sessionId: forked, history: historyToEvents(await d.sessions.history(projectPath, forked)) } }
       } catch (err) {
         return failed(err)
       }
     },
     'agent:rename': async (projectPath, sessionId, title) => {
+      const clean = title.replace(/\s*[\r\n]+\s*/g, ' ').trim()
+      if (!clean) return { ok: false as const, message: 'Título vazio.' }
       await d.agentReady()
       try {
-        await d.sessions.rename(projectPath, sessionId, title)
+        await d.sessions.rename(projectPath, sessionId, clean)
         return { ok: true as const, value: null }
       } catch (err) {
         return failed(err)

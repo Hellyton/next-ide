@@ -1,5 +1,5 @@
 import type { AgentEvent } from '@shared/agent'
-import type { AgentPanelParams } from '@shared/models'
+import { isEffortLevel, type AgentPanelParams } from '@shared/models'
 import { AgentSession, type QueryFn } from './AgentSession'
 
 export type AgentRuntime = { queryFn: QueryFn; claudePath?: string; env?: Record<string, string> }
@@ -13,6 +13,8 @@ export class AgentManager {
     if (this.sessions.has(panelId)) return
     const runtime = this.deps.runtime()
     const permissionMode = params.permissionMode ?? 'default'
+    // Params come from the renderer (and saved layouts): an unknown effort is dropped, not passed to the CLI.
+    const effort = params.effort && isEffortLevel(params.effort) ? params.effort : undefined
     this.sessions.set(
       panelId,
       new AgentSession(
@@ -20,7 +22,7 @@ export class AgentManager {
           cwd: params.projectPath,
           permissionMode,
           ...(params.model ? { model: params.model } : {}),
-          ...(params.effort ? { effort: params.effort } : {}),
+          ...(effort ? { effort } : {}),
           ...(params.sessionId ? { resume: params.sessionId } : {}),
         },
         {
@@ -34,7 +36,7 @@ export class AgentManager {
     // The real CLI only reports the mode in its first `init` (i.e. after the first message), so
     // tell the panel now — otherwise a fresh panel would show the wrong mode until it is used.
     this.deps.emit(panelId, { kind: 'mode', permissionMode })
-    this.deps.emit(panelId, { kind: 'effort', effort: params.effort ?? null })
+    this.deps.emit(panelId, { kind: 'effort', effort: effort ?? null })
   }
 
   get(panelId: string): AgentSession {

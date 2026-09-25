@@ -33,6 +33,12 @@ describe('AgentManager', () => {
     expect(events.at(-1)).toEqual(['p2', { kind: 'effort', effort: null }])
   })
 
+  it('drops an effort that is not a known level', () => {
+    const { m, events } = manager()
+    m.create('p1', { type: 'agent', projectPath: '/proj', effort: 'turbo' as never })
+    expect(events.at(-1)).toEqual(['p1', { kind: 'effort', effort: null }])
+  })
+
   it('throws for unknown panels, reports busy sessions, closes one and all', () => {
     const { m } = manager()
     expect(() => m.get('x')).toThrow('Sessão de agente não encontrada: x')

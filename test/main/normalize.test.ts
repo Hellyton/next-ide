@@ -204,6 +204,8 @@ describe('parseContextUsage', () => {
     })
     expect(parseContextUsage(null)).toBeNull()
     expect(parseContextUsage({ totalTokens: 'x' })).toBeNull()
+    expect(parseContextUsage({ totalTokens: 0, maxTokens: 0 })).toBeNull()
+    expect(parseContextUsage({ totalTokens: 0, maxTokens: -1 })).toBeNull()
   })
 })
 

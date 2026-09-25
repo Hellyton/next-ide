@@ -408,6 +408,14 @@ describe('AgentSession', () => {
     await expect(s.contextUsage()).resolves.toEqual({ ok: false, message: 'boom' })
   })
 
+  it('context usage refuses a closed session without starting a query', async () => {
+    const f = fake()
+    const { s } = session(f.fn)
+    s.close()
+    await expect(s.contextUsage()).resolves.toEqual({ ok: false, message: 'Sessão encerrada.' })
+    expect(f.calls).toHaveLength(0)
+  })
+
   it('tags each sent message with the user event id and enables file checkpointing', async () => {
     const f = fake()
     const { s, events } = session(f.fn)

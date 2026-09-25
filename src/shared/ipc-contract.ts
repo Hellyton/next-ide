@@ -51,7 +51,7 @@ export type InvokeMap = {
   'agent:rewindFiles': { args: [panelId: string, userMessageId: string, dryRun: boolean]; result: Outcome<RewindFiles> }
   'agent:listSessions': { args: [projectPath: string]; result: SessionSummary[] }
   'agent:history': { args: [projectPath: string, sessionId: string]; result: AgentEvent[] }
-  'agent:forkBefore': { args: [projectPath: string, sessionId: string, userMessageId: string]; result: Outcome<{ sessionId: string | null; history: AgentEvent[] }> }
+  'agent:forkBefore': { args: [projectPath: string, sessionId: string, userMessageId: string, title?: string]; result: Outcome<{ sessionId: string | null; history: AgentEvent[] }> }
   'agent:rename': { args: [projectPath: string, sessionId: string, title: string]; result: Outcome<null> }
   'agent:close': { args: [panelId: string]; result: void }
   'statusline:run': { args: [input: StatusLineInput]; result: string | null }

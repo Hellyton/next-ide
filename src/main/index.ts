@@ -131,7 +131,7 @@ registerHandlers(
     sessions: {
       list: (dir) => requireSdk().list(dir),
       history: (dir, id) => requireSdk().history(dir, id),
-      fork: (dir, id, upTo) => requireSdk().fork(dir, id, upTo),
+      fork: (dir, id, upTo, title) => requireSdk().fork(dir, id, upTo, title),
       rename: (dir, id, title) => requireSdk().rename(dir, id, title),
     },
     agentReady: () => agentReady,

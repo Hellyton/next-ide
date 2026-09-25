@@ -10,7 +10,7 @@ const CATEGORY_KINDS = new Set(['used', 'free', 'buffer', 'deferred'])
 
 /** Validates the SDK's getContextUsage() response down to what the /context modal shows. */
 export function parseContextUsage(raw: unknown): ContextUsage | null {
-  if (!isRec(raw) || !finite(raw.totalTokens) || !finite(raw.maxTokens)) return null
+  if (!isRec(raw) || !finite(raw.totalTokens) || !finite(raw.maxTokens) || raw.maxTokens <= 0) return null
   const categories = (Array.isArray(raw.categories) ? raw.categories : []).flatMap((c) =>
     isRec(c) && typeof c.name === 'string' && finite(c.tokens) && typeof c.kind === 'string' && CATEGORY_KINDS.has(c.kind)
       ? [{ name: c.name, tokens: c.tokens, color: typeof c.color === 'string' ? c.color : '', kind: c.kind as ContextUsage['categories'][number]['kind'] }]
