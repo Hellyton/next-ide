@@ -236,3 +236,23 @@ describe('historyToEvents', () => {
     expect(out[5]).toEqual({ kind: 'user', id: 'u4', text: '<div class="x">colado</div> isso quebra?', images: 0 })
   })
 })
+
+describe('task messages', () => {
+  it('turns task_started / task_progress / task_notification into task events', () => {
+    const n = new StreamNormalizer()
+    expect(n.push({ type: 'system', subtype: 'task_started', task_id: 't1', tool_use_id: 'tu1', description: 'npm test' })).toEqual([
+      { kind: 'task-started', id: 't1', description: 'npm test', toolUseId: 'tu1' },
+    ])
+    expect(
+      n.push({ type: 'system', subtype: 'task_progress', task_id: 't1', description: 'npm test', last_tool_name: 'Bash', usage: { total_tokens: 10, tool_uses: 2, duration_ms: 1500 } }),
+    ).toEqual([{ kind: 'task-progress', id: 't1', description: 'npm test', lastToolName: 'Bash', totalTokens: 10, toolUses: 2, durationMs: 1500 }])
+    expect(n.push({ type: 'system', subtype: 'task_notification', task_id: 't1', status: 'completed', summary: 'ok', output_file: '/x' })).toEqual([
+      { kind: 'task-done', id: 't1', status: 'completed', summary: 'ok' },
+    ])
+  })
+  it('drops malformed task messages', () => {
+    const n = new StreamNormalizer()
+    expect(n.push({ type: 'system', subtype: 'task_started', description: 'sem id' })).toEqual([])
+    expect(n.push({ type: 'system', subtype: 'task_notification', task_id: 't', status: 'weird', summary: '' })).toEqual([])
+  })
+})

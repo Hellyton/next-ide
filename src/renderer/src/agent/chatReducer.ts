@@ -1,4 +1,4 @@
-import type { AgentEvent, ErrorAction, PermissionDecision, StatsEvent } from '@shared/agent'
+import type { AgentEvent, ErrorAction, PermissionDecision, StatsEvent, TaskInfo } from '@shared/agent'
 import type { EffortLevel, PermissionMode, SessionState } from '@shared/models'
 
 export type TextItem = { type: 'text'; key: string; text: string; final: boolean; parentToolUseId?: string }
@@ -37,9 +37,11 @@ export type ChatState = {
   lastQueryCostUsd: number
   /** Final totals of earlier queries of this panel (before a resume/crash/restart reset). */
   costBaseUsd: number
+  /** Background tasks tracked during this session. */
+  tasks: TaskInfo[]
 }
 
-export const initialChat: ChatState = { items: [], state: 'idle', slashCommands: [], totalCostUsd: 0, lastQueryCostUsd: 0, costBaseUsd: 0 }
+export const initialChat: ChatState = { items: [], state: 'idle', slashCommands: [], totalCostUsd: 0, lastQueryCostUsd: 0, costBaseUsd: 0, tasks: [] }
 
 const push = (s: ChatState, item: ChatItem): ChatState => ({ ...s, items: [...s.items, item] })
 const replaceAt = (s: ChatState, index: number, item: ChatItem): ChatState => {
@@ -62,11 +64,11 @@ const lastIndexWhere = (s: ChatState, match: (item: ChatItem) => boolean): numbe
 export function reduceChat(s: ChatState, e: AgentEvent): ChatState {
   switch (e.kind) {
     case 'status':
-      return { ...s, state: e.state }
+      return { ...s, state: e.state, ...(e.state === 'exited' ? { tasks: [] } : {}) }
     case 'query-start':
       // A new query (resume, /clear, or a crash-restart) starts its running total from zero;
       // fold whatever the previous query last reported into the base so it isn't lost.
-      return { ...s, costBaseUsd: s.costBaseUsd + s.lastQueryCostUsd, lastQueryCostUsd: 0 }
+      return { ...s, costBaseUsd: s.costBaseUsd + s.lastQueryCostUsd, lastQueryCostUsd: 0, tasks: [] }
     case 'init':
       return {
         ...s,
@@ -131,6 +133,25 @@ export function reduceChat(s: ChatState, e: AgentEvent): ChatState {
       const action = e.action ?? (isMissingConversationError(e.message) ? 'new-session' : undefined)
       return push(s, { type: 'error', id: `err-${s.items.length}`, message: e.message, ...(action ? { action } : {}) })
     }
+    case 'task-started':
+      return {
+        ...s,
+        tasks: [...s.tasks.filter((t) => t.id !== e.id), { id: e.id, description: e.description, status: 'running', ...(e.toolUseId ? { toolUseId: e.toolUseId } : {}) }],
+      }
+    case 'task-progress': {
+      if (!s.tasks.some((t) => t.id === e.id)) return s
+      return {
+        ...s,
+        tasks: s.tasks.map((t) =>
+          t.id === e.id
+            ? { ...t, ...(e.description ? { description: e.description } : {}), ...(e.lastToolName ? { lastToolName: e.lastToolName } : {}), totalTokens: e.totalTokens, toolUses: e.toolUses, durationMs: e.durationMs }
+            : t,
+        ),
+      }
+    }
+    case 'task-done':
+      if (!s.tasks.some((t) => t.id === e.id)) return s
+      return { ...s, tasks: s.tasks.map((t) => (t.id === e.id ? { ...t, status: e.status, summary: e.summary } : t)) }
   }
 }
 

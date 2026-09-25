@@ -110,3 +110,27 @@ describe('reduceChat', () => {
     ])
   })
 })
+
+describe('tasks', () => {
+  it('tracks a task from start to done', () => {
+    let s = reduceChat(initialChat, { kind: 'task-started', id: 't1', description: 'npm test', toolUseId: 'tu1' })
+    expect(s.tasks).toEqual([{ id: 't1', description: 'npm test', status: 'running', toolUseId: 'tu1' }])
+    s = reduceChat(s, { kind: 'task-progress', id: 't1', lastToolName: 'Bash', totalTokens: 10, toolUses: 2, durationMs: 1500 })
+    expect(s.tasks[0]).toMatchObject({ status: 'running', lastToolName: 'Bash', toolUses: 2, durationMs: 1500 })
+    s = reduceChat(s, { kind: 'task-done', id: 't1', status: 'stopped', summary: 'parado' })
+    expect(s.tasks[0]).toMatchObject({ status: 'stopped', summary: 'parado' })
+  })
+  it('ignores progress/done for unknown tasks and restarts with an empty list on a new query', () => {
+    let s = reduceChat(initialChat, { kind: 'task-progress', id: 'x', totalTokens: 0, toolUses: 0, durationMs: 0 })
+    s = reduceChat(s, { kind: 'task-done', id: 'x', status: 'completed', summary: '' })
+    expect(s.tasks).toEqual([])
+    s = reduceChat(s, { kind: 'task-started', id: 't1', description: 'a' })
+    s = reduceChat(s, { kind: 'query-start' })
+    expect(s.tasks).toEqual([])
+  })
+  it('drops running tasks when the session exits', () => {
+    let s = reduceChat(initialChat, { kind: 'task-started', id: 't1', description: 'a' })
+    s = reduceChat(s, { kind: 'status', state: 'exited' })
+    expect(s.tasks).toEqual([])
+  })
+})

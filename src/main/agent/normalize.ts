@@ -57,7 +57,8 @@ export class StreamNormalizer {
     const parent = str(message.parent_tool_use_id)
     switch (message.type) {
       case 'system':
-        return message.subtype === 'init' ? [this.init(message)] : []
+        if (message.subtype === 'init') return [this.init(message)]
+        return this.task(message)
       case 'stream_event':
         return this.stream(message.event, parent)
       case 'assistant':
@@ -195,6 +196,37 @@ export class StreamNormalizer {
       events.push({ kind: 'error', message: errors.join('\n') || str(m.result) || String(m.subtype ?? 'erro') })
     }
     return events
+  }
+
+  private task(m: Record<string, unknown>): AgentEvent[] {
+    const id = str(m.task_id)
+    if (!id) return []
+    const toolUseId = str(m.tool_use_id)
+    const description = typeof m.description === 'string' ? m.description : undefined
+    if (m.subtype === 'task_started') {
+      return [{ kind: 'task-started', id, description: description ?? 'Tarefa', ...(toolUseId ? { toolUseId } : {}) }]
+    }
+    if (m.subtype === 'task_progress') {
+      const u = isRec(m.usage) ? m.usage : {}
+      const lastToolName = str(m.last_tool_name)
+      return [
+        {
+          kind: 'task-progress',
+          id,
+          ...(description ? { description } : {}),
+          ...(lastToolName ? { lastToolName } : {}),
+          totalTokens: finite(u.total_tokens) ? u.total_tokens : 0,
+          toolUses: finite(u.tool_uses) ? u.tool_uses : 0,
+          durationMs: finite(u.duration_ms) ? u.duration_ms : 0,
+        },
+      ]
+    }
+    if (m.subtype === 'task_notification') {
+      const status = m.status
+      if (status !== 'completed' && status !== 'failed' && status !== 'stopped') return []
+      return [{ kind: 'task-done', id, status, summary: typeof m.summary === 'string' ? m.summary : '' }]
+    }
+    return []
   }
 }
 

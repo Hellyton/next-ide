@@ -5,6 +5,19 @@ export type ImageAttachment = { name: string; mediaType: ImageMediaType; data: s
 
 export type Usage = { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }
 
+export type TaskStatus = 'running' | 'completed' | 'failed' | 'stopped'
+export type TaskInfo = {
+  id: string
+  description: string
+  status: TaskStatus
+  toolUseId?: string
+  lastToolName?: string
+  totalTokens?: number
+  toolUses?: number
+  durationMs?: number
+  summary?: string
+}
+
 export type StatsEvent = {
   kind: 'stats'
   usage: Usage
@@ -41,6 +54,9 @@ export type AgentEvent =
   | { kind: 'mode'; permissionMode: PermissionMode }
   | { kind: 'model'; model: string }
   | { kind: 'effort'; effort: EffortLevel | null }
+  | { kind: 'task-started'; id: string; description: string; toolUseId?: string }
+  | { kind: 'task-progress'; id: string; description?: string; lastToolName?: string; totalTokens: number; toolUses: number; durationMs: number }
+  | { kind: 'task-done'; id: string; status: TaskStatus; summary: string }
   | StatsEvent
   | { kind: 'error'; message: string; action?: ErrorAction }
 
