@@ -102,7 +102,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
   const actions = useMemo<ChatActions>(() => ({ newSession: () => newSessionRef.current() }), [])
   const panelCtx = useMemo(() => ({ projectPath: params.projectPath }), [params.projectPath])
 
-  const onLocalCommand = (name: LocalCommand) => {
+  const onLocalCommand = (name: LocalCommand, _arg: string) => {
     if (name === 'resume') setResumeOpen(true)
     else if (name === 'clear') void restart(base()).catch(fail)
     else if (name === 'model') document.getElementById(`model-select-${panelId}`)?.focus()

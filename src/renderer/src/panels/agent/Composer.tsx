@@ -18,7 +18,7 @@ type Props = {
   chat: ChatState
   projectPath: string
   onSend(text: string, images: ImageAttachment[]): void
-  onLocalCommand(name: LocalCommand): void
+  onLocalCommand(name: LocalCommand, arg: string): void
   onBtw(question: string): void
   /** Closes an open /btw answer; returns false when none is open. */
   onEscape(): boolean
@@ -105,7 +105,7 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
       const action = classifySlash(value)
       if (action.kind === 'local') {
         setText('')
-        onLocalCommand(action.name)
+        onLocalCommand(action.name, action.arg)
         return
       }
       if (action.kind === 'btw') {

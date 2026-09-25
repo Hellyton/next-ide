@@ -1,9 +1,9 @@
 import type { CommandOption } from '@shared/agent'
 
 export type SlashItem = { name: string; description: string; argumentHint: string; local: boolean }
-export type LocalCommand = 'resume' | 'clear' | 'model' | 'statusline'
+export type LocalCommand = 'resume' | 'clear' | 'model' | 'statusline' | 'rewind' | 'context' | 'effort' | 'rename'
 export type SlashAction =
-  | { kind: 'local'; name: LocalCommand }
+  | { kind: 'local'; name: LocalCommand; arg: string }
   | { kind: 'btw'; question: string }
   | { kind: 'tui'; name: string }
   | { kind: 'send' }
@@ -14,6 +14,10 @@ export const LOCAL_COMMANDS: SlashItem[] = [
   { name: 'model', description: 'Trocar o modelo', argumentHint: '', local: true },
   { name: 'statusline', description: 'Configurar a barra de status', argumentHint: '', local: true },
   { name: 'btw', description: 'Pergunta rápida paralela, sem entrar na conversa', argumentHint: '<pergunta>', local: true },
+  { name: 'rewind', description: 'Voltar código e/ou conversa a uma mensagem anterior', argumentHint: '', local: true },
+  { name: 'context', description: 'Ver o uso do contexto', argumentHint: '', local: true },
+  { name: 'effort', description: 'Nível de esforço do modelo', argumentHint: '[low|medium|high|xhigh|max|auto]', local: true },
+  { name: 'rename', description: 'Renomear esta sessão', argumentHint: '<título>', local: true },
 ]
 
 const LOCAL_NAMES = new Set<string>(LOCAL_COMMANDS.map((c) => c.name))
@@ -54,10 +58,11 @@ export function filterCommands(items: SlashItem[], query: string): SlashItem[] {
 export function classifySlash(text: string): SlashAction {
   const btw = BTW.exec(text.trim())
   if (btw) return { kind: 'btw', question: (btw[1] ?? '').trim() }
-  const match = /^\/(\S+)$/.exec(text.trim())
+  const match = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(text.trim())
   if (!match) return { kind: 'send' }
   const name = match[1]!
-  if (LOCAL_NAMES.has(name)) return { kind: 'local', name: name as LocalCommand }
-  if (TUI_ONLY.has(name)) return { kind: 'tui', name }
+  const arg = (match[2] ?? '').trim()
+  if (LOCAL_NAMES.has(name)) return { kind: 'local', name: name as LocalCommand, arg }
+  if (!arg && TUI_ONLY.has(name)) return { kind: 'tui', name }
   return { kind: 'send' }
 }
