@@ -46,7 +46,7 @@ describe('fakeQuery', () => {
     const s = new AgentSession({ cwd: '/p', permissionMode: 'default' }, { queryFn: fakeQuery, emit: (e) => events.push(e) })
     s.send('rode uma tarefa')
     await tick()
-    expect(events).toContainEqual(expect.objectContaining({ kind: 'task-started', id: 'fake_task_bg_1' }))
+    expect(events).toContainEqual(expect.objectContaining({ kind: 'task-started', id: 'fake_task_bg_1', background: true }))
     await expect(s.stopTask('fake_task_bg_1')).resolves.toEqual({ ok: true, value: null })
     await tick()
     expect(events).toContainEqual(expect.objectContaining({ kind: 'task-done', id: 'fake_task_bg_1', status: 'stopped' }))

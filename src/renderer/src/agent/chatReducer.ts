@@ -129,7 +129,16 @@ export function reduceChat(s: ChatState, e: AgentEvent): ChatState {
     }
     case 'stats':
       // total_cost_usd is cumulative per query; `query-start` is what rolls the base forward.
-      return { ...s, stats: e, lastQueryCostUsd: e.costUsd, totalCostUsd: s.costBaseUsd + e.costUsd }
+      // A `result` (which stats mirrors) also ends the turn: any still-"running" foreground task
+      // (background === false) never got its own task-done, so settle it here (mirrors AgentSession
+      // dropping foreground ids from its own runningTasks on the same message).
+      return {
+        ...s,
+        stats: e,
+        lastQueryCostUsd: e.costUsd,
+        totalCostUsd: s.costBaseUsd + e.costUsd,
+        tasks: s.tasks.map((t) => (t.status === 'running' && !t.background ? { ...t, status: 'completed' } : t)),
+      }
     case 'rate-limit':
       // Account-wide, not per chat: kept in the agents store (see handleAgentEvent).
       return s
@@ -140,8 +149,13 @@ export function reduceChat(s: ChatState, e: AgentEvent): ChatState {
     case 'task-started':
       return {
         ...s,
-        tasks: [...s.tasks.filter((t) => t.id !== e.id), { id: e.id, description: e.description, status: 'running', ...(e.toolUseId ? { toolUseId: e.toolUseId } : {}), ...(e.taskType ? { taskType: e.taskType } : {}), ...(e.subagentType ? { subagentType: e.subagentType } : {}) }],
+        tasks: [
+          ...s.tasks.filter((t) => t.id !== e.id),
+          { id: e.id, description: e.description, status: 'running', background: e.background, ...(e.toolUseId ? { toolUseId: e.toolUseId } : {}), ...(e.taskType ? { taskType: e.taskType } : {}), ...(e.subagentType ? { subagentType: e.subagentType } : {}) },
+        ],
       }
+    case 'tasks-backgrounded':
+      return { ...s, tasks: s.tasks.map((t) => (t.status === 'running' ? { ...t, background: true } : t)) }
     case 'task-progress': {
       if (!s.tasks.some((t) => t.id === e.id)) return s
       return {

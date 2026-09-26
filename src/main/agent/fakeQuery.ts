@@ -60,7 +60,20 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
       }
       if (text.includes('tarefa')) {
         const taskId = `fake_task_bg_${turn}`
-        out.push({ type: 'system', subtype: 'task_started', task_id: taskId, tool_use_id: `fake_bg_tool_${turn}`, description: 'npm run build', task_type: 'local_bash', session_id: 'fake', uuid: `u_${taskId}` })
+        out.push({
+          type: 'system',
+          subtype: 'task_started',
+          task_id: taskId,
+          tool_use_id: `fake_bg_tool_${turn}`,
+          description: 'npm run build',
+          task_type: 'local_bash',
+          // Simulates a task registered in the background (Ctrl+B / a resumed subagent), not a
+          // plain foreground Task-tool call — matters for AgentSession.setDirectories, which only
+          // refuses while a *background* task is running.
+          is_backgrounded: true,
+          session_id: 'fake',
+          uuid: `u_${taskId}`,
+        })
         out.push({ type: 'system', subtype: 'task_progress', task_id: taskId, description: 'npm run build', last_tool_name: 'Bash', usage: { total_tokens: 0, tool_uses: 1, duration_ms: 1200 }, session_id: 'fake', uuid: `p_${taskId}` })
         runningTasks.add(taskId)
       }

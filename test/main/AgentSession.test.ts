@@ -608,13 +608,48 @@ describe('AgentSession', () => {
       f.out.push({ ...RESULT, queued_turn_count: 0 })
       await tick()
       expect(s.currentState).toBe('idle')
-      f.out.push({ type: 'system', subtype: 'task_started', task_id: 't1', description: 'npm run build' })
+      f.out.push({ type: 'system', subtype: 'task_started', task_id: 't1', description: 'npm run build', is_backgrounded: true })
       await tick()
       expect(s.currentState).toBe('idle')
       expect(s.setDirectories(['/x'])).toEqual({ ok: false, message: 'Pare as tarefas em segundo plano antes de mudar as pastas.' })
       f.out.push({ type: 'system', subtype: 'task_notification', task_id: 't1', status: 'completed', summary: '' })
       await tick()
       expect(s.setDirectories(['/x'])).toEqual({ ok: true, value: null })
+    })
+
+    it('drops a foreground task at the end of its turn and never lets it block setDirectories', async () => {
+      const f = fake()
+      const { s } = session(f.fn)
+      s.send('a')
+      // A plain Task-tool subagent / foreground Bash: is_backgrounded false (or absent).
+      f.out.push({ type: 'system', subtype: 'task_started', task_id: 't1', description: 'Explorar', is_backgrounded: false })
+      await tick()
+      // Mid-turn: setDirectories is refused, but only because the session is 'running', not
+      // because of the (foreground) task.
+      expect(s.setDirectories(['/x'])).toEqual({ ok: false, message: 'Pare o agente antes de mudar as pastas.' })
+      f.out.push(RESULT)
+      await tick()
+      expect(s.currentState).toBe('idle')
+      // The SDK doesn't guarantee a task_notification/task_updated for a foreground task that
+      // finished in-turn, so the turn's own `result` must have settled it.
+      expect(s.setDirectories(['/x'])).toEqual({ ok: true, value: null })
+    })
+
+    it('flips running tasks to background and emits tasks-backgrounded on Ctrl+B; they then survive their turn\'s result', async () => {
+      const f = fake()
+      const bg = vi.fn(async () => true)
+      f.q.backgroundTasks = bg
+      const { s, events } = session(f.fn)
+      s.send('a')
+      f.out.push({ type: 'system', subtype: 'task_started', task_id: 't1', description: 'Explorar', is_backgrounded: false })
+      await tick()
+      await expect(s.backgroundTasks()).resolves.toEqual({ ok: true, value: true })
+      expect(events).toContainEqual({ kind: 'tasks-backgrounded' })
+      f.out.push(RESULT)
+      await tick()
+      expect(s.currentState).toBe('idle')
+      // Now backgrounded: the turn's result must NOT have dropped it.
+      expect(s.setDirectories(['/x'])).toEqual({ ok: false, message: 'Pare as tarefas em segundo plano antes de mudar as pastas.' })
     })
 
     it('is a no-op when the new list equals the current one: no query drop, no event', async () => {

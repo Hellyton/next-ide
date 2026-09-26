@@ -117,8 +117,8 @@ describe('reduceChat', () => {
 
 describe('tasks', () => {
   it('tracks a task from start to done', () => {
-    let s = reduceChat(initialChat, { kind: 'task-started', id: 't1', description: 'npm test', toolUseId: 'tu1' })
-    expect(s.tasks).toEqual([{ id: 't1', description: 'npm test', status: 'running', toolUseId: 'tu1' }])
+    let s = reduceChat(initialChat, { kind: 'task-started', id: 't1', description: 'npm test', background: false, toolUseId: 'tu1' })
+    expect(s.tasks).toEqual([{ id: 't1', description: 'npm test', status: 'running', background: false, toolUseId: 'tu1' }])
     s = reduceChat(s, { kind: 'task-progress', id: 't1', lastToolName: 'Bash', totalTokens: 10, toolUses: 2, durationMs: 1500 })
     expect(s.tasks[0]).toMatchObject({ status: 'running', lastToolName: 'Bash', toolUses: 2, durationMs: 1500 })
     s = reduceChat(s, { kind: 'task-done', id: 't1', status: 'stopped', summary: 'parado' })
@@ -128,19 +128,41 @@ describe('tasks', () => {
     let s = reduceChat(initialChat, { kind: 'task-progress', id: 'x', totalTokens: 0, toolUses: 0, durationMs: 0 })
     s = reduceChat(s, { kind: 'task-done', id: 'x', status: 'completed', summary: '' })
     expect(s.tasks).toEqual([])
-    s = reduceChat(s, { kind: 'task-started', id: 't1', description: 'a' })
+    s = reduceChat(s, { kind: 'task-started', id: 't1', description: 'a', background: false })
     s = reduceChat(s, { kind: 'query-start' })
     expect(s.tasks).toEqual([])
   })
   it('drops running tasks when the session exits', () => {
-    let s = reduceChat(initialChat, { kind: 'task-started', id: 't1', description: 'a' })
+    let s = reduceChat(initialChat, { kind: 'task-started', id: 't1', description: 'a', background: false })
     s = reduceChat(s, { kind: 'status', state: 'exited' })
     expect(s.tasks).toEqual([])
   })
   it('clears tasks when status becomes error', () => {
-    let s = reduceChat(initialChat, { kind: 'task-started', id: 't1', description: 'a' })
-    expect(s.tasks).toEqual([{ id: 't1', description: 'a', status: 'running' }])
+    let s = reduceChat(initialChat, { kind: 'task-started', id: 't1', description: 'a', background: false })
+    expect(s.tasks).toEqual([{ id: 't1', description: 'a', status: 'running', background: false }])
     s = reduceChat(s, { kind: 'status', state: 'error' })
     expect(s.tasks).toEqual([])
+  })
+
+  it('flips running tasks to background on tasks-backgrounded, leaving finished ones alone', () => {
+    let s = reduceChat(initialChat, { kind: 'task-started', id: 't1', description: 'a', background: false })
+    s = reduceChat(s, { kind: 'task-started', id: 't2', description: 'b', background: false })
+    s = reduceChat(s, { kind: 'task-done', id: 't2', status: 'completed', summary: '' })
+    s = reduceChat(s, { kind: 'tasks-backgrounded' })
+    expect(s.tasks).toEqual([
+      { id: 't1', description: 'a', status: 'running', background: true },
+      { id: 't2', description: 'b', status: 'completed', summary: '', background: false },
+    ])
+  })
+
+  it('settles a still-running foreground task on stats (end of turn), leaving a backgrounded one running', () => {
+    const stats: AgentEvent = { kind: 'stats', usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 }, costUsd: 0, durationMs: 0 }
+    let s = reduceChat(initialChat, { kind: 'task-started', id: 't1', description: 'a', background: false })
+    s = reduceChat(s, { kind: 'task-started', id: 't2', description: 'b', background: true })
+    s = reduceChat(s, stats)
+    expect(s.tasks).toEqual([
+      { id: 't1', description: 'a', status: 'completed', background: false },
+      { id: 't2', description: 'b', status: 'running', background: true },
+    ])
   })
 })

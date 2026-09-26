@@ -10,6 +10,8 @@ export type TaskInfo = {
   id: string
   description: string
   status: TaskStatus
+  /** Backgrounded (survives its spawning turn) vs foreground (blocks it, e.g. a normal Task-tool subagent). */
+  background: boolean
   toolUseId?: string
   taskType?: string
   subagentType?: string
@@ -57,9 +59,11 @@ export type AgentEvent =
   | { kind: 'model'; model: string }
   | { kind: 'effort'; effort: EffortLevel | null }
   | { kind: 'dirs'; dirs: string[] }
-  | { kind: 'task-started'; id: string; description: string; toolUseId?: string; taskType?: string; subagentType?: string }
+  | { kind: 'task-started'; id: string; description: string; background: boolean; toolUseId?: string; taskType?: string; subagentType?: string }
   | { kind: 'task-progress'; id: string; description?: string; lastToolName?: string; totalTokens: number; toolUses: number; durationMs: number }
   | { kind: 'task-done'; id: string; status: TaskStatus; summary: string }
+  /** Ctrl+B moved every foreground task of the running turn to the background. */
+  | { kind: 'tasks-backgrounded' }
   | StatsEvent
   | { kind: 'error'; message: string; action?: ErrorAction }
 

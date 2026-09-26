@@ -241,7 +241,7 @@ describe('task messages', () => {
   it('turns task_started / task_progress / task_notification into task events', () => {
     const n = new StreamNormalizer()
     expect(n.push({ type: 'system', subtype: 'task_started', task_id: 't1', tool_use_id: 'tu1', description: 'npm test', task_type: 'local_agent', subagent_type: 'Explore' })).toEqual([
-      { kind: 'task-started', id: 't1', description: 'npm test', toolUseId: 'tu1', taskType: 'local_agent', subagentType: 'Explore' },
+      { kind: 'task-started', id: 't1', description: 'npm test', background: false, toolUseId: 'tu1', taskType: 'local_agent', subagentType: 'Explore' },
     ])
     expect(
       n.push({ type: 'system', subtype: 'task_progress', task_id: 't1', description: 'npm test', last_tool_name: 'Bash', usage: { total_tokens: 10, tool_uses: 2, duration_ms: 1500 } }),
@@ -253,12 +253,41 @@ describe('task messages', () => {
   it('task_started without taskType and subagentType produces no such keys', () => {
     const n = new StreamNormalizer()
     expect(n.push({ type: 'system', subtype: 'task_started', task_id: 't1', description: 'npm test' })).toEqual([
-      { kind: 'task-started', id: 't1', description: 'npm test' },
+      { kind: 'task-started', id: 't1', description: 'npm test', background: false },
+    ])
+  })
+  it('marks a task started with is_backgrounded: true as background', () => {
+    const n = new StreamNormalizer()
+    expect(n.push({ type: 'system', subtype: 'task_started', task_id: 't1', description: 'npm run build', is_backgrounded: true })).toEqual([
+      { kind: 'task-started', id: 't1', description: 'npm run build', background: true },
     ])
   })
   it('drops malformed task messages', () => {
     const n = new StreamNormalizer()
     expect(n.push({ type: 'system', subtype: 'task_started', description: 'sem id' })).toEqual([])
     expect(n.push({ type: 'system', subtype: 'task_notification', task_id: 't', status: 'weird', summary: '' })).toEqual([])
+  })
+
+  describe('task_updated', () => {
+    it('turns a completed/failed/killed patch.status into task-done (killed -> stopped)', () => {
+      const n = new StreamNormalizer()
+      expect(n.push({ type: 'system', subtype: 'task_updated', task_id: 't1', patch: { status: 'completed' } })).toEqual([
+        { kind: 'task-done', id: 't1', status: 'completed', summary: '' },
+      ])
+      expect(n.push({ type: 'system', subtype: 'task_updated', task_id: 't1', patch: { status: 'failed' } })).toEqual([
+        { kind: 'task-done', id: 't1', status: 'failed', summary: '' },
+      ])
+      expect(n.push({ type: 'system', subtype: 'task_updated', task_id: 't1', patch: { status: 'killed' } })).toEqual([
+        { kind: 'task-done', id: 't1', status: 'stopped', summary: '' },
+      ])
+    })
+    it('ignores other patch.status values, a missing status and malformed messages', () => {
+      const n = new StreamNormalizer()
+      expect(n.push({ type: 'system', subtype: 'task_updated', task_id: 't1', patch: { status: 'running' } })).toEqual([])
+      expect(n.push({ type: 'system', subtype: 'task_updated', task_id: 't1', patch: { status: 'pending' } })).toEqual([])
+      expect(n.push({ type: 'system', subtype: 'task_updated', task_id: 't1', patch: { status: 'paused' } })).toEqual([])
+      expect(n.push({ type: 'system', subtype: 'task_updated', task_id: 't1', patch: { description: 'sem status' } })).toEqual([])
+      expect(n.push({ type: 'system', subtype: 'task_updated', patch: { status: 'completed' } })).toEqual([])
+    })
   })
 })

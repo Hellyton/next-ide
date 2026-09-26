@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { TaskInfo } from '@shared/agent'
 import { visibleTasks } from '@renderer/agent/tasks'
 
-const task = (over: Partial<TaskInfo> = {}): TaskInfo => ({ id: 't1', description: 'npm run build', status: 'running', ...over })
+const task = (over: Partial<TaskInfo> = {}): TaskInfo => ({ id: 't1', description: 'npm run build', status: 'running', background: false, ...over })
 
 describe('visibleTasks', () => {
   it('hides a finished task once its id is in the hidden set', () => {

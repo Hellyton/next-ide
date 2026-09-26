@@ -206,7 +206,17 @@ export class StreamNormalizer {
     if (m.subtype === 'task_started') {
       const taskType = str(m.task_type)
       const subagentType = str(m.subagent_type)
-      return [{ kind: 'task-started', id, description: description ?? 'Tarefa', ...(toolUseId ? { toolUseId } : {}), ...(taskType ? { taskType } : {}), ...(subagentType ? { subagentType } : {}) }]
+      return [
+        {
+          kind: 'task-started',
+          id,
+          description: description ?? 'Tarefa',
+          background: m.is_backgrounded === true,
+          ...(toolUseId ? { toolUseId } : {}),
+          ...(taskType ? { taskType } : {}),
+          ...(subagentType ? { subagentType } : {}),
+        },
+      ]
     }
     if (m.subtype === 'task_progress') {
       const u = isRec(m.usage) ? m.usage : {}
@@ -227,6 +237,12 @@ export class StreamNormalizer {
       const status = m.status
       if (status !== 'completed' && status !== 'failed' && status !== 'stopped') return []
       return [{ kind: 'task-done', id, status, summary: typeof m.summary === 'string' ? m.summary : '' }]
+    }
+    if (m.subtype === 'task_updated') {
+      const patch = isRec(m.patch) ? m.patch : {}
+      const status = patch.status
+      if (status !== 'completed' && status !== 'failed' && status !== 'killed') return []
+      return [{ kind: 'task-done', id, status: status === 'killed' ? 'stopped' : status, summary: '' }]
     }
     return []
   }

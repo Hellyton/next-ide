@@ -57,7 +57,7 @@ describe('restartSession', () => {
     const prevChat = {
       ...initialChat,
       items: [{ type: 'user' as const, id: 'u1', text: 'antiga', images: 0 }],
-      tasks: [{ id: 't1', description: 'rodando', status: 'running' as const }],
+      tasks: [{ id: 't1', description: 'rodando', status: 'running' as const, background: false }],
     }
     const prevParams: AgentPanelParams = { type: 'agent', projectPath: '/p', sessionId: 'old' }
     let createCalls = 0

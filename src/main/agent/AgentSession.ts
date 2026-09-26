@@ -139,8 +139,13 @@ export class AgentSession {
   private mode: PermissionMode
   private sessionId?: string
   private dirs: string[]
-  /** Ids of background tasks (Task tool / Ctrl+B) currently running, tracked from task-started/task-done. */
-  private readonly runningTasks = new Set<string>()
+  /**
+   * Running tasks, keyed by id, value = whether they're backgrounded (survive their spawning
+   * turn) vs foreground (blocks it — e.g. a plain Task-tool subagent). Tracked from
+   * task-started/task-done; a foreground id is also dropped at the end of its turn (the SDK
+   * doesn't guarantee a task_notification/task_updated bookend for one that finishes in-turn).
+   */
+  private readonly runningTasks = new Map<string, boolean>()
   private readonly newId: () => string
   private pendingDelta: TextDelta | null = null
   private deltaTimer: ReturnType<typeof setTimeout> | null = null
@@ -250,8 +255,9 @@ export class AgentSession {
     if (this.state === 'running' || this.state === 'awaiting_permission') return { ok: false, message: 'Pare o agente antes de mudar as pastas.' }
     // Background tasks (Task tool / Ctrl+B) keep running while the session shows 'idle'; dropping
     // the query would kill them silently, and the pump guard above means their task-done would
-    // never arrive to clear TasksBar.
-    if (this.runningTasks.size > 0) return { ok: false, message: 'Pare as tarefas em segundo plano antes de mudar as pastas.' }
+    // never arrive to clear TasksBar. A foreground task blocks its own turn (state is already
+    // running/awaiting_permission then) and is dropped at the turn's result, so it never lingers here.
+    if ([...this.runningTasks.values()].some(Boolean)) return { ok: false, message: 'Pare as tarefas em segundo plano antes de mudar as pastas.' }
     this.dirs = [...dirs]
     const query = this.query
     if (query) {
@@ -349,7 +355,12 @@ export class AgentSession {
     if (!query) return { ok: true, value: false }
     if (!query.backgroundTasks) return unsupported('Ctrl+B')
     try {
-      return { ok: true, value: await query.backgroundTasks() }
+      const backgrounded = await query.backgroundTasks()
+      if (backgrounded) {
+        for (const id of this.runningTasks.keys()) this.runningTasks.set(id, true)
+        this.emit({ kind: 'tasks-backgrounded' })
+      }
+      return { ok: true, value: backgrounded }
     } catch (err) {
       return failure(err)
     }
@@ -515,7 +526,7 @@ export class AgentSession {
         }
         for (const event of this.normalizer.push(message)) {
           if (event.kind === 'init') this.sessionId = event.sessionId
-          if (event.kind === 'task-started') this.runningTasks.add(event.id)
+          if (event.kind === 'task-started') this.runningTasks.set(event.id, event.background)
           if (event.kind === 'task-done') this.runningTasks.delete(event.id)
           this.emit(event)
         }
@@ -525,6 +536,11 @@ export class AgentSession {
           const queued = (message as { queued_turn_count?: unknown }).queued_turn_count
           this.turnsInFlight =
             typeof queued === 'number' && Number.isFinite(queued) ? Math.max(0, queued) : Math.max(0, this.turnsInFlight - 1)
+          // A foreground task (e.g. a plain Task-tool subagent) blocks its own turn; the SDK
+          // doesn't guarantee a task_notification/task_updated bookend for one that settles
+          // in-turn, so its end-of-turn `result` is the signal to drop it. Backgrounded tasks
+          // (Ctrl+B, or started that way) survive past their turn until their own task-done.
+          for (const [id, background] of this.runningTasks) if (!background) this.runningTasks.delete(id)
           if (this.pending.size === 0) this.setState(this.turnsInFlight > 0 ? 'running' : 'idle')
         }
       }
