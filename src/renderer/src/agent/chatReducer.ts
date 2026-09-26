@@ -156,6 +156,12 @@ export function reduceChat(s: ChatState, e: AgentEvent): ChatState {
       }
     case 'tasks-backgrounded':
       return { ...s, tasks: s.tasks.map((t) => (t.status === 'running' ? { ...t, background: true } : t)) }
+    case 'task-backgrounded': {
+      // The CLI moved this one task to the background on its own (not via Ctrl+B); flip only it,
+      // so the next `stats` doesn't settle it as a still-foreground task.
+      if (!s.tasks.some((t) => t.id === e.id)) return s
+      return { ...s, tasks: s.tasks.map((t) => (t.id === e.id ? { ...t, background: true } : t)) }
+    }
     case 'task-progress': {
       if (!s.tasks.some((t) => t.id === e.id)) return s
       return {

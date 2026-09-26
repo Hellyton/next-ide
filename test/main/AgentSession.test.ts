@@ -652,6 +652,32 @@ describe('AgentSession', () => {
       expect(s.setDirectories(['/x'])).toEqual({ ok: false, message: 'Pare as tarefas em segundo plano antes de mudar as pastas.' })
     })
 
+    it('a task_updated patch.is_backgrounded:true (the CLI backgrounding it, not our Ctrl+B) also survives the turn\'s result', async () => {
+      const f = fake()
+      const { s } = session(f.fn)
+      s.send('a')
+      f.out.push({ type: 'system', subtype: 'task_started', task_id: 't1', description: 'Explorar', is_backgrounded: false })
+      await tick()
+      f.out.push({ type: 'system', subtype: 'task_updated', task_id: 't1', patch: { is_backgrounded: true } })
+      await tick()
+      f.out.push(RESULT)
+      await tick()
+      expect(s.currentState).toBe('idle')
+      expect(s.setDirectories(['/x'])).toEqual({ ok: false, message: 'Pare as tarefas em segundo plano antes de mudar as pastas.' })
+    })
+
+    it('ignores a task_updated is_backgrounded for an id it is not tracking', async () => {
+      const f = fake()
+      const { s } = session(f.fn)
+      s.send('a')
+      f.out.push({ type: 'system', subtype: 'task_updated', task_id: 'unknown', patch: { is_backgrounded: true } })
+      await tick()
+      f.out.push(RESULT)
+      await tick()
+      expect(s.currentState).toBe('idle')
+      expect(s.setDirectories(['/x'])).toEqual({ ok: true, value: null })
+    })
+
     it('is a no-op when the new list equals the current one: no query drop, no event', async () => {
       const f = fake()
       const { s, events } = session(f.fn, { additionalDirectories: ['/a', '/b'] })

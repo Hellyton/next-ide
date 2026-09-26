@@ -241,8 +241,14 @@ export class StreamNormalizer {
     if (m.subtype === 'task_updated') {
       const patch = isRec(m.patch) ? m.patch : {}
       const status = patch.status
-      if (status !== 'completed' && status !== 'failed' && status !== 'killed') return []
-      return [{ kind: 'task-done', id, status: status === 'killed' ? 'stopped' : status, summary: '' }]
+      const events: AgentEvent[] = []
+      // The CLI can move a task to the background on its own (not only via our Ctrl+B call);
+      // this must land before task-done so a terminal patch in the same message still settles it.
+      if (patch.is_backgrounded === true) events.push({ kind: 'task-backgrounded', id })
+      if (status === 'completed' || status === 'failed' || status === 'killed') {
+        events.push({ kind: 'task-done', id, status: status === 'killed' ? 'stopped' : status, summary: '' })
+      }
+      return events
     }
     return []
   }

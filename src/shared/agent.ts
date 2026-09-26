@@ -64,6 +64,8 @@ export type AgentEvent =
   | { kind: 'task-done'; id: string; status: TaskStatus; summary: string }
   /** Ctrl+B moved every foreground task of the running turn to the background. */
   | { kind: 'tasks-backgrounded' }
+  /** The CLI itself moved one task to the background (task_updated patch.is_backgrounded), not via Ctrl+B. */
+  | { kind: 'task-backgrounded'; id: string }
   | StatsEvent
   | { kind: 'error'; message: string; action?: ErrorAction }
 

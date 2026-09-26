@@ -289,5 +289,24 @@ describe('task messages', () => {
       expect(n.push({ type: 'system', subtype: 'task_updated', task_id: 't1', patch: { description: 'sem status' } })).toEqual([])
       expect(n.push({ type: 'system', subtype: 'task_updated', patch: { status: 'completed' } })).toEqual([])
     })
+    it('emits task-backgrounded when patch.is_backgrounded is true, before task-done when both are set', () => {
+      const n = new StreamNormalizer()
+      expect(n.push({ type: 'system', subtype: 'task_updated', task_id: 't1', patch: { is_backgrounded: true } })).toEqual([
+        { kind: 'task-backgrounded', id: 't1' },
+      ])
+      expect(n.push({ type: 'system', subtype: 'task_updated', task_id: 't1', patch: { is_backgrounded: true, status: 'completed' } })).toEqual([
+        { kind: 'task-backgrounded', id: 't1' },
+        { kind: 'task-done', id: 't1', status: 'completed', summary: '' },
+      ])
+    })
+    it('does not emit task-backgrounded when patch.is_backgrounded is false or absent', () => {
+      const n = new StreamNormalizer()
+      expect(n.push({ type: 'system', subtype: 'task_updated', task_id: 't1', patch: { is_backgrounded: false, status: 'completed' } })).toEqual([
+        { kind: 'task-done', id: 't1', status: 'completed', summary: '' },
+      ])
+      expect(n.push({ type: 'system', subtype: 'task_updated', task_id: 't1', patch: { status: 'failed' } })).toEqual([
+        { kind: 'task-done', id: 't1', status: 'failed', summary: '' },
+      ])
+    })
   })
 })

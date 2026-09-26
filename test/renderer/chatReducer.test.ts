@@ -165,4 +165,20 @@ describe('tasks', () => {
       { id: 't2', description: 'b', status: 'running', background: true },
     ])
   })
+
+  it('task-backgrounded flips one specific running task, so stats leaves it running', () => {
+    const stats: AgentEvent = { kind: 'stats', usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 }, costUsd: 0, durationMs: 0 }
+    let s = reduceChat(initialChat, { kind: 'task-started', id: 't1', description: 'a', background: false })
+    s = reduceChat(s, { kind: 'task-started', id: 't2', description: 'b', background: false })
+    s = reduceChat(s, { kind: 'task-backgrounded', id: 't1' })
+    s = reduceChat(s, stats)
+    expect(s.tasks).toEqual([
+      { id: 't1', description: 'a', status: 'running', background: true },
+      { id: 't2', description: 'b', status: 'completed', background: false },
+    ])
+  })
+
+  it('ignores task-backgrounded for an unknown task id', () => {
+    expect(reduceChat(initialChat, { kind: 'task-backgrounded', id: 'nope' }).tasks).toEqual([])
+  })
 })

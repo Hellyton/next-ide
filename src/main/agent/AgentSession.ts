@@ -527,6 +527,9 @@ export class AgentSession {
         for (const event of this.normalizer.push(message)) {
           if (event.kind === 'init') this.sessionId = event.sessionId
           if (event.kind === 'task-started') this.runningTasks.set(event.id, event.background)
+          // The CLI can move a task to the background on its own (task_updated patch.is_backgrounded),
+          // not only via our Ctrl+B call; only flip ids we're actually tracking.
+          if (event.kind === 'task-backgrounded' && this.runningTasks.has(event.id)) this.runningTasks.set(event.id, true)
           if (event.kind === 'task-done') this.runningTasks.delete(event.id)
           this.emit(event)
         }
