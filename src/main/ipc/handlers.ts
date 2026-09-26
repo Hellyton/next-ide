@@ -1,5 +1,6 @@
 import { stat, realpath } from 'node:fs/promises'
-import { isAbsolute } from 'node:path'
+import { homedir } from 'node:os'
+import { isAbsolute, join, resolve } from 'node:path'
 import type { StatusLineInput } from '@shared/agent'
 import type { Handlers } from '@shared/ipc-contract'
 import { sanitizeLayout } from '@shared/layout'
@@ -20,7 +21,7 @@ export type HandlerDeps = {
   pickWorkspaceFile: () => Promise<string | null>
   readTextFile: (path: string) => Promise<string>
   gitInfo: (cwd: string) => Promise<GitInfo>
-  agents: Pick<AgentManager, 'create' | 'get' | 'close'>
+  agents: Pick<AgentManager, 'create' | 'get' | 'close' | 'projectOf'>
   sessions: SessionStoreApi
   agentReady: () => Promise<void>
   runStatusLine: (input: StatusLineInput) => Promise<string | null>
@@ -104,18 +105,32 @@ export function buildHandlers(d: HandlerDeps): Handlers {
     },
     'agent:setDirs': async (panelId, dirs) => {
       await d.agentReady()
+      const session = d.agents.get(panelId)
+      const project = d.agents.projectOf(panelId)
+      // Only entries that aren't already part of the session's current list are validated strictly;
+      // an already-present entry that no longer exists on disk (deleted since the panel started) is
+      // dropped silently instead of blocking an unrelated change to the list.
+      const current = new Set(session.directories)
       const resolved: string[] = []
       for (const dir of dirs) {
-        if (!isAbsolute(dir)) return { ok: false as const, message: `Use um caminho absoluto: ${dir}` }
+        const isNew = !current.has(dir)
+        const expanded = dir.startsWith('~') ? join(homedir(), dir.slice(1)) : dir
+        const absolute = isAbsolute(expanded) ? expanded : resolve(project ?? process.cwd(), expanded)
         try {
-          const real = await realpath(dir)
-          if (!(await stat(real)).isDirectory()) return { ok: false as const, message: `${dir} não é uma pasta.` }
+          const real = await realpath(absolute)
+          if (!(await stat(real)).isDirectory()) {
+            if (isNew) return { ok: false as const, message: `${dir} não é uma pasta.` }
+            continue
+          }
           if (!resolved.includes(real)) resolved.push(real)
-        } catch {
+        } catch (err) {
+          if (!isNew) continue
+          const code = err instanceof Error ? (err as NodeJS.ErrnoException).code : undefined
+          if (code === 'EACCES' || code === 'EPERM') return { ok: false as const, message: `Sem permissão para acessar: ${dir}` }
           return { ok: false as const, message: `Pasta não encontrada: ${dir}` }
         }
       }
-      const r = d.agents.get(panelId).setDirectories(resolved)
+      const r = session.setDirectories(resolved)
       return r.ok ? { ok: true as const, value: resolved } : r
     },
     'agent:respondPermission': (panelId, requestId, decision) => d.agents.get(panelId).respondPermission(requestId, decision),

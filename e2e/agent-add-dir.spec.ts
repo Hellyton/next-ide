@@ -11,7 +11,7 @@ test('/add-dir adiciona pasta, persiste, remove e recusa caminho inválido', asy
 
   await input.fill('/add-dir relativo')
   await input.press('Enter')
-  await expect(page.getByTestId('composer-notice')).toContainText('Use um caminho absoluto')
+  await expect(page.getByTestId('composer-notice')).toContainText('Pasta não encontrada')
 
   await input.fill(`/add-dir ${extra}`)
   await input.press('Enter')

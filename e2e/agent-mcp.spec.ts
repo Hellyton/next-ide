@@ -16,6 +16,13 @@ test('/mcp lista servidores, desliga/liga e oferece login no terminal', async ()
   await dialog.getByRole('button', { name: 'Ligar github' }).click()
   await expect(github).toContainText('conectado')
 
+  const figma = dialog.getByTestId('mcp-row').filter({ hasText: 'figma' })
+  await figma.getByRole('button', { name: 'Reconectar figma' }).click()
+  await expect(dialog).toContainText('Faça login com claude /mcp')
+
+  await dialog.getByRole('button', { name: 'Recarregar' }).click()
+  await expect(github).toContainText('conectado')
+
   await dialog.getByRole('button', { name: 'Abrir em terminal' }).click()
   await expect(dialog).toHaveCount(0)
   await expect(page.getByTestId('panel-tab').filter({ hasText: `${name} · zsh` })).toBeVisible()

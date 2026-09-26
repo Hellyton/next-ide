@@ -601,6 +601,26 @@ describe('AgentSession', () => {
       expect(s.isStarted).toBe(true)
     })
 
+    it('never processes a message the dropped query delivers after setDirectories drops it', async () => {
+      const f = fake2()
+      const { s, events } = session(f.fn)
+      s.send('oi')
+      await tick()
+      f.outs[0]!.push(RESULT)
+      await tick()
+      expect(s.currentState).toBe('idle')
+      events.length = 0
+      // The old query's async iterator already has this message "in flight" to its pending
+      // `next()` (a waiter, not the items array) before setDirectories drops it synchronously
+      // right after — the message only actually reaches the pump's loop body on a later microtask.
+      f.outs[0]!.push({ type: 'system', subtype: 'task_started', task_id: 'ghost', description: 'ghost', is_backgrounded: true })
+      expect(s.setDirectories(['/extra'])).toEqual({ ok: true, value: null })
+      await tick()
+      expect(events.some((e) => e.kind === 'task-started')).toBe(false)
+      // No phantom background task was recorded, so a later change isn't blocked by it.
+      expect(s.setDirectories(['/other'])).toEqual({ ok: true, value: null })
+    })
+
     it('refuses while a background task is running (idle otherwise), allows once it finishes', async () => {
       const f = fake()
       const { s } = session(f.fn)
@@ -614,6 +634,19 @@ describe('AgentSession', () => {
       expect(s.setDirectories(['/x'])).toEqual({ ok: false, message: 'Pare as tarefas em segundo plano antes de mudar as pastas.' })
       f.out.push({ type: 'system', subtype: 'task_notification', task_id: 't1', status: 'completed', summary: '' })
       await tick()
+      expect(s.setDirectories(['/x'])).toEqual({ ok: true, value: null })
+    })
+
+    it('never lets a running ambient (watcher) task block setDirectories, even though it is background', async () => {
+      const f = fake()
+      const { s } = session(f.fn)
+      s.send('a')
+      f.out.push({ ...RESULT, queued_turn_count: 0 })
+      await tick()
+      expect(s.currentState).toBe('idle')
+      f.out.push({ type: 'system', subtype: 'task_started', task_id: 't1', description: 'watcher', is_backgrounded: true, ambient: true })
+      await tick()
+      // Ambient tasks may be killed along with the dropped query, so they never block the change.
       expect(s.setDirectories(['/x'])).toEqual({ ok: true, value: null })
     })
 

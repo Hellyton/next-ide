@@ -1,5 +1,6 @@
 import type { AgentEvent } from '@shared/agent'
 import { isEffortLevel, type AgentPanelParams } from '@shared/models'
+import { validRoots } from '../fs/validRoots'
 import { AgentSession, type QueryFn } from './AgentSession'
 
 export type AgentRuntime = { queryFn: QueryFn; claudePath?: string; env?: Record<string, string> }
@@ -17,6 +18,8 @@ export class AgentManager {
     const permissionMode = params.permissionMode ?? 'default'
     // Params come from the renderer (and saved layouts): an unknown effort is dropped, not passed to the CLI.
     const effort = params.effort && isEffortLevel(params.effort) ? params.effort : undefined
+    // Same source, same distrust: keep only absolute string paths (a malformed/non-array value becomes []).
+    const dirs = Array.isArray(params.additionalDirectories) ? validRoots(params.additionalDirectories) : []
     this.sessions.set(
       panelId,
       new AgentSession(
@@ -26,7 +29,7 @@ export class AgentManager {
           ...(params.model ? { model: params.model } : {}),
           ...(effort ? { effort } : {}),
           ...(params.sessionId ? { resume: params.sessionId } : {}),
-          ...(params.additionalDirectories?.length ? { additionalDirectories: params.additionalDirectories } : {}),
+          ...(dirs.length ? { additionalDirectories: dirs } : {}),
         },
         {
           queryFn: runtime.queryFn,
@@ -40,7 +43,7 @@ export class AgentManager {
     // tell the panel now — otherwise a fresh panel would show the wrong mode until it is used.
     this.deps.emit(panelId, { kind: 'mode', permissionMode })
     this.deps.emit(panelId, { kind: 'effort', effort: effort ?? null })
-    this.deps.emit(panelId, { kind: 'dirs', dirs: params.additionalDirectories ?? [] })
+    this.deps.emit(panelId, { kind: 'dirs', dirs })
   }
 
   get(panelId: string): AgentSession {

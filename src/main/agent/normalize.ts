@@ -211,10 +211,15 @@ export class StreamNormalizer {
           kind: 'task-started',
           id,
           description: description ?? 'Tarefa',
-          background: m.is_backgrounded === true,
+          // is_backgrounded is only ever set (true/false) for local_agent/local_bash tasks; other
+          // task types (mcp_task, local_workflow, watcher tasks) and older CLIs omit it entirely,
+          // and those must default to background, not foreground — only an explicit `false` means
+          // foreground (a plain Task-tool subagent whose spawning call blocks on it).
+          background: m.is_backgrounded !== false,
           ...(toolUseId ? { toolUseId } : {}),
           ...(taskType ? { taskType } : {}),
           ...(subagentType ? { subagentType } : {}),
+          ...(m.ambient === true ? { ambient: true as const } : {}),
         },
       ]
     }

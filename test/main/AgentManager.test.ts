@@ -46,6 +46,22 @@ describe('AgentManager', () => {
     expect(events.at(-1)).toEqual(['p1', { kind: 'dirs', dirs: ['/extra/a'] }])
   })
 
+  it('keeps only absolute string paths from additionalDirectories, dropping relative and non-string entries', () => {
+    const { m, events } = manager()
+    m.create('p1', {
+      type: 'agent',
+      projectPath: '/proj',
+      additionalDirectories: ['/extra/a', 'relative', 42, null, '/extra/b'] as never,
+    })
+    expect(events.at(-1)).toEqual(['p1', { kind: 'dirs', dirs: ['/extra/a', '/extra/b'] }])
+  })
+
+  it('drops a non-array additionalDirectories entirely', () => {
+    const { m, events } = manager()
+    m.create('p1', { type: 'agent', projectPath: '/proj', additionalDirectories: '/extra/a' as never })
+    expect(events.at(-1)).toEqual(['p1', { kind: 'dirs', dirs: [] }])
+  })
+
   it('throws for unknown panels, reports busy sessions, closes one and all', () => {
     const { m } = manager()
     expect(() => m.get('x')).toThrow('Sessão de agente não encontrada: x')

@@ -124,6 +124,10 @@ describe('tasks', () => {
     s = reduceChat(s, { kind: 'task-done', id: 't1', status: 'stopped', summary: 'parado' })
     expect(s.tasks[0]).toMatchObject({ status: 'stopped', summary: 'parado' })
   })
+  it('carries ambient through from task-started into TaskInfo', () => {
+    const s = reduceChat(initialChat, { kind: 'task-started', id: 't1', description: 'watcher', background: true, ambient: true })
+    expect(s.tasks).toEqual([{ id: 't1', description: 'watcher', status: 'running', background: true, ambient: true }])
+  })
   it('ignores progress/done for unknown tasks and restarts with an empty list on a new query', () => {
     let s = reduceChat(initialChat, { kind: 'task-progress', id: 'x', totalTokens: 0, toolUses: 0, durationMs: 0 })
     s = reduceChat(s, { kind: 'task-done', id: 'x', status: 'completed', summary: '' })
@@ -151,8 +155,16 @@ describe('tasks', () => {
     s = reduceChat(s, { kind: 'tasks-backgrounded' })
     expect(s.tasks).toEqual([
       { id: 't1', description: 'a', status: 'running', background: true },
-      { id: 't2', description: 'b', status: 'completed', summary: '', background: false },
+      { id: 't2', description: 'b', status: 'completed', background: false },
     ])
+  })
+
+  it('keeps the previous summary when a later task-done reports an empty one', () => {
+    let s = reduceChat(initialChat, { kind: 'task-started', id: 't1', description: 'a', background: false })
+    s = reduceChat(s, { kind: 'task-done', id: 't1', status: 'completed', summary: 'feito com sucesso' })
+    // e.g. a task_updated bookend for the same task, which never carries a summary.
+    s = reduceChat(s, { kind: 'task-done', id: 't1', status: 'completed', summary: '' })
+    expect(s.tasks[0]).toMatchObject({ status: 'completed', summary: 'feito com sucesso' })
   })
 
   it('settles a still-running foreground task on stats (end of turn), leaving a backgrounded one running', () => {

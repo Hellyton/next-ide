@@ -1,5 +1,5 @@
-import { mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentEvent } from '@shared/agent'
@@ -171,6 +171,49 @@ describe('buildHandlers', () => {
     await expect(h['agent:setDirs']('p1', [join(base, 'nao-existe')])).resolves.toMatchObject({ ok: false })
     await expect(h['agent:setDirs']('p1', [file])).resolves.toMatchObject({ ok: false, message: expect.stringContaining('não é uma pasta') })
   })
+
+  it('agent:setDirs resolves a relative path against the panel project and expands a leading ~', async () => {
+    const project = mkdtempSync(join(tmpdir(), 'proj-'))
+    const sub = join(project, 'sub')
+    mkdirSync(sub)
+    const h = buildHandlers(deps())
+    await h['agent:create']('p1', { type: 'agent', projectPath: project })
+    await expect(h['agent:setDirs']('p1', ['sub'])).resolves.toEqual({ ok: true, value: [realpathSync(sub)] })
+    await expect(h['agent:setDirs']('p1', ['~'])).resolves.toEqual({ ok: true, value: [realpathSync(homedir())] })
+  })
+
+  it('agent:setDirs drops an existing directory that no longer exists instead of blocking the whole call', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'dirs2-'))
+    const toDelete = join(base, 'gone')
+    mkdirSync(toDelete)
+    const keep = join(base, 'keep')
+    mkdirSync(keep)
+    const h = buildHandlers(deps())
+    await h['agent:create']('p1', { type: 'agent', projectPath: '/p' })
+    const first = await h['agent:setDirs']('p1', [toDelete])
+    expect(first).toEqual({ ok: true, value: [realpathSync(toDelete)] })
+    const [resolvedToDelete] = (first as { ok: true; value: string[] }).value
+    rmSync(toDelete, { recursive: true })
+    // The renderer's dirs list carries the already-resolved path back, not the original raw input.
+    await expect(h['agent:setDirs']('p1', [resolvedToDelete!, keep])).resolves.toEqual({ ok: true, value: [realpathSync(keep)] })
+  })
+
+  it.skipIf(typeof process.getuid === 'function' && process.getuid() === 0)(
+    'agent:setDirs reports a permission error distinctly from a missing folder',
+    async () => {
+      const parent = mkdtempSync(join(tmpdir(), 'locked-'))
+      const target = join(parent, 'inner')
+      mkdirSync(target)
+      chmodSync(parent, 0o000)
+      try {
+        const h = buildHandlers(deps())
+        await h['agent:create']('p1', { type: 'agent', projectPath: '/p' })
+        await expect(h['agent:setDirs']('p1', [target])).resolves.toEqual({ ok: false, message: `Sem permissão para acessar: ${target}` })
+      } finally {
+        chmodSync(parent, 0o755)
+      }
+    },
+  )
 
   it('agent:history converts stored messages into events', async () => {
     const events = await buildHandlers(deps())['agent:history']('/proj', 'fake-old')

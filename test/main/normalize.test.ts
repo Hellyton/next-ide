@@ -240,9 +240,9 @@ describe('historyToEvents', () => {
 describe('task messages', () => {
   it('turns task_started / task_progress / task_notification into task events', () => {
     const n = new StreamNormalizer()
-    expect(n.push({ type: 'system', subtype: 'task_started', task_id: 't1', tool_use_id: 'tu1', description: 'npm test', task_type: 'local_agent', subagent_type: 'Explore' })).toEqual([
-      { kind: 'task-started', id: 't1', description: 'npm test', background: false, toolUseId: 'tu1', taskType: 'local_agent', subagentType: 'Explore' },
-    ])
+    expect(
+      n.push({ type: 'system', subtype: 'task_started', task_id: 't1', tool_use_id: 'tu1', description: 'npm test', task_type: 'local_agent', subagent_type: 'Explore', is_backgrounded: false }),
+    ).toEqual([{ kind: 'task-started', id: 't1', description: 'npm test', background: false, toolUseId: 'tu1', taskType: 'local_agent', subagentType: 'Explore' }])
     expect(
       n.push({ type: 'system', subtype: 'task_progress', task_id: 't1', description: 'npm test', last_tool_name: 'Bash', usage: { total_tokens: 10, tool_uses: 2, duration_ms: 1500 } }),
     ).toEqual([{ kind: 'task-progress', id: 't1', description: 'npm test', lastToolName: 'Bash', totalTokens: 10, toolUses: 2, durationMs: 1500 }])
@@ -252,7 +252,7 @@ describe('task messages', () => {
   })
   it('task_started without taskType and subagentType produces no such keys', () => {
     const n = new StreamNormalizer()
-    expect(n.push({ type: 'system', subtype: 'task_started', task_id: 't1', description: 'npm test' })).toEqual([
+    expect(n.push({ type: 'system', subtype: 'task_started', task_id: 't1', description: 'npm test', is_backgrounded: false })).toEqual([
       { kind: 'task-started', id: 't1', description: 'npm test', background: false },
     ])
   })
@@ -260,6 +260,22 @@ describe('task messages', () => {
     const n = new StreamNormalizer()
     expect(n.push({ type: 'system', subtype: 'task_started', task_id: 't1', description: 'npm run build', is_backgrounded: true })).toEqual([
       { kind: 'task-started', id: 't1', description: 'npm run build', background: true },
+    ])
+  })
+  it('defaults to background when is_backgrounded is omitted (mcp_task, local_workflow, watcher tasks, older CLIs)', () => {
+    const n = new StreamNormalizer()
+    expect(n.push({ type: 'system', subtype: 'task_started', task_id: 't1', description: 'sync figma' })).toEqual([
+      { kind: 'task-started', id: 't1', description: 'sync figma', background: true },
+    ])
+  })
+  it('carries ambient: true through from the SDK, and omits the key otherwise', () => {
+    const n = new StreamNormalizer()
+    expect(n.push({ type: 'system', subtype: 'task_started', task_id: 't1', description: 'watcher', ambient: true })).toEqual([
+      { kind: 'task-started', id: 't1', description: 'watcher', background: true, ambient: true },
+    ])
+    const n2 = new StreamNormalizer()
+    expect(n2.push({ type: 'system', subtype: 'task_started', task_id: 't1', description: 'watcher', ambient: false })).toEqual([
+      { kind: 'task-started', id: 't1', description: 'watcher', background: true },
     ])
   })
   it('drops malformed task messages', () => {

@@ -30,6 +30,13 @@ export function McpModal({ panelId, projectPath, onClose }: { panelId: string; p
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
   }, [panelId])
   useEffect(load, [load])
+  // The modal never refreshed on its own: while a server is still connecting, poll so a
+  // reconnect's outcome (success or the inline auth error) shows up without user action.
+  useEffect(() => {
+    if (!servers?.some((s) => s.status === 'pending')) return
+    const id = setInterval(load, 1500)
+    return () => clearInterval(id)
+  }, [servers, load])
   const act = (name: string, run: () => Promise<{ ok: true; value: null } | { ok: false; message: string }>) => {
     setBusy(name)
     void run()
@@ -44,7 +51,12 @@ export function McpModal({ panelId, projectPath, onClose }: { panelId: string; p
   return (
     <div className="absolute inset-0 z-10 flex items-start justify-center bg-black/60 pt-16" onMouseDown={onClose}>
       <div role="dialog" aria-label="Servidores MCP" {...dialog} className="w-[min(560px,90%)] rounded border outline-none border-neutral-700 bg-neutral-900 p-3 text-sm" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="mb-2 font-medium">Servidores MCP</div>
+        <div className="mb-2 flex items-center justify-between">
+          <span className="font-medium">Servidores MCP</span>
+          <button className="rounded bg-neutral-800 px-2 py-0.5 text-xs hover:bg-neutral-700" onClick={load}>
+            Recarregar
+          </button>
+        </div>
         {error && <div className="mb-2 text-amber-300">{error}</div>}
         {!servers && !error && <div className="text-neutral-500">Carregando…</div>}
         {servers?.length === 0 && <div className="text-neutral-500">Nenhum servidor MCP configurado.</div>}
@@ -58,31 +70,28 @@ export function McpModal({ panelId, projectPath, onClose }: { panelId: string; p
                 {s.error && <span className="block truncate text-xs text-neutral-500">{s.error}</span>}
               </span>
               <span className={`text-xs ${COLOR[s.status]}`}>{LABEL[s.status]}</span>
-              {s.status === 'needs-auth' ? (
+              <button
+                aria-label={`${s.status === 'disabled' ? 'Ligar' : 'Desligar'} ${s.name}`}
+                disabled={busy !== null}
+                className="rounded bg-neutral-800 px-2 py-0.5 text-xs hover:bg-neutral-700 disabled:opacity-40"
+                onClick={() => act(s.name, () => window.api.invoke('agent:toggleMcp', panelId, s.name, s.status === 'disabled'))}
+              >
+                {s.status === 'disabled' ? 'Ligar' : 'Desligar'}
+              </button>
+              {s.status !== 'disabled' && (
+                <button
+                  aria-label={`Reconectar ${s.name}`}
+                  disabled={busy !== null}
+                  className="rounded bg-neutral-800 px-2 py-0.5 text-xs hover:bg-neutral-700 disabled:opacity-40"
+                  onClick={() => act(s.name, () => window.api.invoke('agent:reconnectMcp', panelId, s.name))}
+                >
+                  ↻
+                </button>
+              )}
+              {s.status === 'needs-auth' && (
                 <button className="rounded bg-neutral-800 px-2 py-0.5 text-xs hover:bg-neutral-700" onClick={openTerminal}>
                   Abrir em terminal
                 </button>
-              ) : (
-                <>
-                  <button
-                    aria-label={`${s.status === 'disabled' ? 'Ligar' : 'Desligar'} ${s.name}`}
-                    disabled={busy !== null}
-                    className="rounded bg-neutral-800 px-2 py-0.5 text-xs hover:bg-neutral-700 disabled:opacity-40"
-                    onClick={() => act(s.name, () => window.api.invoke('agent:toggleMcp', panelId, s.name, s.status === 'disabled'))}
-                  >
-                    {s.status === 'disabled' ? 'Ligar' : 'Desligar'}
-                  </button>
-                  {s.status !== 'disabled' && (
-                    <button
-                      aria-label={`Reconectar ${s.name}`}
-                      disabled={busy !== null}
-                      className="rounded bg-neutral-800 px-2 py-0.5 text-xs hover:bg-neutral-700 disabled:opacity-40"
-                      onClick={() => act(s.name, () => window.api.invoke('agent:reconnectMcp', panelId, s.name))}
-                    >
-                      ↻
-                    </button>
-                  )}
-                </>
               )}
             </li>
           ))}

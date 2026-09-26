@@ -141,11 +141,13 @@ export class AgentSession {
   private dirs: string[]
   /**
    * Running tasks, keyed by id, value = whether they're backgrounded (survive their spawning
-   * turn) vs foreground (blocks it — e.g. a plain Task-tool subagent). Tracked from
-   * task-started/task-done; a foreground id is also dropped at the end of its turn (the SDK
-   * doesn't guarantee a task_notification/task_updated bookend for one that finishes in-turn).
+   * turn) vs foreground (blocks it — e.g. a plain Task-tool subagent), and whether they're
+   * `ambient` (an SDK watcher task). Tracked from task-started/task-done; a foreground id is also
+   * dropped at the end of its turn (the SDK doesn't guarantee a task_notification/task_updated
+   * bookend for one that finishes in-turn). Ambient tasks never block setDirectories: they may be
+   * killed along with the dropped query.
    */
-  private readonly runningTasks = new Map<string, boolean>()
+  private readonly runningTasks = new Map<string, { background: boolean; ambient: boolean }>()
   private readonly newId: () => string
   private pendingDelta: TextDelta | null = null
   private deltaTimer: ReturnType<typeof setTimeout> | null = null
@@ -169,6 +171,11 @@ export class AgentSession {
 
   get isStarted(): boolean {
     return this.query !== null
+  }
+
+  /** The session's current additionalDirectories (resolved, absolute). */
+  get directories(): string[] {
+    return [...this.dirs]
   }
 
   start(): void {
@@ -257,7 +264,9 @@ export class AgentSession {
     // the query would kill them silently, and the pump guard above means their task-done would
     // never arrive to clear TasksBar. A foreground task blocks its own turn (state is already
     // running/awaiting_permission then) and is dropped at the turn's result, so it never lingers here.
-    if ([...this.runningTasks.values()].some(Boolean)) return { ok: false, message: 'Pare as tarefas em segundo plano antes de mudar as pastas.' }
+    if ([...this.runningTasks.values()].some((t) => t.background && !t.ambient)) {
+      return { ok: false, message: 'Pare as tarefas em segundo plano antes de mudar as pastas.' }
+    }
     this.dirs = [...dirs]
     const query = this.query
     if (query) {
@@ -357,7 +366,7 @@ export class AgentSession {
     try {
       const backgrounded = await query.backgroundTasks()
       if (backgrounded) {
-        for (const id of this.runningTasks.keys()) this.runningTasks.set(id, true)
+        for (const [id, t] of this.runningTasks) this.runningTasks.set(id, { ...t, background: true })
         this.emit({ kind: 'tasks-backgrounded' })
       }
       return { ok: true, value: backgrounded }
@@ -517,7 +526,10 @@ export class AgentSession {
   private async pump(query: QueryLike): Promise<void> {
     try {
       for await (const message of query) {
-        if (this.closed) return
+        // setDirectories (or a reset) may have dropped this query and started a new one while this
+        // iterator's buffered messages are still draining; once that happens, this loop must never
+        // touch session state again — it belongs to the new query now.
+        if (this.closed || this.query !== query) return
         // A queued send may not have bumped `queued_turn_count` on the previous result (the CLI
         // hadn't read it yet), leaving the panel idle while the next turn's stream already runs.
         if (this.state === 'idle' && isMainLoopActivity(message)) {
@@ -526,10 +538,12 @@ export class AgentSession {
         }
         for (const event of this.normalizer.push(message)) {
           if (event.kind === 'init') this.sessionId = event.sessionId
-          if (event.kind === 'task-started') this.runningTasks.set(event.id, event.background)
+          if (event.kind === 'task-started') this.runningTasks.set(event.id, { background: event.background, ambient: event.ambient === true })
           // The CLI can move a task to the background on its own (task_updated patch.is_backgrounded),
           // not only via our Ctrl+B call; only flip ids we're actually tracking.
-          if (event.kind === 'task-backgrounded' && this.runningTasks.has(event.id)) this.runningTasks.set(event.id, true)
+          if (event.kind === 'task-backgrounded' && this.runningTasks.has(event.id)) {
+            this.runningTasks.set(event.id, { ...this.runningTasks.get(event.id)!, background: true })
+          }
           if (event.kind === 'task-done') this.runningTasks.delete(event.id)
           this.emit(event)
         }
@@ -543,7 +557,7 @@ export class AgentSession {
           // doesn't guarantee a task_notification/task_updated bookend for one that settles
           // in-turn, so its end-of-turn `result` is the signal to drop it. Backgrounded tasks
           // (Ctrl+B, or started that way) survive past their turn until their own task-done.
-          for (const [id, background] of this.runningTasks) if (!background) this.runningTasks.delete(id)
+          for (const [id, t] of this.runningTasks) if (!t.background) this.runningTasks.delete(id)
           if (this.pending.size === 0) this.setState(this.turnsInFlight > 0 ? 'running' : 'idle')
         }
       }

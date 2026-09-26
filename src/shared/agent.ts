@@ -15,6 +15,8 @@ export type TaskInfo = {
   toolUseId?: string
   taskType?: string
   subagentType?: string
+  /** SDK `ambient: true` (a live-update watcher, requested or auto-started): may be killed along with the query. */
+  ambient?: boolean
   lastToolName?: string
   totalTokens?: number
   toolUses?: number
@@ -59,7 +61,7 @@ export type AgentEvent =
   | { kind: 'model'; model: string }
   | { kind: 'effort'; effort: EffortLevel | null }
   | { kind: 'dirs'; dirs: string[] }
-  | { kind: 'task-started'; id: string; description: string; background: boolean; toolUseId?: string; taskType?: string; subagentType?: string }
+  | { kind: 'task-started'; id: string; description: string; background: boolean; toolUseId?: string; taskType?: string; subagentType?: string; ambient?: boolean }
   | { kind: 'task-progress'; id: string; description?: string; lastToolName?: string; totalTokens: number; toolUses: number; durationMs: number }
   | { kind: 'task-done'; id: string; status: TaskStatus; summary: string }
   /** Ctrl+B moved every foreground task of the running turn to the background. */

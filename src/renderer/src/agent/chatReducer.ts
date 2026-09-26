@@ -151,7 +151,16 @@ export function reduceChat(s: ChatState, e: AgentEvent): ChatState {
         ...s,
         tasks: [
           ...s.tasks.filter((t) => t.id !== e.id),
-          { id: e.id, description: e.description, status: 'running', background: e.background, ...(e.toolUseId ? { toolUseId: e.toolUseId } : {}), ...(e.taskType ? { taskType: e.taskType } : {}), ...(e.subagentType ? { subagentType: e.subagentType } : {}) },
+          {
+            id: e.id,
+            description: e.description,
+            status: 'running',
+            background: e.background,
+            ...(e.toolUseId ? { toolUseId: e.toolUseId } : {}),
+            ...(e.taskType ? { taskType: e.taskType } : {}),
+            ...(e.subagentType ? { subagentType: e.subagentType } : {}),
+            ...(e.ambient ? { ambient: true } : {}),
+          },
         ],
       }
     case 'tasks-backgrounded':
@@ -175,7 +184,9 @@ export function reduceChat(s: ChatState, e: AgentEvent): ChatState {
     }
     case 'task-done':
       if (!s.tasks.some((t) => t.id === e.id)) return s
-      return { ...s, tasks: s.tasks.map((t) => (t.id === e.id ? { ...t, status: e.status, summary: e.summary } : t)) }
+      // task_updated settles a task with summary: '' (it never carries one); keep whatever
+      // task-progress/task_notification already reported rather than blanking it out.
+      return { ...s, tasks: s.tasks.map((t) => (t.id === e.id ? { ...t, status: e.status, ...(e.summary ? { summary: e.summary } : {}) } : t)) }
   }
 }
 

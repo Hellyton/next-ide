@@ -255,7 +255,10 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
     if (isBusy(liveChat())) return notify('Pare o agente antes de mudar as pastas.')
     const current = liveChat().dirs
     if (arg) return setDirs([...current, arg])
-    void window.api.invoke('fs:pickFolder').then((picked) => picked.length && setDirs([...current, ...picked]))
+    void window.api
+      .invoke('fs:pickFolder')
+      .then((picked) => picked.length && setDirs([...current, ...picked]))
+      .catch((err) => notify(errorText(err)))
   }
 
   const removeDir = (dir: string) => {
