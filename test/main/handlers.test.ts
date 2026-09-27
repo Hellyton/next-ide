@@ -9,9 +9,10 @@ import { fakeQuery, fakeSessions } from '../../src/main/agent/fakeQuery'
 import { buildHandlers, type HandlerDeps } from '../../src/main/ipc/handlers'
 import { createStores } from '../../src/main/store/stores'
 
-function deps(over: Partial<HandlerDeps> = {}): HandlerDeps & { ptyCalls: unknown[][]; agentEvents: Array<[string, AgentEvent]> } {
+function deps(over: Partial<HandlerDeps> = {}): HandlerDeps & { ptyCalls: unknown[][]; agentEvents: Array<[string, AgentEvent]>; dictationCalls: string[] } {
   const ptyCalls: unknown[][] = []
   const agentEvents: Array<[string, AgentEvent]> = []
+  const dictationCalls: string[] = []
   return {
     stores: createStores(mkdtempSync(join(tmpdir(), 'handlers-'))),
     pty: {
@@ -37,6 +38,14 @@ function deps(over: Partial<HandlerDeps> = {}): HandlerDeps & { ptyCalls: unknow
     },
     onWorkspaces: () => undefined,
     notificationsEnabled: () => true,
+    dictation: {
+      start: (id) => {
+        dictationCalls.push(`start:${id}`)
+        return { ok: true, value: null }
+      },
+      stop: (id) => void dictationCalls.push(`stop:${id}`),
+    },
+    dictationCalls,
     ptyCalls,
     agentEvents,
     ...over,
@@ -327,5 +336,21 @@ describe('buildHandlers', () => {
     const ws = [{ id: 'w', name: 'x', projects: [{ id: 'p', name: 'p', path: '/p' }], collapsed: false }]
     await h['workspace:save'](ws)
     expect(onWorkspaces).toHaveBeenCalledWith(ws)
+  })
+})
+
+describe('buildHandlers (dictation)', () => {
+  it('forwards start/stop to the dictation manager', async () => {
+    const d = deps()
+    const h = buildHandlers(d)
+    expect(await h['dictation:start']('p1')).toEqual({ ok: true, value: null })
+    await h['dictation:stop']('p1')
+    expect(d.dictationCalls).toEqual(['start:p1', 'stop:p1'])
+  })
+
+  it('closing an agent panel stops its dictation', async () => {
+    const d = deps()
+    await buildHandlers(d)['agent:close']('p1')
+    expect(d.dictationCalls).toEqual(['stop:p1'])
   })
 })

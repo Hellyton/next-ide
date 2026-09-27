@@ -9,6 +9,7 @@ import type { AgentManager } from '../agent/AgentManager'
 import { historyToEvents } from '../agent/normalize'
 import { forkPointBefore } from '../agent/rewind'
 import type { SessionStoreApi } from '../agent/sdk'
+import type { DictationManager } from '../dictation/DictationManager'
 import type { FilesService } from '../fs/FilesService'
 import type { PtyManager } from '../pty/PtyManager'
 import { parseCodeWorkspace } from '../store/codeWorkspace'
@@ -29,6 +30,7 @@ export type HandlerDeps = {
   onWorkspaces: (workspaces: Workspace[]) => void
   /** Main owns the notifications toggle (menu + settings), so `settings:save` never lets a stale renderer copy clobber it. */
   notificationsEnabled: () => boolean
+  dictation: Pick<DictationManager, 'start' | 'stop'>
 }
 
 const failed = (err: unknown) => ({ ok: false as const, message: err instanceof Error ? err.message : String(err) })
@@ -210,7 +212,12 @@ export function buildHandlers(d: HandlerDeps): Handlers {
         return failed(err)
       }
     },
-    'agent:close': (panelId) => d.agents.close(panelId),
+    'agent:close': (panelId) => {
+      d.dictation.stop(panelId)
+      return d.agents.close(panelId)
+    },
+    'dictation:start': (panelId) => d.dictation.start(panelId),
+    'dictation:stop': (panelId) => d.dictation.stop(panelId),
     'statusline:run': (input) => d.runStatusLine(input),
   }
 }

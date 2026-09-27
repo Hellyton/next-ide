@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Notification, shell, type MessageBoxSyncOptions } from 'electron'
-import { watch } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { existsSync, watch } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { basename, delimiter, join } from 'node:path'
 import type { EventChannel, EventMap } from '@shared/ipc-contract'
@@ -9,6 +10,7 @@ import type { QueryFn } from './agent/AgentSession'
 import { fakeQuery, fakeSessions } from './agent/fakeQuery'
 import { AgentNotifier } from './agent/notifications'
 import { loadSdk, type SessionStoreApi } from './agent/sdk'
+import { DictationManager } from './dictation/DictationManager'
 import { loginShellPath, mergePath, resolveClaudePath } from './env/loginShell'
 import { FilesService } from './fs/FilesService'
 import { validRoots } from './fs/validRoots'
@@ -153,6 +155,23 @@ const agents = new AgentManager({
   }),
 })
 
+// Swift helper built by scripts/build-dictation.mjs; E2E swaps in a Node fake with the same protocol.
+const FAKE_DICTATION = process.env.NEXT_IDE_E2E_FAKE_DICTATION
+const dictationBin = app.isPackaged
+  ? join(process.resourcesPath, 'bin', 'next-ide-dictation')
+  : join(app.getAppPath(), 'resources', 'bin', 'next-ide-dictation')
+const dictation = new DictationManager({
+  exists: () => Boolean(FAKE_DICTATION) || existsSync(dictationBin),
+  spawn: () =>
+    FAKE_DICTATION
+      ? spawn(process.execPath, [join(app.getAppPath(), 'test', 'fixtures', 'fakeDictation.mjs'), FAKE_DICTATION], {
+          env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+          stdio: ['ignore', 'pipe', 'inherit'],
+        })
+      : spawn(dictationBin, ['--locale', 'pt-BR'], { stdio: ['ignore', 'pipe', 'inherit'] }),
+  emit: (panelId, event) => send('dictation:event', panelId, event),
+})
+
 async function pickFolders(): Promise<string[]> {
   const fake = process.env.NEXT_IDE_E2E_PICK_FOLDER
   if (fake) return fake.split(delimiter).filter(Boolean)
@@ -191,6 +210,7 @@ registerHandlers(
     files,
     onWorkspaces: (ws) => setProjects(projectPaths(ws)),
     notificationsEnabled: () => notificationsEnabled,
+    dictation,
   }),
 )
 
@@ -299,6 +319,11 @@ app.on('before-quit', (event) => {
     ptys.killAll()
   } catch (err) {
     console.error('[next-ide] killAll failed', err)
+  }
+  try {
+    dictation.stopAll()
+  } catch (err) {
+    console.error('[next-ide] stopping dictation failed', err)
   }
   try {
     watchers.closeAll()
