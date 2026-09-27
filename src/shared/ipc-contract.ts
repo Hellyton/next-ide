@@ -14,6 +14,7 @@ import type {
   SideAnswer,
   StatusLineInput,
 } from './agent'
+import type { DictationEvent } from './dictation'
 import type { FileContent, FsEntry, GitFileStatus } from './files'
 import type { AgentPanelParams, EffortLevel, GitInfo, LayoutState, PermissionMode, Settings, Workspace } from './models'
 
@@ -64,6 +65,8 @@ export type InvokeMap = {
   'agent:fork': { args: [projectPath: string, sessionId: string, title?: string]; result: Outcome<string> }
   'agent:rename': { args: [projectPath: string, sessionId: string, title: string]; result: Outcome<null> }
   'agent:close': { args: [panelId: string]; result: void }
+  'dictation:start': { args: [panelId: string]; result: Outcome<null> }
+  'dictation:stop': { args: [panelId: string]; result: void }
   'statusline:run': { args: [input: StatusLineInput]; result: string | null }
 }
 
@@ -74,6 +77,7 @@ export type EventMap = {
   'agent:focus': [panelId: string]
   'fs:changed': [projectPath: string, paths: string[]]
   'git:changed': [projectPath: string]
+  'dictation:event': [panelId: string, event: DictationEvent]
 }
 
 export type InvokeChannel = keyof InvokeMap
@@ -132,10 +136,12 @@ export const INVOKE_CHANNELS = [
   'agent:fork',
   'agent:rename',
   'agent:close',
+  'dictation:start',
+  'dictation:stop',
   'statusline:run',
 ] as const satisfies readonly InvokeChannel[]
 
-export const EVENT_CHANNELS = ['pty:data', 'pty:exit', 'agent:event', 'agent:focus', 'fs:changed', 'git:changed'] as const satisfies readonly EventChannel[]
+export const EVENT_CHANNELS = ['pty:data', 'pty:exit', 'agent:event', 'agent:focus', 'fs:changed', 'git:changed', 'dictation:event'] as const satisfies readonly EventChannel[]
 
 // Compile-time guard: every channel in the maps must be listed above.
 type MissingInvoke = Exclude<InvokeChannel, (typeof INVOKE_CHANNELS)[number]>
