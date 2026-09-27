@@ -3,6 +3,7 @@ import { filterWorkspaces } from '@shared/workspaces'
 import { useFiles } from '../stores/filesStore'
 import { useWorkspaces } from '../stores/workspaceStore'
 import { ActiveSessions } from './ActiveSessions'
+import { formatBuildInfo } from './buildInfo'
 import { WorkspaceSection } from './WorkspaceSection'
 
 export function Sidebar() {
@@ -72,6 +73,9 @@ export function Sidebar() {
           <WorkspaceSection key={w.id} workspace={w} draggable={!query.trim()} />
         ))}
       </section>
+      <footer data-testid="build-info" className="shrink-0 truncate px-3 py-1.5 text-[10px] text-neutral-600" title={__BUILD_INFO__.builtAt}>
+        {formatBuildInfo(__BUILD_INFO__)}
+      </footer>
     </div>
   )
 }
