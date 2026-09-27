@@ -7,12 +7,15 @@ import { canSend, pickImageFiles, readImage, validateImage } from '../../agent/i
 import { classifySlash, filterCommands, mergeCommands, slashQuery, type LocalCommand, type SlashItem } from '../../agent/slash'
 import { useDock } from '../../dock/dockStore'
 import { useAgents } from '../../stores/agentStore'
+import { useDictation } from '../../stores/dictationStore'
 import { useFiles } from '../../stores/filesStore'
 import { EffortSelect } from './EffortSelect'
 import { MentionMenu } from './MentionMenu'
 import { ModelSelect } from './ModelSelect'
 import { ModeSelect } from './ModeSelect'
 import { SlashMenu } from './SlashMenu'
+
+const IS_MAC = /Mac/.test(navigator.userAgent)
 
 type Props = {
   panelId: string
@@ -46,6 +49,25 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
   const [images, setImages] = useState<ImageAttachment[]>([])
   const [reading, setReading] = useState(0)
   const fileInput = useRef<HTMLInputElement>(null)
+  const dictating = useDictation((s) => s.active === panelId)
+  const dictationStopping = useDictation((s) => s.active === panelId && s.stopping)
+  const dictationStatus = useDictation((s) => (s.active === panelId ? s.status : null))
+  const wasDictating = useRef(false)
+  // Recording just ended here: hand the textarea back with the caret right after the dictated text.
+  useEffect(() => {
+    if (wasDictating.current && !dictating) {
+      const el = textarea.current
+      const caret = useDictation.getState().caret
+      el?.focus()
+      el?.setSelectionRange(caret, caret)
+      setCaret(caret)
+    }
+    wasDictating.current = dictating
+  }, [dictating])
+  const toggleDictation = () => {
+    if (dictating) void useDictation.getState().stop()
+    else void useDictation.getState().start(panelId, text, textarea.current?.selectionStart ?? text.length)
+  }
   const query = slashQuery(text)
   const menuItems = query === null ? [] : filterCommands(commands ?? mergeCommands([], chat.slashCommands), query)
   const mention = query === null ? mentionQuery(text, caret) : null
@@ -116,7 +138,13 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
 
   const submit = () => {
     if (blocked) return
-    const value = text.trim()
+    // Enter while recording: stop, wait for the final transcript, then send what landed in the draft.
+    if (useDictation.getState().active === panelId) {
+      void useDictation.getState().stop().then(() => submitRef.current())
+      return
+    }
+    // Read the store, not the render closure: after a dictation stop the draft changed since this render.
+    const value = (useAgents.getState().drafts[panelId] ?? '').trim()
     if (!canSend({ text: value, images: images.length, reading })) return
     setNotice(null)
     if (images.length === 0) {
@@ -146,6 +174,8 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
     setText('')
     setImages([])
   }
+  const submitRef = useRef(submit)
+  submitRef.current = submit
   const interrupt = () => void window.api.invoke('agent:interrupt', panelId).catch((err) => console.error('[next-ide] interrupt failed', err))
 
   return (
@@ -198,7 +228,8 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
         ref={textarea}
         data-composer={panelId}
         aria-label="Mensagem para o Claude"
-        placeholder="Pergunte ao Claude… (Enter envia, Shift+Enter quebra linha)"
+        placeholder={dictating ? 'Ouvindo… (clique 🎤 para parar)' : 'Pergunte ao Claude… (Enter envia, Shift+Enter quebra linha)'}
+        readOnly={dictating}
         rows={1}
         className="w-full resize-none rounded bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none ring-1 ring-neutral-800 focus:ring-neutral-600"
         value={text}
@@ -216,6 +247,17 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
           }
         }}
         onKeyDown={(e) => {
+          if (dictating) {
+            // Read-only while recording: Enter stops and sends, Esc just stops, everything else waits.
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault()
+              submit()
+            } else if (e.key === 'Escape') {
+              e.preventDefault()
+              void useDictation.getState().stop()
+            }
+            return
+          }
           if (mentionItems.length > 0 && mention) {
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
               e.preventDefault()
@@ -305,6 +347,19 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
             e.target.value = ''
           }}
         />
+        {IS_MAC && (
+          <button
+            aria-label={dictating ? 'Parar ditado' : 'Ditado'}
+            aria-pressed={dictating}
+            title={dictating ? 'Parar ditado' : 'Ditado por voz'}
+            className={`rounded px-1 ${dictating ? 'animate-pulse bg-red-600 text-white' : 'hover:bg-neutral-800'} disabled:opacity-40`}
+            disabled={dictationStopping}
+            onClick={toggleDictation}
+          >
+            🎤
+          </button>
+        )}
+        {dictationStatus && <span data-testid="dictation-status">{dictationStatus}</span>}
         {reading > 0 && <span data-testid="image-reading-hint">carregando imagem…</span>}
         <ModelSelect panelId={panelId} model={chat.model} />
         <EffortSelect panelId={panelId} effort={chat.effort} />
