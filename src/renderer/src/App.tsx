@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { subscribeAgentEvents } from './stores/agentStore'
+import { subscribeDictationEvents } from './stores/dictationStore'
 import { subscribeFileEvents } from './stores/filesStore'
 import { useSettings } from './stores/settingsStore'
 import { Dock } from './dock/Dock'
@@ -14,6 +15,7 @@ export function App() {
   const storedWidth = useSettings((s) => s.settings.sidebarWidth)
   const [width, setWidth] = useState(DEFAULT_SIDEBAR)
   useEffect(() => subscribeAgentEvents(), [])
+  useEffect(() => subscribeDictationEvents(), [])
   useEffect(() => subscribeFileEvents(), [])
   useEffect(() => void useSettings.getState().load(), [])
   // Adopt the saved width once the settings arrive (and whenever another panel changes it).
