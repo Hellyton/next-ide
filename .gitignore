@@ -6,3 +6,4 @@ playwright-report/
 .vitest/
 *.tmp
 .DS_Store
+resources/bin/

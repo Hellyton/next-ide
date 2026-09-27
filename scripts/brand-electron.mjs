@@ -25,6 +25,10 @@ execFileSync('plutil', ['-replace', 'CFBundleIdentifier', '-string', 'dev.nextid
 const macos = join(appDir, 'Contents', 'MacOS')
 if (existsSync(join(macos, 'Electron')) && !existsSync(join(macos, NAME))) renameSync(join(macos, 'Electron'), join(macos, NAME))
 execFileSync('plutil', ['-replace', 'CFBundleExecutable', '-string', NAME, plist])
+// Dictation: macOS credits mic/speech access to this bundle (the helper's parent) and refuses
+// without usage strings in its Info.plist.
+execFileSync('plutil', ['-replace', 'NSMicrophoneUsageDescription', '-string', 'O next-ide usa o microfone para o ditado por voz no composer.', plist])
+execFileSync('plutil', ['-replace', 'NSSpeechRecognitionUsageDescription', '-string', 'O next-ide transcreve sua fala no próprio Mac para o ditado por voz.', plist])
 // `require('electron')` resolves the binary through this file.
 writeFileSync(join(electronDir, 'path.txt'), `Electron.app/Contents/MacOS/${NAME}`)
 copyFileSync(icns, join(appDir, 'Contents', 'Resources', 'electron.icns'))
