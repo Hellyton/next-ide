@@ -53,9 +53,13 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
   const dictationStopping = useDictation((s) => s.active === panelId && s.stopping)
   const dictationStatus = useDictation((s) => (s.active === panelId ? s.status : null))
   const wasDictating = useRef(false)
-  // Recording just ended here: hand the textarea back with the caret right after the dictated text.
+  const root = useRef<HTMLDivElement>(null)
+  // Recording just ended here: hand the textarea back with the caret right after the dictated text —
+  // unless focus already moved elsewhere (e.g. the user started dictating in another panel).
   useEffect(() => {
-    if (wasDictating.current && !dictating) {
+    const focused = document.activeElement
+    const focusIsOurs = !focused || focused === document.body || Boolean(root.current?.contains(focused))
+    if (wasDictating.current && !dictating && focusIsOurs) {
       const el = textarea.current
       const caret = useDictation.getState().caret
       el?.focus()
@@ -65,8 +69,13 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
     wasDictating.current = dictating
   }, [dictating])
   const toggleDictation = () => {
-    if (dictating) void useDictation.getState().stop()
-    else void useDictation.getState().start(panelId, text, textarea.current?.selectionStart ?? text.length)
+    if (dictating) {
+      void useDictation.getState().stop()
+      return
+    }
+    void useDictation.getState().start(panelId, text, textarea.current?.selectionStart ?? text.length)
+    // Keep keyboard focus in the field, so Enter means "stop and send" rather than re-clicking the button.
+    textarea.current?.focus()
   }
   const query = slashQuery(text)
   const menuItems = query === null ? [] : filterCommands(commands ?? mergeCommands([], chat.slashCommands), query)
@@ -180,6 +189,7 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
 
   return (
     <div
+      ref={root}
       className="border-t border-neutral-800 p-2"
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {

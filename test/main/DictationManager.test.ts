@@ -10,8 +10,13 @@ class FakeChild extends EventEmitter {
     this.signals.push(signal)
     return true
   }
-  out(text: string) {
-    this.stdout.emit('data', Buffer.from(text))
+  out(text: string | Buffer) {
+    this.stdout.emit('data', typeof text === 'string' ? Buffer.from(text) : text)
+  }
+  /** Node order: 'exit' may come before stdout is drained; 'close' comes after both. */
+  finish(code: number | null, signal: NodeJS.Signals | null = null) {
+    this.emit('exit', code, signal)
+    this.emit('close', code, signal)
   }
 }
 
@@ -51,7 +56,7 @@ describe('DictationManager', () => {
     mgr.start('p1')
     mgr.stop('p1')
     expect(children[0]!.signals).toEqual(['SIGTERM'])
-    children[0]!.emit('exit', 0)
+    children[0]!.finish(0)
     expect(events).toEqual([['p1', { type: 'ended' }]])
   })
 
@@ -69,7 +74,7 @@ describe('DictationManager', () => {
     const { mgr, children } = setup()
     mgr.start('p1')
     mgr.stop('p1')
-    children[0]!.emit('exit', 0)
+    children[0]!.finish(0)
     vi.advanceTimersByTime(5000)
     expect(children[0]!.signals).toEqual(['SIGTERM'])
   })
@@ -77,7 +82,7 @@ describe('DictationManager', () => {
   it('a crash without an error line still reports an error, then ended', () => {
     const { mgr, children, events } = setup()
     mgr.start('p1')
-    children[0]!.emit('exit', 1)
+    children[0]!.finish(1)
     expect(events).toEqual([
       ['p1', { type: 'error', message: 'O ditado parou inesperadamente (código 1).' }],
       ['p1', { type: 'ended' }],
@@ -88,7 +93,7 @@ describe('DictationManager', () => {
     const { mgr, children, events } = setup()
     mgr.start('p1')
     children[0]!.out('{"type":"error","message":"Permissão negada"}\n')
-    children[0]!.emit('exit', 1)
+    children[0]!.finish(1)
     expect(events).toEqual([
       ['p1', { type: 'error', message: 'Permissão negada' }],
       ['p1', { type: 'ended' }],
@@ -111,7 +116,7 @@ describe('DictationManager', () => {
     mgr.start('p2')
     expect(children).toHaveLength(2)
     expect(children[0]!.signals).toEqual(['SIGTERM'])
-    children[0]!.emit('exit', 0)
+    children[0]!.finish(0)
     children[1]!.out('{"type":"ready"}\n')
     expect(events).toEqual([
       ['p1', { type: 'ended' }],
@@ -142,6 +147,48 @@ describe('DictationManager', () => {
   it('reports a throwing spawn', () => {
     const { mgr } = setup({ spawnThrows: true })
     expect(mgr.start('p1')).toEqual({ ok: false, message: 'spawn EACCES' })
+  })
+
+  it('ended waits for close, so output drained after exit still arrives first', () => {
+    const { mgr, children, events } = setup()
+    mgr.start('p1')
+    mgr.stop('p1')
+    children[0]!.emit('exit', 0, null)
+    children[0]!.out('{"type":"transcript","final":"fim","volatile":""}\n')
+    children[0]!.emit('close', 0, null)
+    expect(events).toEqual([
+      ['p1', { type: 'transcript', final: 'fim', volatile: '' }],
+      ['p1', { type: 'ended' }],
+    ])
+  })
+
+  it('a helper killed by a signal it was not asked for reports a crash', () => {
+    const { mgr, children, events } = setup()
+    mgr.start('p1')
+    children[0]!.finish(null, 'SIGSEGV')
+    expect(events).toEqual([
+      ['p1', { type: 'error', message: 'O ditado parou inesperadamente (SIGSEGV).' }],
+      ['p1', { type: 'ended' }],
+    ])
+  })
+
+  it('the SIGKILL after a requested stop is not reported as a crash', () => {
+    const { mgr, children, events } = setup()
+    mgr.start('p1')
+    mgr.stop('p1')
+    vi.advanceTimersByTime(3000)
+    children[0]!.finish(null, 'SIGKILL')
+    expect(events).toEqual([['p1', { type: 'ended' }]])
+  })
+
+  it('decodes a multi-byte character split across chunks', () => {
+    const { mgr, children, events } = setup()
+    mgr.start('p1')
+    const bytes = Buffer.from('{"type":"transcript","final":"ação","volatile":""}\n')
+    const cut = bytes.indexOf(0xc3) + 1
+    children[0]!.out(bytes.subarray(0, cut))
+    children[0]!.out(bytes.subarray(cut))
+    expect(events).toEqual([['p1', { type: 'transcript', final: 'ação', volatile: '' }]])
   })
 
   it('stopAll stops the active helper', () => {

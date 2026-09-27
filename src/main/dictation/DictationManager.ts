@@ -1,9 +1,11 @@
+import { StringDecoder } from 'node:string_decoder'
 import type { Outcome } from '@shared/agent'
 import { parseDictationLine, type DictationEvent } from '@shared/dictation'
 
 export interface ChildLike {
   stdout: { on(event: 'data', cb: (chunk: Buffer | string) => void): unknown } | null
-  on(event: 'exit', cb: (code: number | null) => void): unknown
+  /** 'close' (not 'exit'): fires only after stdout is drained, so the final transcript is never lost. */
+  on(event: 'close', cb: (code: number | null, signal: NodeJS.Signals | null) => void): unknown
   on(event: 'error', cb: (err: Error) => void): unknown
   kill(signal?: NodeJS.Signals): boolean
 }
@@ -15,7 +17,14 @@ export type DictationDeps = {
   killTimeoutMs?: number
 }
 
-type Recording = { panelId: string; child: ChildLike; sawError: boolean; ended: boolean; killTimer: ReturnType<typeof setTimeout> | null }
+type Recording = {
+  panelId: string
+  child: ChildLike
+  sawError: boolean
+  stopRequested: boolean
+  ended: boolean
+  killTimer: ReturnType<typeof setTimeout> | null
+}
 
 /** Runs the Swift dictation helper for one panel at a time and relays its stdout as events. */
 export class DictationManager {
@@ -33,11 +42,13 @@ export class DictationManager {
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : String(err) }
     }
-    const rec: Recording = { panelId, child, sawError: false, ended: false, killTimer: null }
+    const rec: Recording = { panelId, child, sawError: false, stopRequested: false, ended: false, killTimer: null }
     this.active = rec
     let buffer = ''
+    // Decoder keeps a multi-byte character (ç, ã…) split across chunks intact.
+    const decoder = new StringDecoder('utf8')
     child.stdout?.on('data', (chunk) => {
-      buffer += chunk.toString()
+      buffer += typeof chunk === 'string' ? chunk : decoder.write(chunk)
       const lines = buffer.split('\n')
       buffer = lines.pop() ?? ''
       for (const line of lines) {
@@ -51,9 +62,15 @@ export class DictationManager {
         this.deps.emit(panelId, event)
       }
     })
-    child.on('exit', (code) => {
-      if (code !== 0 && code !== null && !rec.sawError) {
-        this.deps.emit(panelId, { type: 'error', message: `O ditado parou inesperadamente (código ${code}).` })
+    child.on('close', (code, signal) => {
+      // A crash (SIGSEGV, SIGTRAP…) or bad exit code without its own error line still gets a notice;
+      // the signals we send ourselves on stop don't.
+      if (!rec.sawError) {
+        if (code !== null && code !== 0) {
+          this.deps.emit(panelId, { type: 'error', message: `O ditado parou inesperadamente (código ${code}).` })
+        } else if (signal && !rec.stopRequested) {
+          this.deps.emit(panelId, { type: 'error', message: `O ditado parou inesperadamente (${signal}).` })
+        }
       }
       this.end(rec)
     })
@@ -69,6 +86,7 @@ export class DictationManager {
     const rec = this.active
     if (!rec || rec.panelId !== panelId) return
     this.active = null
+    rec.stopRequested = true
     rec.child.kill('SIGTERM')
     rec.killTimer = setTimeout(() => {
       if (!rec.ended) rec.child.kill('SIGKILL')
