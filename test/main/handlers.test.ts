@@ -89,6 +89,26 @@ describe('buildHandlers (permission mode default)', () => {
     await h['agent:create']('p2', { type: 'agent', projectPath: '/p', permissionMode: 'plan' })
     expect(create).toHaveBeenLastCalledWith('p2', { type: 'agent', projectPath: '/p', permissionMode: 'plan' })
   })
+
+  it("agent:create starts a new panel with its project's last model/effort/mode", async () => {
+    const create = vi.fn()
+    const d = deps({ agents: { create, get: vi.fn(), close: vi.fn() } as unknown as HandlerDeps['agents'] })
+    await d.stores.settings.writeNow({
+      ...DEFAULT_SETTINGS,
+      projectDefaults: { '/p': { model: 'opus', effort: 'low', permissionMode: 'plan' } },
+    })
+    const h = buildHandlers(d)
+    await h['agent:create']('p1', { type: 'agent', projectPath: '/p' })
+    expect(create).toHaveBeenLastCalledWith('p1', { type: 'agent', projectPath: '/p', model: 'opus', effort: 'low', permissionMode: 'plan' })
+    // Other projects keep the global default.
+    await h['agent:create']('p2', { type: 'agent', projectPath: '/q' })
+    expect(create).toHaveBeenLastCalledWith('p2', { type: 'agent', projectPath: '/q', permissionMode: 'auto' })
+    // A panel's own choices win; a resumed session keeps its own model/effort.
+    await h['agent:create']('p3', { type: 'agent', projectPath: '/p', model: 'haiku', permissionMode: 'default' })
+    expect(create).toHaveBeenLastCalledWith('p3', { type: 'agent', projectPath: '/p', model: 'haiku', effort: 'low', permissionMode: 'default' })
+    await h['agent:create']('p4', { type: 'agent', projectPath: '/p', sessionId: 's' })
+    expect(create).toHaveBeenLastCalledWith('p4', { type: 'agent', projectPath: '/p', sessionId: 's', permissionMode: 'plan' })
+  })
 })
 
 describe('buildHandlers', () => {

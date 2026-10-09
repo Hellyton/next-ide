@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LOCAL_COMMANDS, classifySlash, filterCommands, mergeCommands, slashQuery } from '@renderer/agent/slash'
+import { LOCAL_COMMANDS, argItems, argQuery, classifySlash, filterCommands, mergeCommands, slashQuery } from '@renderer/agent/slash'
 
 describe('slashQuery', () => {
   it('returns the partial command while typing a single slash word', () => {
@@ -16,7 +16,7 @@ describe('mergeCommands / filterCommands', () => {
     expect(merged.slice(0, LOCAL_COMMANDS.length).every((c) => c.local)).toBe(true)
     expect(merged.filter((c) => c.name === 'clear')).toHaveLength(1)
     expect(merged.map((c) => c.name)).toEqual([
-      'resume', 'clear', 'model', 'statusline', 'btw', 'rewind', 'context', 'effort', 'rename', 'fork', 'mcp', 'agents', 'add-dir', 'compact', 'review',
+      'resume', 'clear', 'model', 'statusline', 'btw', 'rewind', 'context', 'effort', 'mode', 'rename', 'fork', 'mcp', 'agents', 'add-dir', 'compact', 'review',
     ])
   })
   it('ranks prefix matches first and caps at 50', () => {
@@ -59,5 +59,23 @@ describe('classifySlash', () => {
     expect(classifySlash('/btw linha 1\nlinha 2')).toEqual({ kind: 'btw', question: 'linha 1\nlinha 2' })
     expect(classifySlash('/btw')).toEqual({ kind: 'btw', question: '' })
     expect(classifySlash('/btwx')).toEqual({ kind: 'send' })
+  })
+})
+
+describe('argQuery / argItems', () => {
+  it('detects the argument of /model, /effort and /mode only', () => {
+    expect(argQuery('/effort ')).toEqual({ command: 'effort', query: '' })
+    expect(argQuery('/mode pl')).toEqual({ command: 'mode', query: 'pl' })
+    expect(argQuery('/model')).toBeNull()
+    expect(argQuery('/rename x')).toBeNull()
+    expect(argQuery('/mode plan agora')).toBeNull()
+  })
+
+  it('lists the values that match, as full command lines', () => {
+    expect(argItems('effort', '', []).map((i) => i.name)).toEqual(['effort low', 'effort medium', 'effort high', 'effort xhigh', 'effort max', 'effort auto'])
+    expect(argItems('mode', 'plan', []).map((i) => i.name)).toEqual(['mode plan'])
+    expect(argItems('mode', 'accept', [])[0]).toMatchObject({ name: 'mode accept', description: 'accept edits on' })
+    const models = [{ value: 'claude-opus-5-5', displayName: 'Opus 5.5', description: '' }, { value: 'claude-haiku-4-5', displayName: 'Haiku 4.5', description: '' }]
+    expect(argItems('model', 'opus', models).map((i) => i.name)).toEqual(['model claude-opus-5-5'])
   })
 })

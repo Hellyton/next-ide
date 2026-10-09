@@ -1,21 +1,23 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { ImageAttachment } from '@shared/agent'
+import type { ImageAttachment, ModelOption } from '@shared/agent'
 import { agentMentionItems, applyMention, mentionItems as computeMentionItems, mentionQuery } from '../../agent/mentions'
 import type { ChatState } from '../../agent/chatReducer'
 import { composerKeyAction, isBackgroundKey, isDoubleEscape } from '../../agent/composerKeys'
-import { canSend, pickImageFiles, readImage, validateImage } from '../../agent/images'
-import { classifySlash, filterCommands, mergeCommands, slashQuery, type LocalCommand, type SlashItem } from '../../agent/slash'
+import { fileMention, insertMentions, splitFiles } from '../../agent/attachments'
+import { canSend, readImage, validateImage } from '../../agent/images'
+import { argItems, argQuery, classifySlash, filterCommands, mergeCommands, slashQuery, type LocalCommand, type SlashItem } from '../../agent/slash'
 import { useDock } from '../../dock/dockStore'
 import { useAgents } from '../../stores/agentStore'
 import { useDictation } from '../../stores/dictationStore'
 import { useFiles } from '../../stores/filesStore'
-import { EffortSelect } from './EffortSelect'
+import { AttachIcon, MicIcon, StopIcon } from './icons'
 import { MentionMenu } from './MentionMenu'
-import { ModelSelect } from './ModelSelect'
-import { ModeSelect } from './ModeSelect'
+import { ModeIndicator } from './ModeIndicator'
 import { SlashMenu } from './SlashMenu'
 
 const IS_MAC = /Mac/.test(navigator.userAgent)
+const ICON_BUTTON =
+  'flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 ring-1 ring-neutral-800 transition hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40'
 
 type Props = {
   panelId: string
@@ -29,11 +31,13 @@ type Props = {
   onRewind(): void
   /** Ctrl+B: moves the running turn's foreground Bash commands/subagents to the background. */
   onBackground(): void
+  /** Shift+Tab: next permission mode, like the CLI. */
+  onCycleMode(): void
   /** A rewind/rename is in flight: typing stays possible, sending (and slash commands) waits. */
   blocked?: boolean
 }
 
-export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, onBtw, onEscape, onRewind, onBackground, blocked = false }: Props) {
+export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, onBtw, onEscape, onRewind, onBackground, onCycleMode, blocked = false }: Props) {
   const text = useAgents((s) => s.drafts[panelId] ?? '')
   const setText = (value: string) => useAgents.getState().setDraft(panelId, value)
   const [caret, setCaret] = useState(0)
@@ -78,8 +82,15 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
     textarea.current?.focus()
   }
   const query = slashQuery(text)
-  const menuItems = query === null ? [] : filterCommands(commands ?? mergeCommands([], chat.slashCommands), query)
-  const mention = query === null ? mentionQuery(text, caret) : null
+  const arg = query === null ? argQuery(text) : null
+  const [models, setModels] = useState<ModelOption[] | null>(null)
+  const menuItems =
+    query !== null
+      ? filterCommands(commands ?? mergeCommands([], chat.slashCommands), query)
+      : arg
+        ? argItems(arg.command, arg.query, models ?? [])
+        : []
+  const mention = query === null && !arg ? mentionQuery(text, caret) : null
   const index = useFiles((s) => s.indexes[projectPath])
   const [agentNames, setAgentNames] = useState<string[] | undefined>(undefined)
   const mentionItems = useMemo(
@@ -124,9 +135,24 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
       .catch(() => setCommands(mergeCommands([], chat.slashCommands)))
   }, [query === null, commands, panelId, chat.slashCommands])
 
+  useEffect(() => {
+    if (arg?.command !== 'model' || models) return
+    window.api
+      .invoke('agent:models', panelId)
+      .then(setModels)
+      .catch(() => setModels([]))
+  }, [arg?.command, models, panelId])
+
   const pick = (item: SlashItem) => {
     setText(`/${item.name} `)
     setMenuIndex(0)
+  }
+  /** An argument (e.g. "/mode plan") runs right away; a command name just fills the input. */
+  const choose = (item: SlashItem) => {
+    if (!arg) return pick(item)
+    setText(`/${item.name}`)
+    setMenuIndex(0)
+    submit()
   }
 
   const addFiles = (files: File[]) => {
@@ -144,6 +170,75 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
       .catch((err) => setNotice({ text: String(err), command: '' }))
       .finally(() => setReading((n) => n - valid.length))
   }
+
+  /** Any dropped/picked/pasted file: images inline, the rest as @path for the agent to read. */
+  const addAny = (files: File[]) => {
+    if (files.length === 0) return
+    const { images: inline, others } = splitFiles(files)
+    if (inline.length) addFiles(inline)
+    if (others.length === 0) return
+    if (useDictation.getState().active === panelId) return setNotice({ text: 'Pare o ditado antes de anexar arquivos.', command: '' })
+    const missing: string[] = []
+    const mentions = others.flatMap((f) => {
+      const path = window.api.pathForFile(f)
+      if (!path) missing.push(f.name)
+      return path ? [fileMention(projectPath, path)] : []
+    })
+    if (missing.length) setNotice({ text: `${missing.join(', ')}: arquivo sem caminho no disco; salve-o e arraste de novo.`, command: '' })
+    if (mentions.length === 0) return
+    const current = useAgents.getState().drafts[panelId] ?? ''
+    const next = insertMentions(current, textarea.current?.selectionStart ?? current.length, mentions)
+    setText(next.text)
+    setCaret(next.caret)
+    requestAnimationFrame(() => {
+      textarea.current?.focus()
+      textarea.current?.setSelectionRange(next.caret, next.caret)
+    })
+  }
+  const addAnyRef = useRef(addAny)
+  addAnyRef.current = addAny
+
+  // Files dropped anywhere on the chat panel. Native capture listeners on the panel: dockview's
+  // own drag handling would otherwise see (and swallow) the drag before React's handlers.
+  const [dragging, setDragging] = useState(false)
+  useEffect(() => {
+    const panel = root.current?.parentElement
+    if (!panel) return
+    let depth = 0
+    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files')
+    const enter = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      e.stopPropagation()
+      depth++
+      setDragging(true)
+    }
+    const over = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+    }
+    const leave = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.stopPropagation()
+      depth = Math.max(0, depth - 1)
+      if (depth === 0) setDragging(false)
+    }
+    const drop = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      e.stopPropagation()
+      depth = 0
+      setDragging(false)
+      addAnyRef.current(Array.from(e.dataTransfer?.files ?? []))
+    }
+    const listeners = [['dragenter', enter], ['dragover', over], ['dragleave', leave], ['drop', drop]] as const
+    for (const [type, fn] of listeners) panel.addEventListener(type, fn, true)
+    return () => {
+      for (const [type, fn] of listeners) panel.removeEventListener(type, fn, true)
+    }
+  }, [])
 
   const submit = () => {
     if (blocked) return
@@ -191,16 +286,19 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
     <div
       ref={root}
       className="border-t border-neutral-800 p-2"
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={(e) => {
-        const files = pickImageFiles(e.dataTransfer.files)
-        if (files.length) {
-          e.preventDefault()
-          addFiles(files)
-        }
-      }}
     >
-      <SlashMenu items={menuItems} activeIndex={Math.min(menuIndex, Math.max(menuItems.length - 1, 0))} onPick={pick} />
+      {dragging && (
+        // Positioned against the agent panel (the nearest `relative` ancestor), so it covers the whole chat.
+        <div
+          data-testid="drop-overlay"
+          className="pointer-events-none absolute inset-2 z-20 flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-orange-500/70 bg-neutral-950/85 text-sm text-neutral-200"
+        >
+          <AttachIcon className="h-6 w-6 text-orange-400" />
+          <span>Solte para anexar</span>
+          <span className="text-xs text-neutral-500">imagens, PDF, planilhas, CSV e qualquer arquivo</span>
+        </div>
+      )}
+      <SlashMenu items={menuItems} activeIndex={Math.min(menuIndex, Math.max(menuItems.length - 1, 0))} onPick={choose} />
       <MentionMenu items={mentionItems} activeIndex={activeIndex(mentionItems.length)} onPick={pickMention} />
       {notice && (
         <div data-testid="composer-notice" className="mb-1 flex items-center gap-2 rounded border border-amber-800 bg-amber-950/30 px-2 py-1 text-xs text-amber-200">
@@ -250,10 +348,10 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
         }}
         onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
         onPaste={(e) => {
-          const files = pickImageFiles(e.clipboardData.files)
+          const files = Array.from(e.clipboardData.files)
           if (files.length) {
             e.preventDefault()
-            addFiles(files)
+            addAny(files)
           }
         }}
         onKeyDown={(e) => {
@@ -266,6 +364,11 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
               e.preventDefault()
               void useDictation.getState().stop()
             }
+            return
+          }
+          if (e.key === 'Tab' && e.shiftKey) {
+            e.preventDefault()
+            onCycleMode()
             return
           }
           if (mentionItems.length > 0 && mention) {
@@ -300,7 +403,7 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
               const chosen = menuItems[Math.min(menuIndex, menuItems.length - 1)]!
               if (`/${chosen.name}` !== text.trim()) {
                 e.preventDefault()
-                pick(chosen)
+                choose(chosen)
                 return
               }
             }
@@ -342,18 +445,22 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
         }}
       />
       <div className="mt-1 flex items-center gap-2 text-xs text-neutral-500" data-testid="composer-toolbar">
-        <button aria-label="Anexar imagem" className="rounded px-1 hover:bg-neutral-800" onClick={() => fileInput.current?.click()}>
-          +img
+        <button
+          aria-label="Anexar arquivo"
+          title="Anexar arquivo (ou arraste para o chat)"
+          className={ICON_BUTTON}
+          onClick={() => fileInput.current?.click()}
+        >
+          <AttachIcon className="h-4 w-4" />
         </button>
         <input
           ref={fileInput}
           data-testid="image-input"
           type="file"
-          accept="image/png,image/jpeg,image/gif,image/webp"
           multiple
           hidden
           onChange={(e) => {
-            addFiles(Array.from(e.target.files ?? []))
+            addAny(Array.from(e.target.files ?? []))
             e.target.value = ''
           }}
         />
@@ -362,18 +469,21 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
             aria-label={dictating ? 'Parar ditado' : 'Ditado'}
             aria-pressed={dictating}
             title={dictating ? 'Parar ditado' : 'Ditado por voz'}
-            className={`rounded px-1 ${dictating ? 'animate-pulse bg-red-600 text-white' : 'hover:bg-neutral-800'} disabled:opacity-40`}
+            className={
+              dictating
+                ? 'relative flex h-7 w-7 items-center justify-center rounded-md bg-red-600 text-white shadow-[0_0_0_3px_rgba(220,38,38,0.25)] transition hover:bg-red-500 disabled:opacity-40'
+                : ICON_BUTTON
+            }
             disabled={dictationStopping}
             onClick={toggleDictation}
           >
-            🎤
+            {dictating && <span className="absolute inset-0 animate-ping rounded-md bg-red-500/40" />}
+            {dictating ? <StopIcon className="relative h-3.5 w-3.5" /> : <MicIcon className="h-4 w-4" />}
           </button>
         )}
         {dictationStatus && <span data-testid="dictation-status">{dictationStatus}</span>}
         {reading > 0 && <span data-testid="image-reading-hint">carregando imagem…</span>}
-        <ModelSelect panelId={panelId} model={chat.model} />
-        <EffortSelect panelId={panelId} effort={chat.effort} />
-        <ModeSelect panelId={panelId} mode={chat.permissionMode} />
+        <ModeIndicator mode={chat.permissionMode} onCycle={onCycleMode} />
         <span className="flex-1" />
         {busy ? (
           <button aria-label="Parar" className="rounded bg-neutral-800 px-2 py-1 text-neutral-200 hover:bg-neutral-700" onClick={interrupt}>

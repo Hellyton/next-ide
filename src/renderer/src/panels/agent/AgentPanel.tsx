@@ -1,7 +1,8 @@
 import type { IDockviewPanelProps } from 'dockview-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentEvent, ImageAttachment } from '@shared/agent'
-import { isEffortLevel, type AgentPanelParams } from '@shared/models'
+import { isEffortLevel, type AgentPanelParams, type EffortLevel, type PermissionMode } from '@shared/models'
+import { nextMode, parseMode } from '../../agent/permissions'
 import { restartSession } from '../../agent/restartSession'
 import { rewindTargets, runRewind, type RewindMode, type RewindTarget } from '../../agent/rewind'
 import type { LocalCommand } from '../../agent/slash'
@@ -9,6 +10,7 @@ import { useDock } from '../../dock/dockStore'
 import { panelTitle } from '../../dock/panelOptions'
 import { currentAgentParams, replacePanelParams, selectChat, useAgents } from '../../stores/agentStore'
 import { useSessions } from '../../stores/sessionsStore'
+import { rememberProjectDefault } from '../../stores/settingsStore'
 import { AgentPanelContext } from './agentPanelContext'
 import { BtwCard, type BtwState } from './BtwCard'
 import { ChatActionsContext, type ChatActions } from './chatActions'
@@ -267,11 +269,33 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
     setDirs(liveChat().dirs.filter((d) => d !== dir))
   }
 
+  // Model/effort/mode apply to this chat and become the project's default for new chats.
+  const changeModel = (model: string) =>
+    void window.api
+      .invoke('agent:setModel', panelId, model)
+      .then(() => rememberProjectDefault(params.projectPath, { model }))
+      .catch((err) => notify(errorText(err)))
+  const changeEffort = (effort: EffortLevel | null) =>
+    void window.api
+      .invoke('agent:setEffort', panelId, effort)
+      .then(() => rememberProjectDefault(params.projectPath, { effort }))
+      .catch((err) => notify(errorText(err)))
+  const changeMode = (mode: PermissionMode) =>
+    void window.api
+      .invoke('agent:setMode', panelId, mode)
+      .then(() => rememberProjectDefault(params.projectPath, { permissionMode: mode }))
+      .catch((err) => notify(errorText(err)))
+  const cycleMode = () => changeMode(nextMode(liveChat().permissionMode))
+  /** A bare /model, /effort or /mode reopens the draft with the argument menu. */
+  const askArgument = (name: string) => useAgents.getState().setDraft(panelId, `/${name} `)
+
   const onLocalCommand = (name: LocalCommand, arg: string) => {
     if (name === 'resume') setResumeOpen(true)
     else if (name === 'clear') void restart(base()).catch(fail)
-    else if (name === 'model') document.getElementById(`model-select-${panelId}`)?.focus()
-    else if (name === 'statusline') setStatusConfig(true)
+    else if (name === 'model') {
+      if (!arg) askArgument(name)
+      else changeModel(arg)
+    } else if (name === 'statusline') setStatusConfig(true)
     else if (name === 'context') setContextOpen(true)
     else if (name === 'rewind') openRewind()
     else if (name === 'rename') renameSession(arg)
@@ -280,10 +304,14 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
     else if (name === 'agents') setAgentsOpen(true)
     else if (name === 'add-dir') addDir(arg)
     else if (name === 'effort') {
-      if (!arg) document.getElementById(`effort-select-${panelId}`)?.focus()
-      else if (arg === 'auto' || isEffortLevel(arg))
-        void window.api.invoke('agent:setEffort', panelId, arg === 'auto' ? null : arg).catch((err) => notify(errorText(err)))
+      if (!arg) askArgument(name)
+      else if (arg === 'auto' || isEffortLevel(arg)) changeEffort(arg === 'auto' ? null : arg)
       else notify(`Esforço inválido: ${arg}. Use low, medium, high, xhigh, max ou auto.`)
+    } else if (name === 'mode') {
+      const mode = parseMode(arg)
+      if (!arg) askArgument(name)
+      else if (mode) changeMode(mode)
+      else notify(`Modo inválido: ${arg}. Use auto, manual, accept, plan ou bypass.`)
     }
   }
 
@@ -315,6 +343,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
         onEscape={closeBtw}
         onRewind={openRewind}
         onBackground={background}
+        onCycleMode={cycleMode}
         blocked={pending !== null}
       />
       <StatusLine

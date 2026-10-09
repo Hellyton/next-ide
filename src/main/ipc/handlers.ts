@@ -84,10 +84,21 @@ export function buildHandlers(d: HandlerDeps): Handlers {
     'pty:kill': (panelId) => d.pty.kill(panelId),
     'agent:create': async (panelId, params) => {
       await d.agentReady()
-      // A brand-new panel has no mode of its own: start it in the configured default (auto).
+      // A brand-new panel has no model/effort/mode of its own: start it with what this project last
+      // used, else the configured default mode (auto). A resumed panel keeps its own model/effort.
       const stored = await d.stores.settings.read()
-      const mode = params.permissionMode ?? migrateSettings({ ...DEFAULT_SETTINGS, ...stored, settingsVersion: stored.settingsVersion }).defaultPermissionMode
-      d.agents.create(panelId, { ...params, permissionMode: mode })
+      const project = stored.projectDefaults?.[params.projectPath] ?? {}
+      const fresh = !params.sessionId
+      const mode =
+        params.permissionMode ??
+        project.permissionMode ??
+        migrateSettings({ ...DEFAULT_SETTINGS, ...stored, settingsVersion: stored.settingsVersion }).defaultPermissionMode
+      d.agents.create(panelId, {
+        ...params,
+        ...(fresh && !params.model && project.model ? { model: project.model } : {}),
+        ...(fresh && !params.effort && project.effort ? { effort: project.effort } : {}),
+        permissionMode: mode,
+      })
     },
     'agent:start': async (panelId) => {
       await d.agentReady()

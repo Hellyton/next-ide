@@ -1,8 +1,10 @@
 import { expect, test } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { openAgent } from './helpers'
 
 test('aprova permissão inline e troca modo e modelo', async () => {
-  const { app, page } = await openAgent()
+  const { app, page, userData } = await openAgent()
   const input = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
   await input.fill('teste de permissão')
   await input.press('Enter')
@@ -15,16 +17,29 @@ test('aprova permissão inline e troca modo e modelo', async () => {
   await expect(card).toContainText('Permitido')
   await expect(page.getByTestId('bash-card')).toContainText('removido')
 
-  // New panels open in auto mode.
-  await expect(page.getByRole('combobox', { name: 'Modo de permissão' })).toHaveValue('auto')
-  await page.getByRole('combobox', { name: 'Modo de permissão' }).selectOption('plan')
-  await expect(page.getByRole('combobox', { name: 'Modo de permissão' })).toHaveValue('plan')
+  // New panels open in auto mode; Shift+Tab cycles like the CLI, /mode and /model set it directly.
+  const mode = page.getByTestId('mode-indicator')
+  await expect(mode).toContainText('auto mode on')
+  await input.press('Shift+Tab')
+  await expect(mode).toContainText('manual mode on')
+  await input.press('Shift+Tab')
+  await expect(mode).toContainText('accept edits on')
+  await input.fill('/mode pl')
+  await expect(page.getByRole('option', { name: /mode plan/ })).toBeVisible()
+  await input.press('Enter')
+  await expect(mode).toContainText('plan mode on')
 
-  const model = page.getByRole('combobox', { name: 'Modelo' })
-  // Focus (not click): a click opens the native popup, which can swallow the options update.
-  await model.focus()
-  await expect(model.locator('option', { hasText: 'Fake Haiku' })).toHaveCount(1)
-  await model.selectOption('fake-small')
-  await expect(model).toHaveValue('fake-small')
+  await input.fill('/model ')
+  await expect(page.getByRole('option', { name: /Fake Haiku/ })).toBeVisible()
+  await input.fill('/model fake-small')
+  await input.press('Enter')
+  await expect(page.getByTestId('status-line')).toContainText('fake-small')
+
+  // The project remembers them: a new chat of the same project starts in plan with fake-small.
+  await expect.poll(() => readFileSync(join(userData, 'settings.json'), 'utf8')).toContain('"model": "fake-small"')
+  await page.getByRole('button', { name: /^Abrir Claude em / }).first().click()
+  await expect(page.locator('[data-testid="agent-panel"]')).toHaveCount(2)
+  await expect(page.locator('[data-testid="mode-indicator"]:visible')).toContainText('plan mode on')
+  await expect(page.locator('[data-testid="status-line"]:visible')).toContainText('fake-small')
   await app.close()
 })

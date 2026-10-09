@@ -151,4 +151,6 @@ export const CONTRACT_COMPLETE: [MissingInvoke, MissingEvent] extends [never, ne
 export interface NextIdeApi {
   invoke<K extends InvokeChannel>(channel: K, ...args: InvokeArgs<K>): Promise<InvokeResult<K>>
   on<K extends EventChannel>(channel: K, listener: (...args: EventMap[K]) => void): () => void
+  /** Absolute path of a dropped/picked file; '' when it has none (e.g. a pasted screenshot). */
+  pathForFile(file: File): string
 }

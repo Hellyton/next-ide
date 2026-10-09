@@ -23,7 +23,7 @@ export type FilePanelParams = { type: 'file'; projectPath: string; filePath: str
 export type PanelParams = AgentPanelParams | TerminalPanelParams | FilePanelParams
 export type PanelType = PanelParams['type']
 
-export const STATUS_SEGMENTS = ['project', 'branch', 'model', 'context', 'tokens', 'duration', 'mode'] as const
+export const STATUS_SEGMENTS = ['project', 'branch', 'model', 'effort', 'context', 'tokens', 'duration', 'mode'] as const
 export type StatusSegmentId = (typeof STATUS_SEGMENTS)[number] | 'customScript'
 
 /** Drops ids that are no longer offered (e.g. 'cost', 'state' saved by older versions). */
@@ -32,12 +32,33 @@ export const sanitizeSegments = (ids: readonly string[]): StatusSegmentId[] =>
 
 export const SETTINGS_VERSION = 2
 
+/** Last model/effort/mode chosen in a project's chat: new chats of that project start with it. */
+export type ProjectAgentDefaults = { model?: string; effort?: EffortLevel; permissionMode?: PermissionMode }
+
+/**
+ * Folds a change into a project's defaults. Effort null (auto) clears it; bypass is never
+ * remembered, so a new chat never starts without asking for permission.
+ */
+export function mergeProjectDefaults(
+  current: ProjectAgentDefaults | undefined,
+  patch: { model?: string; effort?: EffortLevel | null; permissionMode?: PermissionMode },
+): ProjectAgentDefaults {
+  const next: ProjectAgentDefaults = { ...current }
+  if (patch.model !== undefined) next.model = patch.model
+  if (patch.effort === null) delete next.effort
+  else if (patch.effort !== undefined) next.effort = patch.effort
+  if (patch.permissionMode !== undefined && patch.permissionMode !== 'bypassPermissions') next.permissionMode = patch.permissionMode
+  return next
+}
+
 export type Settings = {
   /** Bumped when a default changes and older files must be upgraded (see migrateSettings). */
   settingsVersion?: number
   claudePath?: string
   defaultModel?: string
   defaultPermissionMode: PermissionMode
+  /** Keyed by project path. */
+  projectDefaults?: Record<string, ProjectAgentDefaults>
   statusline: { segments: StatusSegmentId[]; customScript: boolean }
   /** Sidebar width in px (drag handle between the sidebar and the dock). */
   sidebarWidth?: number
@@ -50,7 +71,7 @@ export const DEFAULT_SETTINGS: Settings = {
   settingsVersion: SETTINGS_VERSION,
   defaultPermissionMode: 'auto',
   statusline: {
-    segments: ['project', 'branch', 'model', 'context', 'duration'],
+    segments: ['project', 'branch', 'model', 'effort', 'context', 'duration'],
     customScript: false,
   },
   theme: 'dark',

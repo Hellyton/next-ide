@@ -58,6 +58,7 @@ export function StatusLine({ panelId, projectPath, chat, configOpen, onConfigClo
     ...(chat.version ? { version: chat.version } : {}),
     rateLimits: usage?.rateLimits ?? rateLimits,
     ...(chat.permissionMode ? { mode: chat.permissionMode } : {}),
+    ...(chat.effort ? { effort: chat.effort } : {}),
   }
   const segments = buildSegments(settings.statusline.segments, ctx)
 
@@ -72,10 +73,10 @@ export function StatusLine({ panelId, projectPath, chat, configOpen, onConfigClo
       .invoke('statusline:run', buildStatusLineInput({ ...ctx, cwd: projectPath, ...(chat.sessionId ? { sessionId: chat.sessionId } : {}) }))
       .then(setScriptOut)
       .catch(() => setScriptOut(null))
-    // Re-run after each turn (stats), on model/mode/version change, new rate limits, the refresh
+    // Re-run after each turn (stats), on model/mode/effort/version change, new rate limits, the refresh
     // tick, or when the toggle flips.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.statusline.customScript, chat.stats, chat.model, chat.permissionMode, chat.version, rateLimits, usage, tick])
+  }, [settings.statusline.customScript, chat.stats, chat.model, chat.permissionMode, chat.effort, chat.version, rateLimits, usage, tick])
 
   const spans = useMemo(() => (scriptOut ? ansiToSpans(scriptOut) : []), [scriptOut])
   // Like the CLI: when the user's script prints something, it is the whole status line.

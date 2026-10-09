@@ -26,6 +26,8 @@ describe('buildSegments', () => {
     expect(buildSegments(['project', 'branch', 'model', 'context', 'duration', 'mode', 'tokens'], ctx).map((s) => s.text)).toEqual([
       'api', 'dev', 'opus', 'contexto 29%', '1m13s', 'plan mode on', '288k tokens',
     ])
+    expect(buildSegments(['effort'], ctx).map((s) => s.text)).toEqual(['esforço auto'])
+    expect(buildSegments(['effort'], { ...ctx, effort: 'xhigh' }).map((s) => s.text)).toEqual(['esforço muito alto'])
     expect(buildSegments(['branch', 'context', 'customScript'], { ...ctx, branch: null, contextPct: undefined }).map((s) => s.id)).toEqual([])
   })
 })
@@ -54,6 +56,7 @@ describe('buildStatusLineInput', () => {
         linesAdded: 12,
         linesRemoved: 3,
         version: '2.1.0',
+        effort: 'low',
         rateLimits: { five_hour: { used_percentage: 97, resets_at: 1_900_000_000 } },
         sessionId: 's1',
         cwd: '/g/api',
@@ -64,6 +67,7 @@ describe('buildStatusLineInput', () => {
       model: { id: 'claude-opus-5[1m]', display_name: 'Opus 5 (1M context)' },
       workspace: { current_dir: '/g/api', project_dir: '/g/api' },
       version: '2.1.0',
+      effort: { level: 'low' },
       cost: { total_cost_usd: 0.4213, total_duration_ms: 3_600_000, total_lines_added: 12, total_lines_removed: 3 },
       context_window: { context_window_size: 1_000_000, used_percentage: 29, total_input_tokens: 452_000 },
       exceeds_200k_tokens: true, // the 1M window, like the CLI's "200k+" flag

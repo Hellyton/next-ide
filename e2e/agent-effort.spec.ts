@@ -3,22 +3,29 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { openAgent } from './helpers'
 
-test('seletor de esforço e /effort persistem no layout', async () => {
+test('/effort muda a statusline e persiste no layout', async () => {
   const { app, page, userData } = await openAgent()
-  const select = page.getByRole('combobox', { name: 'Esforço' })
-  await expect(select).toHaveValue('')
-  await select.selectOption('high')
-  await expect(select).toHaveValue('high')
+  const status = page.getByTestId('status-line')
+  await expect(status).toContainText('esforço auto')
+  const input = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
+
+  // Bare /effort reopens the input with the argument menu.
+  await input.fill('/effort')
+  await input.press('Enter')
+  await expect(input).toHaveValue('/effort ')
+  await expect(page.getByRole('option', { name: /effort high/ })).toBeVisible()
+  await input.fill('/effort high')
+  await input.press('Enter')
+  await expect(status).toContainText('esforço alto')
 
   // /clear tears down and re-creates the session: the CLI keeps the effort level across it.
-  const input = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
   await input.fill('/clear')
   await input.press('Enter')
-  await expect(select).toHaveValue('high')
+  await expect(status).toContainText('esforço alto')
 
   await input.fill('/effort max')
   await input.press('Enter')
-  await expect(select).toHaveValue('max')
+  await expect(status).toContainText('esforço máximo')
 
   await input.fill('/effort turbo')
   await input.press('Enter')

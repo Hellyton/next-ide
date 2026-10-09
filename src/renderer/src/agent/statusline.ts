@@ -1,5 +1,5 @@
 import type { RateLimits, StatusLineInput } from '@shared/agent'
-import type { PermissionMode, StatusSegmentId } from '@shared/models'
+import type { EffortLevel, PermissionMode, StatusSegmentId } from '@shared/models'
 import type { ChatItem } from './chatReducer'
 import { MODE_OPTIONS } from './permissions'
 import { toolDiff } from './toolView'
@@ -23,18 +23,23 @@ export type StatusContext = {
   version?: string
   rateLimits?: RateLimits
   mode?: PermissionMode
+  /** null/absent = automatic. */
+  effort?: EffortLevel | null
 }
 
 export const SEGMENT_LABELS: Record<StatusSegmentId, string> = {
   project: 'projeto',
   branch: 'branch',
   model: 'modelo',
+  effort: 'esforço',
   context: 'contexto %',
   tokens: 'tokens',
   duration: 'duração',
   mode: 'modo',
   customScript: 'script do ~/.claude (statusLine)',
 }
+
+const EFFORT_LABEL: Record<EffortLevel, string> = { low: 'baixo', medium: 'médio', high: 'alto', xhigh: 'muito alto', max: 'máximo' }
 
 export const formatTokens = (n: number): string => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n))
 export function formatDuration(ms: number): string {
@@ -81,6 +86,8 @@ export function buildSegments(ids: StatusSegmentId[], ctx: StatusContext): Array
         return ctx.branch
       case 'model':
         return ctx.model ?? null
+      case 'effort':
+        return `esforço ${ctx.effort ? EFFORT_LABEL[ctx.effort] : 'auto'}`
       case 'context':
         return ctx.contextPct === undefined ? null : `contexto ${ctx.contextPct}%`
       case 'tokens':
@@ -108,6 +115,8 @@ export function buildStatusLineInput(ctx: StatusContext & { sessionId?: string; 
     model: { id: ctx.model ?? '', display_name: ctx.model ? modelLabel(ctx.model) : '' },
     workspace: { current_dir: ctx.cwd, project_dir: ctx.cwd },
     ...(ctx.version ? { version: ctx.version } : {}),
+    // Absent (auto): the main process falls back to ~/.claude/settings.json, like the CLI.
+    ...(ctx.effort ? { effort: { level: ctx.effort } } : {}),
     cost: {
       total_cost_usd: ctx.costUsd,
       total_duration_ms: ctx.sessionDurationMs ?? ctx.durationMs ?? 0,

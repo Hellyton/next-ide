@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MODE_OPTIONS, decisionLabel, permissionSummary } from '@renderer/agent/permissions'
+import { MODE_OPTIONS, decisionLabel, nextMode, parseMode, permissionSummary } from '@renderer/agent/permissions'
 
 describe('permissions view helpers', () => {
   it('summarizes the most relevant input field', () => {
@@ -15,6 +15,24 @@ describe('permissions view helpers', () => {
     expect(decisionLabel('deny')).toBe('Negado')
     expect(decisionLabel('cancelled')).toBe('Cancelado')
     expect(MODE_OPTIONS.map((m) => m.value)).toEqual(['auto', 'default', 'acceptEdits', 'plan', 'bypassPermissions'])
-    expect(MODE_OPTIONS.map((m) => m.label)).toEqual(['auto mode on', 'manual mode on', 'accept edit on', 'plan mode on', 'bypass mode on'])
+    expect(MODE_OPTIONS.map((m) => m.label)).toEqual(['auto mode on', 'manual mode on', 'accept edits on', 'plan mode on', 'bypass permissions on'])
+  })
+
+  it('cycles modes on shift+tab like the CLI, never into bypass', () => {
+    expect(nextMode('default')).toBe('acceptEdits')
+    expect(nextMode('acceptEdits')).toBe('plan')
+    expect(nextMode('plan')).toBe('auto')
+    expect(nextMode('auto')).toBe('default')
+    expect(nextMode('bypassPermissions')).toBe('default')
+    expect(nextMode(undefined)).toBe('acceptEdits')
+  })
+
+  it('parses /mode arguments by alias or SDK name', () => {
+    expect(parseMode('manual')).toBe('default')
+    expect(parseMode('accept')).toBe('acceptEdits')
+    expect(parseMode('acceptEdits')).toBe('acceptEdits')
+    expect(parseMode(' PLAN ')).toBe('plan')
+    expect(parseMode('bypass')).toBe('bypassPermissions')
+    expect(parseMode('turbo')).toBeNull()
   })
 })

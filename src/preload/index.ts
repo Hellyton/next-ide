@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 import { EVENT_CHANNELS, INVOKE_CHANNELS, type NextIdeApi } from '@shared/ipc-contract'
 
 const invokeAllowed = new Set<string>(INVOKE_CHANNELS)
@@ -18,6 +18,14 @@ const api: NextIdeApi = {
     const wrapped = (_e: IpcRendererEvent, ...args: unknown[]) => (listener as (...a: unknown[]) => void)(...args)
     ipcRenderer.on(channel, wrapped)
     return () => ipcRenderer.removeListener(channel, wrapped)
+  },
+  // Dropped/picked files no longer carry `.path` (Electron 32+): this is the supported way.
+  pathForFile: (file) => {
+    try {
+      return webUtils.getPathForFile(file)
+    } catch {
+      return ''
+    }
   },
 }
 

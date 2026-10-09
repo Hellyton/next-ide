@@ -14,10 +14,6 @@ export function stripDataUrl(dataUrl: string): string {
   return comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
 }
 
-export function pickImageFiles(files: ArrayLike<File> | null | undefined): File[] {
-  return files ? Array.from(files).filter((f) => f.type.startsWith('image/')) : []
-}
-
 export function canSend(input: { text: string; images: number; reading: number }): boolean {
   return input.reading === 0 && (input.text.trim().length > 0 || input.images > 0)
 }
