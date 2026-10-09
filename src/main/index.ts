@@ -17,6 +17,7 @@ import { FilesService } from './fs/FilesService'
 import { validRoots } from './fs/validRoots'
 import { WatcherManager, type WatchFn } from './fs/WatcherManager'
 import { gitInfo } from './git/gitInfo'
+import { GitService } from './git/GitService'
 import { buildHandlers } from './ipc/handlers'
 import { registerHandlers } from './ipc/register'
 import { installMenu } from './menu'
@@ -50,6 +51,11 @@ let roots: string[] = []
 let rootsReady: Promise<void> = Promise.resolve()
 
 const files = new FilesService(async () => {
+  await rootsReady
+  return roots
+})
+
+const git = new GitService(async () => {
   await rootsReady
   return roots
 })
@@ -214,6 +220,7 @@ registerHandlers(
     runStatusLine: (input) =>
       runStatusLine(input, process.env.NEXT_IDE_CLAUDE_SETTINGS ? { settingsPath: process.env.NEXT_IDE_CLAUDE_SETTINGS } : {}),
     files,
+    git,
     onWorkspaces: (ws) => setProjects(projectPaths(ws)),
     notificationsEnabled: () => notificationsEnabled,
     windowTransparency: () => windowTransparency,

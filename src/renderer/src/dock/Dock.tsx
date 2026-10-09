@@ -9,6 +9,7 @@ import { useCallback, type FunctionComponent } from 'react'
 import type { PanelParams } from '@shared/models'
 import { AgentPanel } from '../panels/agent/AgentPanel'
 import { FilePanel } from '../panels/file/FilePanel'
+import { GitPanel } from '../panels/git/GitPanel'
 import { TerminalPanel } from '../panels/terminal/TerminalPanel'
 import { disposeTerminal } from '../panels/terminal/terminalRegistry'
 import { useAgents } from '../stores/agentStore'
@@ -22,6 +23,7 @@ const components = {
   agent: AgentPanel,
   terminal: TerminalPanel,
   file: FilePanel,
+  git: GitPanel,
 } as unknown as Record<string, FunctionComponent<IDockviewPanelProps>>
 
 type RemovedListener = (panelId: string, params: PanelParams | undefined) => void
@@ -59,7 +61,7 @@ export function Dock() {
     useDock.getState().setApi(api)
     api.onDidAddPanel((panel) => {
       const params = panel.params as PanelParams | undefined
-      if (!params || params.type === 'file') return
+      if (!params || params.type === 'file' || params.type === 'git') return
       useSessions.getState().add({
         panelId: panel.id,
         type: params.type,

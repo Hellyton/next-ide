@@ -11,6 +11,7 @@ import { forkPointBefore } from '../agent/rewind'
 import type { SessionStoreApi } from '../agent/sdk'
 import type { DictationManager } from '../dictation/DictationManager'
 import type { FilesService } from '../fs/FilesService'
+import type { GitService } from '../git/GitService'
 import type { PtyManager } from '../pty/PtyManager'
 import { parseCodeWorkspace } from '../store/codeWorkspace'
 import type { Stores } from '../store/stores'
@@ -27,6 +28,7 @@ export type HandlerDeps = {
   agentReady: () => Promise<void>
   runStatusLine: (input: StatusLineInput) => Promise<string | null>
   files: Pick<FilesService, 'list' | 'read' | 'write' | 'index' | 'status'>
+  git: Pick<GitService, 'overview' | 'branches' | 'checkout' | 'diff' | 'commit' | 'sync'>
   onWorkspaces: (workspaces: Workspace[]) => void
   /** Main owns the notifications toggle (menu + settings), so `settings:save` never lets a stale renderer copy clobber it. */
   notificationsEnabled: () => boolean
@@ -81,6 +83,12 @@ export function buildHandlers(d: HandlerDeps): Handlers {
       }
     },
     'git:status': (projectPath) => d.files.status(projectPath),
+    'git:overview': (projectPath) => d.git.overview(projectPath),
+    'git:branches': (projectPath) => d.git.branches(projectPath),
+    'git:checkout': (projectPath, target) => d.git.checkout(projectPath, target),
+    'git:diff': (projectPath, path) => d.git.diff(projectPath, path),
+    'git:commit': (projectPath, paths, summary, description) => d.git.commit(projectPath, paths, summary, description),
+    'git:sync': (projectPath, action) => d.git.sync(projectPath, action),
     'pty:create': (panelId, cwd, cols, rows) => d.pty.create(panelId, cwd, cols, rows),
     'pty:write': (panelId, data) => d.pty.write(panelId, data),
     'pty:resize': (panelId, cols, rows) => d.pty.resize(panelId, cols, rows),

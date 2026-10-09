@@ -20,7 +20,8 @@ export type AgentPanelParams = {
 }
 export type TerminalPanelParams = { type: 'terminal'; projectPath: string; initialCommand?: string }
 export type FilePanelParams = { type: 'file'; projectPath: string; filePath: string; line?: number }
-export type PanelParams = AgentPanelParams | TerminalPanelParams | FilePanelParams
+export type GitPanelParams = { type: 'git'; projectPath: string }
+export type PanelParams = AgentPanelParams | TerminalPanelParams | FilePanelParams | GitPanelParams
 export type PanelType = PanelParams['type']
 
 export const STATUS_SEGMENTS = ['project', 'branch', 'model', 'effort', 'context', 'tokens', 'duration', 'mode'] as const

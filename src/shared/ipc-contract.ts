@@ -16,6 +16,7 @@ import type {
 } from './agent'
 import type { DictationEvent } from './dictation'
 import type { FileContent, FsEntry, GitFileStatus } from './files'
+import type { GitBranches, GitCheckout, GitOverview, GitSyncAction } from './git'
 import type { AgentPanelParams, EffortLevel, GitInfo, LayoutState, PermissionMode, Settings, Workspace } from './models'
 
 export type InvokeMap = {
@@ -33,6 +34,12 @@ export type InvokeMap = {
   'fs:index': { args: [projectPath: string]; result: string[] }
   'fs:write': { args: [path: string, content: string]; result: { ok: true } | { ok: false; message: string } }
   'git:status': { args: [projectPath: string]; result: Record<string, GitFileStatus> }
+  'git:overview': { args: [projectPath: string]; result: GitOverview }
+  'git:branches': { args: [projectPath: string]; result: GitBranches }
+  'git:checkout': { args: [projectPath: string, target: GitCheckout]; result: Outcome<null> }
+  'git:diff': { args: [projectPath: string, path: string]; result: Outcome<string> }
+  'git:commit': { args: [projectPath: string, paths: string[], summary: string, description: string]; result: Outcome<null> }
+  'git:sync': { args: [projectPath: string, action: GitSyncAction]; result: Outcome<null> }
   'pty:create': { args: [panelId: string, cwd: string, cols: number, rows: number]; result: void }
   'pty:write': { args: [panelId: string, data: string]; result: void }
   'pty:resize': { args: [panelId: string, cols: number, rows: number]; result: void }
@@ -106,6 +113,12 @@ export const INVOKE_CHANNELS = [
   'fs:index',
   'fs:write',
   'git:status',
+  'git:overview',
+  'git:branches',
+  'git:checkout',
+  'git:diff',
+  'git:commit',
+  'git:sync',
   'pty:create',
   'pty:write',
   'pty:resize',

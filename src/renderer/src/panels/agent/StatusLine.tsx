@@ -7,7 +7,9 @@ import { ansiToSpans } from '../../agent/ansi'
 import { SEGMENT_LABELS, buildSegments, buildStatusLineInput, lineStats, type StatusContext } from '../../agent/statusline'
 import { useAgents } from '../../stores/agentStore'
 import { useSettings } from '../../stores/settingsStore'
-import { useGitBranch } from '../../sidebar/useGitBranch'
+import { useDock } from '../../dock/dockStore'
+import { BranchPicker } from '../../git/BranchPicker'
+import { useGitOverview } from '../../git/useGitOverview'
 
 type Props = { panelId: string; projectPath: string; chat: ChatState; configOpen: boolean; onConfigClose(): void; onConfigOpen(): void }
 
@@ -16,7 +18,9 @@ const SCRIPT_REFRESH_MS = 60_000
 
 export function StatusLine({ panelId, projectPath, chat, configOpen, onConfigClose, onConfigOpen }: Props) {
   const settings = useSettings((s) => s.settings)
-  const branch = useGitBranch(projectPath)
+  const { overview, refresh } = useGitOverview(projectPath)
+  const branch = overview.branch
+  const [picking, setPicking] = useState(false)
   const rateLimits = useAgents((s) => s.rateLimits)
   const [scriptOut, setScriptOut] = useState<string | null>(null)
   const [usage, setUsage] = useState<SessionUsage | null>(null)
@@ -60,7 +64,8 @@ export function StatusLine({ panelId, projectPath, chat, configOpen, onConfigClo
     ...(chat.permissionMode ? { mode: chat.permissionMode } : {}),
     ...(chat.effort ? { effort: chat.effort } : {}),
   }
-  const segments = buildSegments(settings.statusline.segments, ctx)
+  // The branch has its own clickable chip, so it is not repeated among the text segments.
+  const segments = buildSegments(settings.statusline.segments, { ...ctx, branch: null })
 
   useEffect(() => {
     const timer = setInterval(() => setTick((t) => t + 1), SCRIPT_REFRESH_MS)
@@ -91,6 +96,18 @@ export function StatusLine({ panelId, projectPath, chat, configOpen, onConfigClo
     <div className="relative border-t border-neutral-900 px-3 py-1 text-[11px] text-neutral-500" data-testid="status-line">
       {/* Wraps instead of truncating: narrow split panes still show everything. */}
       <div className="flex items-start gap-2">
+        {branch && (
+          <span className="flex shrink-0 items-center gap-1">
+            <button data-testid="status-branch" title="Trocar de branch" className="rounded px-1 text-neutral-300 hover:bg-neutral-800" onClick={() => setPicking((p) => !p)}>
+              ⎇ {branch}
+            </button>
+            <button data-testid="status-git" title="Abrir alterações (commit, push)" className="rounded px-1 hover:bg-neutral-800" onClick={() => useDock.getState().openGit(projectPath)}>
+              {overview.changes.length > 0 ? <span className="text-amber-400">●{overview.changes.length}</span> : <span>✓</span>}
+              {overview.behind > 0 && <span className="ml-1 text-sky-400">↓{overview.behind}</span>}
+              {overview.ahead > 0 && <span className="ml-1 text-orange-400">↑{overview.ahead}</span>}
+            </button>
+          </span>
+        )}
         <div className="min-w-0 flex-1">
           {showScript ? (
             <div className="font-mono break-words whitespace-pre-wrap">
@@ -115,6 +132,7 @@ export function StatusLine({ panelId, projectPath, chat, configOpen, onConfigClo
           ⚙
         </button>
       </div>
+      {picking && <BranchPicker projectPath={projectPath} onClose={() => setPicking(false)} onSwitched={refresh} className="absolute bottom-full left-2 mb-1" />}
       {configOpen && (
         <div role="dialog" aria-label="Configurar statusline" className="absolute right-2 bottom-full z-10 mb-1 w-64 rounded border border-neutral-700 bg-neutral-900 p-3 text-xs text-neutral-300">
           {STATUS_SEGMENTS.map((id) => (

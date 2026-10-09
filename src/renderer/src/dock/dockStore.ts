@@ -15,6 +15,8 @@ type DockState = {
   open(params: PanelParams): string | null
   openBeside(referencePanelId: string, params: PanelParams): string | null
   openFile(params: FilePanelParams): void
+  /** One Git panel per project: focuses it when already open. */
+  openGit(projectPath: string): void
   noteActive(panelId: string): void
   split(direction: 'right' | 'below'): void
   requestClose(panelId: string): void
@@ -55,6 +57,14 @@ export const useDock = create<DockState>()((set, get) => ({
     }
     existing.api.updateParameters(replacementPatch(existing.params, params))
     existing.api.setActive()
+  },
+  openGit: (projectPath) => {
+    const existing = get().api?.panels.find((p) => {
+      const q = p.params as PanelParams | undefined
+      return q?.type === 'git' && q.projectPath === projectPath
+    })
+    if (existing) existing.api.setActive()
+    else get().open({ type: 'git', projectPath })
   },
   noteActive: (panelId) => {
     const params = get().api?.getPanel(panelId)?.params as PanelParams | undefined

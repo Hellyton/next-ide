@@ -4,6 +4,7 @@ import { basename } from '@shared/workspaces'
 
 export function panelTitle(p: PanelParams): string {
   if (p.type === 'file') return basename(p.filePath)
+  if (p.type === 'git') return `${basename(p.projectPath)} · git`
   if (p.type === 'agent') return `${p.title ?? basename(p.projectPath)} · claude`
   return `${basename(p.projectPath)} · zsh`
 }

@@ -32,7 +32,16 @@ export function ProjectRow({ project, onRemove }: { project: Project; onRemove: 
         <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: projectColor(project.path) }} />
         <span className="min-w-0 flex-1 truncate">
           {project.name}
-          {branch && <span className="ml-1 text-xs text-neutral-500">({branch})</span>}
+          {branch && (
+            <button
+              aria-label={`Abrir Git de ${project.name}`}
+              title="Abrir alterações (commit, push)"
+              className="ml-1 rounded text-xs text-neutral-500 hover:text-neutral-200"
+              onClick={() => useDock.getState().openGit(project.path)}
+            >
+              ({branch})
+            </button>
+          )}
         </span>
         {count > 0 && <span className="text-[10px] text-blue-400">●{count}</span>}
         <button
