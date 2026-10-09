@@ -65,7 +65,26 @@ export type Settings = {
   theme: 'dark' | 'light' | 'system'
   /** macOS notifications when a panel finishes, asks for permission or fails while the window is in the background. Default on. */
   notifications?: boolean
+  /** Window transparency in percent (0 = opaque), picked in the Janela menu. */
+  windowTransparency?: number
+  /** Blur of whatever shows through the window, in percent (0 = sharp); only visible with some transparency. */
+  windowBlur?: number
 }
+
+export const TRANSPARENCY_STEPS = [0, 5, 10, 15, 20, 30, 40, 50] as const
+/** Past this the window is too faint to find and turn back. */
+export const MAX_TRANSPARENCY = 70
+
+export const BLUR_STEPS = [0, 10, 25, 50, 75, 100] as const
+/** Window-server blur radius at 100%. */
+export const MAX_BLUR_RADIUS = 60
+
+export const clampBlur = (value: unknown): number =>
+  typeof value === 'number' && Number.isFinite(value) ? Math.min(100, Math.max(0, Math.round(value))) : 0
+
+/** Anything that isn't a number (missing, hand-edited file) means opaque. */
+export const clampTransparency = (value: unknown): number =>
+  typeof value === 'number' && Number.isFinite(value) ? Math.min(MAX_TRANSPARENCY, Math.max(0, Math.round(value))) : 0
 
 export const DEFAULT_SETTINGS: Settings = {
   settingsVersion: SETTINGS_VERSION,

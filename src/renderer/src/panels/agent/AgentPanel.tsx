@@ -324,7 +324,7 @@ export function AgentPanel({ api, params }: IDockviewPanelProps<AgentPanelParams
   }
 
   return (
-    <div className="relative flex h-full flex-col bg-neutral-950" data-testid="agent-panel">
+    <div className="relative flex h-full flex-col" data-testid="agent-panel">
       <AgentPanelContext.Provider value={panelCtx}>
         <ChatActionsContext.Provider value={actions}>
           <ChatView items={chat.items} panelId={panelId} running={chat.state === 'running'} />

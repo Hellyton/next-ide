@@ -78,6 +78,8 @@ export type EventMap = {
   'fs:changed': [projectPath: string, paths: string[]]
   'git:changed': [projectPath: string]
   'dictation:event': [panelId: string, event: DictationEvent]
+  /** The Janela > Transparência menu changed (percent, 0 = opaque). */
+  'window:transparency': [percent: number]
 }
 
 export type InvokeChannel = keyof InvokeMap
@@ -141,7 +143,7 @@ export const INVOKE_CHANNELS = [
   'statusline:run',
 ] as const satisfies readonly InvokeChannel[]
 
-export const EVENT_CHANNELS = ['pty:data', 'pty:exit', 'agent:event', 'agent:focus', 'fs:changed', 'git:changed', 'dictation:event'] as const satisfies readonly EventChannel[]
+export const EVENT_CHANNELS = ['pty:data', 'pty:exit', 'agent:event', 'agent:focus', 'fs:changed', 'git:changed', 'dictation:event', 'window:transparency'] as const satisfies readonly EventChannel[]
 
 // Compile-time guard: every channel in the maps must be listed above.
 type MissingInvoke = Exclude<InvokeChannel, (typeof INVOKE_CHANNELS)[number]>

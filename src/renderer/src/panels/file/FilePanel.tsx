@@ -150,7 +150,7 @@ export function FilePanel({ params }: IDockviewPanelProps<FilePanelParams>) {
 
   return (
     <div
-      className="flex h-full flex-col bg-neutral-950"
+      className="flex h-full flex-col"
       data-testid="file-panel"
       onKeyDownCapture={(e) => {
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's' && editing) {

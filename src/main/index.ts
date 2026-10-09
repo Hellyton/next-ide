@@ -4,6 +4,7 @@ import { existsSync, watch } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { basename, delimiter, join } from 'node:path'
 import type { EventChannel, EventMap } from '@shared/ipc-contract'
+import { clampBlur, clampTransparency, type Settings } from '@shared/models'
 import { projectPaths } from '@shared/workspaces'
 import { AgentManager } from './agent/AgentManager'
 import type { QueryFn } from './agent/AgentSession'
@@ -24,6 +25,7 @@ import { PtyManager } from './pty/PtyManager'
 import { createQuitGuard } from './quitGuard'
 import { shellEnv } from './pty/shellEnv'
 import { spawnShell } from './pty/spawnShell'
+import { setWindowBlur } from './windowBlur'
 import { runStatusLine } from './statusline/runStatusLine'
 import { createStores } from './store/stores'
 
@@ -97,6 +99,8 @@ const requireSdk = (): Sdk => {
 }
 
 let notificationsEnabled = true
+let windowTransparency = 0
+let windowBlur = 0
 // Serializes the menu toggle's read-modify-write of settings.json so rapid clicks can't race each
 // other (a `read()` started before an earlier toggle's `writeNow()` lands would otherwise clobber it).
 let settingsWriteChain: Promise<unknown> = Promise.resolve()
@@ -212,6 +216,8 @@ registerHandlers(
     files,
     onWorkspaces: (ws) => setProjects(projectPaths(ws)),
     notificationsEnabled: () => notificationsEnabled,
+    windowTransparency: () => windowTransparency,
+    windowBlur: () => windowBlur,
     dictation,
   }),
 )
@@ -239,7 +245,10 @@ function createWindow(): BrowserWindow {
     width: 1600,
     height: 1000,
     show: false,
-    backgroundColor: '#0a0a0a',
+    // See-through from the start: transparency is the renderer's surface alpha (text stays solid) and
+    // a window can't become transparent later.
+    transparent: true,
+    backgroundColor: '#00000000',
     titleBarStyle: 'hiddenInset',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -248,6 +257,7 @@ function createWindow(): BrowserWindow {
       sandbox: true,
     },
   })
+  void setWindowBlur(win, windowBlur)
   win.once('ready-to-show', () => win.show())
   // Closing the only window quits the app (see window-all-closed); confirm first if agents are busy.
   win.on('close', (event) => {
@@ -282,19 +292,38 @@ void app.whenReady().then(async () => {
   let settingsNotifications: boolean | undefined
   try {
     const settings: unknown = await stores.settings.read()
-    if (settings && typeof settings === 'object') settingsNotifications = (settings as { notifications?: boolean }).notifications
+    if (settings && typeof settings === 'object') {
+      settingsNotifications = (settings as { notifications?: boolean }).notifications
+      windowTransparency = clampTransparency((settings as { windowTransparency?: unknown }).windowTransparency)
+      windowBlur = clampBlur((settings as { windowBlur?: unknown }).windowBlur)
+    }
   } catch (err) {
     console.error('[next-ide] failed to read settings at startup', err)
   }
   notificationsEnabled = settingsNotifications !== false
+  const persist = (patch: Partial<Settings>) => {
+    settingsWriteChain = settingsWriteChain
+      .then(() => stores.settings.read())
+      .then((s) => stores.settings.writeNow({ ...s, ...patch }))
+      .catch((err) => console.error('[next-ide] failed to persist menu setting', err))
+  }
   installMenu({
     notifications: notificationsEnabled,
     onToggleNotifications: (enabled) => {
       notificationsEnabled = enabled
-      settingsWriteChain = settingsWriteChain
-        .then(() => stores.settings.read())
-        .then((s) => stores.settings.writeNow({ ...s, notifications: enabled }))
-        .catch((err) => console.error('[next-ide] failed to persist notifications setting', err))
+      persist({ notifications: enabled })
+    },
+    transparency: windowTransparency,
+    onTransparency: (percent) => {
+      windowTransparency = percent
+      send('window:transparency', percent)
+      persist({ windowTransparency: percent })
+    },
+    blur: windowBlur,
+    onBlur: (percent) => {
+      windowBlur = percent
+      if (mainWindow && !mainWindow.isDestroyed()) void setWindowBlur(mainWindow, percent)
+      persist({ windowBlur: percent })
     },
   })
   mainWindow = createWindow()

@@ -1,6 +1,14 @@
 import { Menu, type MenuItemConstructorOptions } from 'electron'
+import { BLUR_STEPS, TRANSPARENCY_STEPS } from '@shared/models'
 
-export function installMenu(opts: { notifications: boolean; onToggleNotifications(enabled: boolean): void }): void {
+export function installMenu(opts: {
+  notifications: boolean
+  onToggleNotifications(enabled: boolean): void
+  transparency: number
+  onTransparency(percent: number): void
+  blur: number
+  onBlur(percent: number): void
+}): void {
   const template: MenuItemConstructorOptions[] = [
     { role: 'appMenu' },
     { role: 'editMenu' },
@@ -28,6 +36,24 @@ export function installMenu(opts: { notifications: boolean; onToggleNotification
           type: 'checkbox',
           checked: opts.notifications,
           click: (item) => opts.onToggleNotifications(item.checked),
+        },
+        {
+          label: 'Transparência',
+          submenu: TRANSPARENCY_STEPS.map((percent) => ({
+            label: percent === 0 ? 'Nenhuma' : `${percent}%`,
+            type: 'radio' as const,
+            checked: percent === opts.transparency,
+            click: () => opts.onTransparency(percent),
+          })),
+        },
+        {
+          label: 'Desfoque do fundo',
+          submenu: BLUR_STEPS.map((percent) => ({
+            label: percent === 0 ? 'Nenhum' : `${percent}%`,
+            type: 'radio' as const,
+            checked: percent === opts.blur,
+            click: () => opts.onBlur(percent),
+          })),
         },
         { type: 'separator' },
         { role: 'front' },

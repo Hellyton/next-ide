@@ -30,6 +30,8 @@ export type HandlerDeps = {
   onWorkspaces: (workspaces: Workspace[]) => void
   /** Main owns the notifications toggle (menu + settings), so `settings:save` never lets a stale renderer copy clobber it. */
   notificationsEnabled: () => boolean
+  windowTransparency: () => number
+  windowBlur: () => number
   dictation: Pick<DictationManager, 'start' | 'stop'>
 }
 
@@ -53,10 +55,11 @@ export function buildHandlers(d: HandlerDeps): Handlers {
       if (settings.settingsVersion !== stored.settingsVersion) await d.stores.settings.writeNow(settings)
       return settings
     },
-    // `notifications` is main's, not the renderer's: the renderer caches its whole Settings snapshot once
-    // and re-sends it on every unrelated change (e.g. a sidebar resize), which would otherwise overwrite a
-    // menu toggle made after that snapshot was taken.
-    'settings:save': (settings) => d.stores.settings.writeNow({ ...settings, notifications: d.notificationsEnabled() }),
+    // `notifications`, `windowTransparency` and `windowBlur` are main's, not the renderer's: the renderer caches its whole
+    // Settings snapshot once and re-sends it on every unrelated change (e.g. a sidebar resize), which would
+    // otherwise overwrite a menu choice made after that snapshot was taken.
+    'settings:save': (settings) =>
+      d.stores.settings.writeNow({ ...settings, notifications: d.notificationsEnabled(), windowTransparency: d.windowTransparency(), windowBlur: d.windowBlur() }),
     'layout:get': async () => sanitizeLayout(await d.stores.layout.read()),
     'layout:save': (layout) => d.stores.layout.schedule(layout),
     'fs:pickFolder': () => d.pickFolders(),

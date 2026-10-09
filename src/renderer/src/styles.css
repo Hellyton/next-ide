@@ -67,8 +67,24 @@ body,
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-body {
+:root {
+  /* 1 - transparency; set from the Janela > Transparência menu (see App.tsx). */
+  --surface-alpha: 1;
+}
+/* The one layer that paints the app's base colour: everything above it is either transparent or a solid widget. */
+.app-surface {
+  background: rgb(10 10 10 / var(--surface-alpha));
+}
+:root .dockview-theme-dark {
+  --dv-group-view-background-color: transparent;
+}
+/* Floating groups sit over other panels, so they keep a solid base. */
+.dv-resize-container {
   background: #0a0a0a;
+}
+
+body {
+  background: transparent;
   color: #e5e5e5;
   font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;

@@ -29,7 +29,9 @@ export function attachTerminal(panelId: string, cwd: string, container: HTMLElem
     fontSize: 13,
     cursorBlink: true,
     scrollback: 10_000,
-    theme: { background: '#0a0a0a' },
+    // The app surface behind shows through (it carries the window transparency).
+    allowTransparency: true,
+    theme: { background: '#00000000' },
     allowProposedApi: true,
   })
   const fitAddon = new FitAddon()

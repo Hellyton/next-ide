@@ -38,6 +38,8 @@ function deps(over: Partial<HandlerDeps> = {}): HandlerDeps & { ptyCalls: unknow
     },
     onWorkspaces: () => undefined,
     notificationsEnabled: () => true,
+    windowTransparency: () => 0,
+    windowBlur: () => 0,
     dictation: {
       start: (id) => {
         dictationCalls.push(`start:${id}`)
@@ -66,6 +68,13 @@ describe('buildHandlers (settings)', () => {
     const { notifications: _drop, ...withoutNotifications } = { ...DEFAULT_SETTINGS, notifications: true }
     await h['settings:save'](withoutNotifications)
     expect((await d.stores.settings.read()).notifications).toBe(false)
+  })
+
+  it('settings:save always persists the window appearance from the dependencies, never the payload', async () => {
+    const d = deps({ windowTransparency: () => 20, windowBlur: () => 50 })
+    await buildHandlers(d)['settings:save']({ ...DEFAULT_SETTINGS, windowTransparency: 50, windowBlur: 0 })
+    const saved = await d.stores.settings.read()
+    expect([saved.windowTransparency, saved.windowBlur]).toEqual([20, 50])
   })
 })
 

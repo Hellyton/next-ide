@@ -52,7 +52,7 @@ export function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanel
         }
       }}
     >
-      <div ref={ref} data-testid="terminal" className="h-full w-full overflow-hidden bg-[#0a0a0a] p-1" />
+      <div ref={ref} data-testid="terminal" className="h-full w-full overflow-hidden p-1" />
       {searchOpen && entry && (
         <TerminalSearch
           entry={entry}

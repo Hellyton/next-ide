@@ -10,6 +10,9 @@ files:
 # node-pty ships a native binary and a spawn helper that must stay on disk, outside the asar.
 asarUnpack:
   - '**/node_modules/node-pty/**'
+  # koffi (window blur) loads a native binary too.
+  - '**/node_modules/koffi/**'
+  - '**/node_modules/@koromix/**'
 # Swift dictation helper (built by scripts/build-dictation.mjs), shipped next to app.asar.
 extraResources:
   - from: resources/bin
