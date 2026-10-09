@@ -1,6 +1,7 @@
 import type { Options, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { SessionSummary } from '@shared/agent'
 import type { QueryFn, QueryLike } from './AgentSession'
+import { dropAutomated } from './sessionOrigin'
 
 export type SessionStoreApi = {
   list(dir: string): Promise<SessionSummary[]>
@@ -17,7 +18,7 @@ export async function loadSdk(): Promise<{ queryFn: QueryFn } & SessionStoreApi>
     queryFn: ({ prompt, options }) =>
       sdk.query({ prompt: prompt as AsyncIterable<SDKUserMessage>, options: options as unknown as Options }) as unknown as QueryLike,
     list: async (dir) =>
-      (await sdk.listSessions({ dir }))
+      (await dropAutomated(dir, await sdk.listSessions({ dir })))
         .map((s) => ({ sessionId: s.sessionId, title: s.customTitle || s.summary || s.firstPrompt || s.sessionId, lastModified: s.lastModified }))
         .sort((a, b) => b.lastModified - a.lastModified),
     history: (dir, sessionId) => sdk.getSessionMessages(sessionId, { dir }),
