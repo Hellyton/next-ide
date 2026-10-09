@@ -12,7 +12,9 @@ const NETWORK_MS = 120_000
 const MAX_DIFF_BYTES = 2 * 1024 * 1024
 
 // Never wait on a terminal: a missing credential or a merge message must fail, not hang.
-const ENV = { GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true', GIT_MERGE_AUTOEDIT: 'no' }
+// Literal pathspecs: a path is only ever a file name here, never pathspec magic such as `:/` or
+// `:(top)`, which would reach files outside the project (or all of them).
+const ENV = { GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true', GIT_MERGE_AUTOEDIT: 'no', GIT_LITERAL_PATHSPECS: '1' }
 
 type ExecError = { stdout?: string; stderr?: string; message?: string }
 /** Git explains itself on stderr; the last lines are the part worth showing. */
@@ -124,8 +126,10 @@ export class GitService {
       else {
         const { branch, upstream } = await this.overview(projectPath)
         if (!branch || branch.startsWith('@')) return { ok: false, message: 'Não há branch para enviar (HEAD solto).' }
-        // First push of a branch publishes it and starts tracking.
-        await this.run(projectPath, upstream ? ['push'] : ['push', '-u', 'origin', branch], NETWORK_MS)
+        if (!isBranchName(branch)) return { ok: false, message: 'Nome de branch inválido.' }
+        // First push of a branch publishes it and starts tracking. The full refspec can't be read as an option.
+        const ref = `refs/heads/${branch}`
+        await this.run(projectPath, upstream ? ['push'] : ['push', '-u', 'origin', `${ref}:${ref}`], NETWORK_MS)
       }
       return ok(null)
     } catch (err) {

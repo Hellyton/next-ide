@@ -63,6 +63,15 @@ describe('GitService', () => {
     expect((await service.commit(dir, ['../fora'], 'x', '')).ok).toBe(false)
   })
 
+  it('treats paths literally: pathspec magic cannot widen a commit', async () => {
+    const { dir, git, service } = repo()
+    writeFileSync(join(dir, 'a.txt'), 'dois\n')
+    writeFileSync(join(dir, 'b.txt'), 'dois\n')
+    for (const magic of [':/', ':(top)', ':(glob)*', ':!a.txt', '*.txt']) expect((await service.commit(dir, [magic], 'tudo', '')).ok).toBe(false)
+    expect(git('log', '--format=%s')).toBe('inicial')
+    expect((await service.diff(dir, ':/')).ok && (await service.diff(dir, ':/'))).toMatchObject({ value: '' })
+  })
+
   it('diffs tracked and untracked files', async () => {
     const { dir, service } = repo()
     writeFileSync(join(dir, 'a.txt'), 'dois\n')

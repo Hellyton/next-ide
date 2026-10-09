@@ -13,8 +13,14 @@ export function splitFiles<F extends { name: string; type: string; size: number 
   return { images, others }
 }
 
-/** `@src/a.ts` inside the project, `@/abs/path` outside; quoted when the path has spaces (the CLI's `@"…"`). */
-export function fileMention(projectPath: string, absPath: string): string {
+/**
+ * `@src/a.ts` inside the project, `@/abs/path` outside; quoted when the path has spaces (the CLI's `@"…"`).
+ * Null when the name could not stay one token: a quote or a line break in a file name would end the
+ * mention early and leave the rest of the name in the prompt as if the user had typed it.
+ */
+export function fileMention(projectPath: string, absPath: string): string | null {
+  // eslint-disable-next-line no-control-regex
+  if (/["\x00-\x1f\x7f\u2028\u2029]/.test(absPath)) return null
   const mention = formatMention(projectPath, absPath)
   return /\s/.test(mention) ? `@"${mention.slice(1)}"` : mention
 }

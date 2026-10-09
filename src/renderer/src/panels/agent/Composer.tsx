@@ -179,12 +179,17 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
     if (others.length === 0) return
     if (useDictation.getState().active === panelId) return setNotice({ text: 'Pare o ditado antes de anexar arquivos.', command: '' })
     const missing: string[] = []
+    let unsafe = 0
     const mentions = others.flatMap((f) => {
       const path = window.api.pathForFile(f)
       if (!path) missing.push(f.name)
-      return path ? [fileMention(projectPath, path)] : []
+      const mention = path ? fileMention(projectPath, path) : null
+      if (path && !mention) unsafe++
+      return mention ? [mention] : []
     })
     if (missing.length) setNotice({ text: `${missing.join(', ')}: arquivo sem caminho no disco; salve-o e arraste de novo.`, command: '' })
+    // The name itself is not echoed: it is the part that can't be trusted.
+    else if (unsafe) setNotice({ text: 'Arquivo com aspas ou quebra de linha no nome não pode ser anexado; renomeie-o e arraste de novo.', command: '' })
     if (mentions.length === 0) return
     const current = useAgents.getState().drafts[panelId] ?? ''
     const next = insertMentions(current, textarea.current?.selectionStart ?? current.length, mentions)
