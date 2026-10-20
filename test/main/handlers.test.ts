@@ -291,6 +291,17 @@ describe('buildHandlers', () => {
     await expect(buildHandlers(deps())['agent:rename']('/proj', 'fake-old', 'T')).resolves.toEqual({ ok: true, value: null })
   })
 
+  it('agent:deleteSession removes a session by id and refuses anything that is not a plain id', async () => {
+    const remove = vi.fn(async () => undefined)
+    const h = buildHandlers(deps({ sessions: { ...fakeSessions, remove } }))
+    await expect(h['agent:deleteSession']('/proj', '666de18f-0b1f-4369-9138-a3654c8e1d8b')).resolves.toEqual({ ok: true, value: null })
+    expect(remove).toHaveBeenCalledWith('/proj', '666de18f-0b1f-4369-9138-a3654c8e1d8b')
+    for (const bad of ['../x', 'a/b', '', 'a.jsonl']) await expect(h['agent:deleteSession']('/proj', bad)).resolves.toMatchObject({ ok: false })
+    expect(remove).toHaveBeenCalledTimes(1)
+    const failing = buildHandlers(deps({ sessions: { ...fakeSessions, remove: async () => { throw new Error('Session not found') } } }))
+    await expect(failing['agent:deleteSession']('/proj', 'fake-old')).resolves.toEqual({ ok: false, message: 'Session not found' })
+  })
+
   it('agent:forkBefore forwards the session title to the fork', async () => {
     const fork = vi.fn(async () => 'fake-fork')
     const h = buildHandlers(deps({ sessions: { ...fakeSessions, fork } }))

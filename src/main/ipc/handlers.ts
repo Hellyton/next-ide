@@ -233,7 +233,18 @@ export function buildHandlers(d: HandlerDeps): Handlers {
       } catch (err) {
         return failed(err)
       }
+    },    'agent:deleteSession': async (projectPath, sessionId) => {
+      // A session id is a single file name: never a path that could point elsewhere.
+      if (!/^[A-Za-z0-9-]{1,64}$/.test(sessionId)) return { ok: false as const, message: 'Sessão inválida.' }
+      await d.agentReady()
+      try {
+        await d.sessions.remove(projectPath, sessionId)
+        return { ok: true as const, value: null }
+      } catch (err) {
+        return failed(err)
+      }
     },
+
     'agent:close': (panelId) => {
       d.dictation.stop(panelId)
       return d.agents.close(panelId)

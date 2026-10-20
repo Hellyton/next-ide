@@ -8,6 +8,8 @@ export type SessionStoreApi = {
   history(dir: string, sessionId: string): Promise<unknown[]>
   fork(dir: string, sessionId: string, upToMessageId?: string, title?: string): Promise<string>
   rename(dir: string, sessionId: string, title: string): Promise<void>
+  /** Removes the transcript and its subagent transcripts. */
+  remove(dir: string, sessionId: string): Promise<void>
 }
 
 export async function loadSdk(): Promise<{ queryFn: QueryFn } & SessionStoreApi> {
@@ -25,5 +27,6 @@ export async function loadSdk(): Promise<{ queryFn: QueryFn } & SessionStoreApi>
     fork: async (dir, sessionId, upToMessageId, title) =>
       (await sdk.forkSession(sessionId, { dir, ...(upToMessageId ? { upToMessageId } : {}), ...(title ? { title } : {}) })).sessionId,
     rename: (dir, sessionId, title) => sdk.renameSession(sessionId, title, { dir }),
+    remove: (dir, sessionId) => sdk.deleteSession(sessionId, { dir }),
   }
 }

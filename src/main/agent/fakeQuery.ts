@@ -194,4 +194,5 @@ export const fakeSessions: SessionStoreApi = {
   history: async (_dir, sessionId) => (sessionId === 'fake-fork' ? FAKE_HISTORY.slice(0, 2) : FAKE_HISTORY),
   fork: async () => 'fake-fork',
   rename: async () => undefined,
+  remove: async () => undefined,
 }

@@ -215,6 +215,7 @@ registerHandlers(
       history: (dir, id) => requireSdk().history(dir, id),
       fork: (dir, id, upTo, title) => requireSdk().fork(dir, id, upTo, title),
       rename: (dir, id, title) => requireSdk().rename(dir, id, title),
+      remove: (dir, id) => requireSdk().remove(dir, id),
     },
     agentReady: () => agentReady,
     runStatusLine: (input) =>

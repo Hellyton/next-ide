@@ -10,7 +10,7 @@ import { useDock } from '../../dock/dockStore'
 import { useAgents } from '../../stores/agentStore'
 import { useDictation } from '../../stores/dictationStore'
 import { useFiles } from '../../stores/filesStore'
-import { AttachIcon, MicIcon, StopIcon } from './icons'
+import { AttachIcon, HistoryIcon, MicIcon, StopIcon } from './icons'
 import { MentionMenu } from './MentionMenu'
 import { ModeIndicator } from './ModeIndicator'
 import { SlashMenu } from './SlashMenu'
@@ -457,6 +457,9 @@ export function Composer({ panelId, chat, projectPath, onSend, onLocalCommand, o
           onClick={() => fileInput.current?.click()}
         >
           <AttachIcon className="h-4 w-4" />
+        </button>
+        <button aria-label="Histórico de conversas" title="Histórico de conversas (/resume)" className={ICON_BUTTON} onClick={() => onLocalCommand('resume', '')}>
+          <HistoryIcon className="h-4 w-4" />
         </button>
         <input
           ref={fileInput}

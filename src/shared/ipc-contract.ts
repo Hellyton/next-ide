@@ -71,6 +71,7 @@ export type InvokeMap = {
   'agent:forkBefore': { args: [projectPath: string, sessionId: string, userMessageId: string, title?: string]; result: Outcome<{ sessionId: string | null; history: AgentEvent[] }> }
   'agent:fork': { args: [projectPath: string, sessionId: string, title?: string]; result: Outcome<string> }
   'agent:rename': { args: [projectPath: string, sessionId: string, title: string]; result: Outcome<null> }
+  'agent:deleteSession': { args: [projectPath: string, sessionId: string]; result: Outcome<null> }
   'agent:close': { args: [panelId: string]; result: void }
   'dictation:start': { args: [panelId: string]; result: Outcome<null> }
   'dictation:stop': { args: [panelId: string]; result: void }
@@ -150,6 +151,7 @@ export const INVOKE_CHANNELS = [
   'agent:forkBefore',
   'agent:fork',
   'agent:rename',
+  'agent:deleteSession',
   'agent:close',
   'dictation:start',
   'dictation:stop',
