@@ -160,9 +160,9 @@ const agents = new AgentManager({
   },
   runtime: () => ({
     queryFn: (params) => requireSdk().queryFn(params),
-    // The CLI's /resume picker hides sessions whose entrypoint is sdk-*; the SDK only sets
-    // 'sdk-ts' when this is unset, so chats started here would never show up there.
-    env: { ...shellEnv(process.env), CLAUDE_CODE_ENTRYPOINT: 'cli' },
+    // The CLI's /resume picker hides sessions whose entrypoint is sdk-*. The SDK stamps 'sdk-ts' when
+    // this is unset, and a headless CLI rewrites 'cli' to 'sdk-cli', so name the app itself.
+    env: { ...shellEnv(process.env), CLAUDE_CODE_ENTRYPOINT: 'next-ide' },
     ...(claudePath ? { claudePath } : {}),
   }),
 })
