@@ -20,9 +20,12 @@ extraResources:
 mac:
   icon: resources/icon.icns
   category: public.app-category.developer-tools
+  # One DMG per architecture: Apple Silicon (arm64) and Intel (x64).
   target:
-    - dir
-    - dmg
+    - target: dir
+      arch: [arm64, x64]
+    - target: dmg
+      arch: [arm64, x64]
   # Developer ID signing + hardened runtime. With no Developer ID certificate available
   # (CSC_IDENTITY_AUTO_DISCOVERY=false or none in the keychain) the app stays ad-hoc signed
   # by build/afterPack.cjs. Notarization is turned on per build: -c.mac.notarize=true plus the

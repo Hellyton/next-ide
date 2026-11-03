@@ -134,6 +134,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/*.dmg \
-            --title "next-ide $GITHUB_REF_NAME" \
-            --notes-file .github/release-notes.md
+          # Re-running a tag replaces the DMGs instead of failing on an existing release.
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/*.dmg --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/*.dmg \
+              --title "next-ide $GITHUB_REF_NAME" \
+              --notes-file .github/release-notes.md
+          fi

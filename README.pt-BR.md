@@ -61,9 +61,9 @@ O next-ide não reimplementa o Claude Code. Ele usa o [Claude Agent SDK](https:/
 
 ## Instalação
 
-**Requisitos:** Mac com Apple Silicon e macOS 13 ou mais novo (o ditado por voz precisa do macOS 26+), e o [Claude Code](https://docs.claude.com/en/docs/claude-code) instalado e logado. Rodar `claude` no terminal tem que funcionar.
+**Requisitos:** Mac (Apple Silicon ou Intel) com macOS 13 ou mais novo (o ditado por voz precisa do macOS 26+), e o [Claude Code](https://docs.claude.com/en/docs/claude-code) instalado e logado. Rodar `claude` no terminal tem que funcionar.
 
-1. Baixe o `next-ide-<versão>-arm64.dmg` mais recente em [Releases](https://github.com/thiagolopes-dev/next-ide/releases/latest).
+1. Baixe o DMG mais recente em [Releases](https://github.com/thiagolopes-dev/next-ide/releases/latest): `next-ide-<versão>-arm64.dmg` para Apple Silicon (M1 em diante), `next-ide-<versão>-x64.dmg` para Intel. Na dúvida: menu Apple → Sobre Este Mac → Chip / Processador.
 2. Abra o DMG e arraste o **next-ide** para **Aplicativos**.
 3. Abra o next-ide. As releases são assinadas com Developer ID e notarizadas pela Apple, então o macOS abre sem avisos.
 4. Clique em **+** para criar um workspace, adicione a pasta de um projeto e aperte **▶** para abrir o Claude nela.
@@ -91,7 +91,7 @@ git clone https://github.com/thiagolopes-dev/next-ide.git
 cd next-ide
 npm install
 npm run dev        # roda em desenvolvimento com hot reload
-npm run dist       # gera dist/next-ide-<versão>-arm64.dmg
+npm run dist       # gera os DMGs arm64 e x64 em dist/
 ```
 
 Testes: `npm test` (Vitest), `npm run test:e2e` (Playwright, com um agente falso roteirizado, sem rede) e `npm run typecheck`. Para refazer as imagens deste README com dados de demonstração: `npm run screenshots`.
