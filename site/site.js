@@ -8,12 +8,15 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   activate(0)
 
-  // Small screens drop the sticky pane: give each screenshot its step's text instead.
-  shots.forEach((shot, i) => {
+  // Small screens drop the sticky pane: give each screenshot its step's text instead
+  // (again whenever the language changes).
+  const fillCaptions = () => shots.forEach((shot, i) => {
     const cap = shot.querySelector('figcaption')
     const step = steps[i]
     if (cap && step) cap.innerHTML = step.innerHTML
   })
+  fillCaptions()
+  document.addEventListener('langchange', fillCaptions)
 
   // The screenshot crossing the middle band of the viewport drives the sticky pane.
   if ('IntersectionObserver' in window) {
@@ -31,20 +34,21 @@ window.addEventListener('DOMContentLoaded', () => {
     step.addEventListener('click', () => shots[Number(step.dataset.step)]?.scrollIntoView({ block: 'center' }))
   })
 
-  // Copy: silent success, label flips to "Copied" and back.
+  // Copy: silent success, label flips to "Copied" and back, in the page's language.
+  const say = (key, fallback) => window.nextIdeI18n?.t(key) ?? fallback
   document.querySelectorAll('.copy').forEach((btn) => {
     const label = btn.querySelector('.copy__label')
     btn.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(btn.dataset.copy)
         btn.classList.add('is-done')
-        label.textContent = 'Copied'
+        label.textContent = say('copied', 'Copied')
       } catch {
-        label.textContent = 'Press ⌘C'
+        label.textContent = say('press', '⌘C')
       }
       setTimeout(() => {
         btn.classList.remove('is-done')
-        label.textContent = 'Copy'
+        label.textContent = say('copy', 'Copy')
       }, 1600)
     })
   })

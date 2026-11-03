@@ -82,6 +82,24 @@ h1, h2, h3 { color: var(--color-ink); font-family: var(--font-display); font-sty
 .nav-pill__links a { color: var(--color-muted); font-size: var(--text-sm); text-decoration: none; white-space: nowrap; }
 .nav-pill__links a:hover { color: var(--color-ink); }
 
+/* ---------- Language switch (flags) ---------- */
+.lang { display: inline-flex; align-items: center; gap: var(--space-2xs); padding-left: var(--space-xs); border-left: var(--rule-hair) solid var(--color-rule); }
+.lang__btn {
+  display: inline-grid; place-items: center; width: 2.25rem; height: 2.25rem; padding: 0;
+  border: 0; border-radius: var(--radius-pill); background: transparent; cursor: pointer;
+  transition: background-color var(--dur-short) var(--ease-out);
+}
+.lang__btn svg {
+  width: 1.375rem; height: auto; border-radius: 3px; display: block;
+  opacity: 0.45; filter: saturate(0.6);
+  box-shadow: 0 0 0 var(--rule-hair) var(--color-rule);
+  transition: opacity var(--dur-short) var(--ease-out), filter var(--dur-short) var(--ease-out), transform var(--dur-micro) var(--ease-out);
+}
+.lang__btn:hover { background: var(--color-paper-3); }
+.lang__btn:hover svg { opacity: 0.85; filter: none; }
+.lang__btn:active svg { transform: scale(0.92); }
+.lang__btn[aria-pressed="true"] svg { opacity: 1; filter: none; box-shadow: 0 0 0 2px var(--color-accent); }
+
 /* ---------- Hero ---------- */
 .hero {
   padding: calc(var(--space-4xl) + var(--space-md)) var(--page-gutter) 0;
@@ -91,7 +109,7 @@ h1, h2, h3 { color: var(--color-ink); font-family: var(--font-display); font-sty
 .hero__copy { max-width: 52rem; display: grid; justify-items: center; gap: var(--space-lg); }
 .hero__kicker { margin: 0; font: 500 var(--text-xs) / 1 var(--font-mono); color: var(--color-neutral); letter-spacing: 0.04em; }
 .hero__title { font-size: var(--text-display); font-weight: 600; line-height: 1.02; letter-spacing: -0.04em; }
-.landmark { color: var(--color-accent); }
+.landmark { color: var(--color-accent); white-space: nowrap; }
 .hero__lede { margin: 0; max-width: 38rem; font-size: var(--text-lg); line-height: 1.55; color: var(--color-muted); }
 .hero__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-sm); margin-top: var(--space-xs); }
 .hero__meta { margin: 0; font: 400 var(--text-xs) / 1.4 var(--font-mono); color: var(--color-neutral); }
