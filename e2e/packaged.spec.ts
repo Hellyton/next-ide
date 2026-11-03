@@ -4,7 +4,8 @@ import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
-const APP = join(process.cwd(), 'dist', 'mac-arm64', 'next-ide.app')
+// NEXT_IDE_PACKAGED_APP points at another build, e.g. dist/mac/next-ide.app (Intel, runs under Rosetta).
+const APP = process.env.NEXT_IDE_PACKAGED_APP ?? join(process.cwd(), 'dist', 'mac-arm64', 'next-ide.app')
 const BIN = join(APP, 'Contents', 'MacOS', 'next-ide')
 
 // Only runs against a build made by `npm run package`.

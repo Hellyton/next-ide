@@ -1,6 +1,6 @@
 {
   "name": "next-ide",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Desktop IDE to run many Claude Code sessions across projects side by side, in one window",
   "license": "MIT",
@@ -21,9 +21,9 @@
     "test:e2e": "electron-vite build && playwright test",
     "postinstall": "chmod +x node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null || true; node scripts/brand-electron.mjs || true",
     "brand": "node scripts/brand-electron.mjs",
-    "package": "npm run build:dictation && electron-vite build && electron-builder --dir",
+    "package": "npm run build:dictation && node scripts/fetch-koffi-x64.mjs && electron-vite build && electron-builder --dir",
     "app": "open dist/mac-arm64/next-ide.app",
-    "dist": "npm run build:dictation && electron-vite build && electron-builder",
+    "dist": "npm run build:dictation && node scripts/fetch-koffi-x64.mjs && electron-vite build && electron-builder",
     "screenshots": "electron-vite build && playwright test -c scripts/screenshots/playwright.config.ts"
   },
   "dependencies": {

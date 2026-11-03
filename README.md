@@ -69,9 +69,9 @@ flowchart LR
 
 ## Install
 
-**Requirements:** an Apple Silicon Mac on macOS 13 or newer (voice dictation needs macOS 26+), and [Claude Code](https://docs.claude.com/en/docs/claude-code) installed and logged in. Running `claude` in your terminal should work.
+**Requirements:** a Mac (Apple Silicon or Intel) on macOS 13 or newer (voice dictation needs macOS 26+), and [Claude Code](https://docs.claude.com/en/docs/claude-code) installed and logged in. Running `claude` in your terminal should work.
 
-1. Download the latest `next-ide-<version>-arm64.dmg` from [Releases](https://github.com/thiagolopes-dev/next-ide/releases/latest).
+1. Download the latest DMG from [Releases](https://github.com/thiagolopes-dev/next-ide/releases/latest): `next-ide-<version>-arm64.dmg` for Apple Silicon (M1 and later), `next-ide-<version>-x64.dmg` for Intel. Not sure which? Apple menu → About This Mac → Chip / Processor.
 2. Open it and drag **next-ide** to **Applications**.
 3. Open next-ide. Release builds are signed with a Developer ID and notarized by Apple, so macOS opens them without warnings.
 4. Click **+** to create a workspace, add a project folder, and press **▶** to start Claude in it.
@@ -99,7 +99,7 @@ git clone https://github.com/thiagolopes-dev/next-ide.git
 cd next-ide
 npm install
 npm run dev        # run in development with hot reload
-npm run dist       # build dist/next-ide-<version>-arm64.dmg
+npm run dist       # build the arm64 and x64 DMGs in dist/
 ```
 
 Other scripts:

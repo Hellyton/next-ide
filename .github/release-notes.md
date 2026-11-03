@@ -1,6 +1,10 @@
 ## Install
 
-1. Download `next-ide-<version>-arm64.dmg` below (Apple Silicon Macs).
+1. Download the DMG for your Mac below:
+   - `next-ide-<version>-arm64.dmg` for **Apple Silicon** (M1 and later)
+   - `next-ide-<version>-x64.dmg` for **Intel**
+
+   Not sure which? Apple menu → About This Mac → Chip / Processor.
 2. Open the DMG and drag **next-ide** to **Applications**.
 3. Open **next-ide**. The app is signed with a Developer ID and notarized by Apple, so it opens like any other app.
 
