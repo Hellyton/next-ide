@@ -8,7 +8,7 @@
 
 A native macOS desktop app built on top of your own `claude` CLI: real chat UI, split panes, terminal, files and Git, without juggling terminal tabs.
 
-[Download](https://github.com/thiagolopes-dev/next-ide/releases/latest) · [Features](#features) · [Install](#install) · [Build from source](#build-from-source) · [Português](README.pt-BR.md)
+[Website](https://thiagolopes-dev.github.io/next-ide/) · [Download](https://github.com/thiagolopes-dev/next-ide/releases/latest) · [Features](#features) · [Install](#install) · [Build from source](#build-from-source) · [Português](README.pt-BR.md)
 
 ![next-ide: two Claude Code sessions side by side](docs/images/hero.png)
 
