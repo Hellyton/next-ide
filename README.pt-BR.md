@@ -65,13 +65,8 @@ O next-ide não reimplementa o Claude Code. Ele usa o [Claude Agent SDK](https:/
 
 1. Baixe o `next-ide-<versão>-arm64.dmg` mais recente em [Releases](https://github.com/thiagolopes-dev/next-ide/releases/latest).
 2. Abra o DMG e arraste o **next-ide** para **Aplicativos**.
-3. O app ainda não é notarizado pela Apple, então o macOS bloqueia a primeira abertura. Remova a quarentena uma vez:
-
-   ```bash
-   xattr -dr com.apple.quarantine /Applications/next-ide.app
-   ```
-
-4. Abra o next-ide, clique em **+** para criar um workspace, adicione a pasta de um projeto e aperte **▶** para abrir o Claude nela.
+3. Abra o next-ide. As releases são assinadas com Developer ID e notarizadas pela Apple, então o macOS abre sem avisos.
+4. Clique em **+** para criar um workspace, adicione a pasta de um projeto e aperte **▶** para abrir o Claude nela.
 
 O next-ide acha o `claude` pelo `PATH` do seu shell de login e, se não achar, tenta `~/.local/bin/claude`. Se ele estiver em outro lugar, defina `"claudePath"` em `~/Library/Application Support/next-ide/settings.json`.
 

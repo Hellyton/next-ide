@@ -73,13 +73,8 @@ flowchart LR
 
 1. Download the latest `next-ide-<version>-arm64.dmg` from [Releases](https://github.com/thiagolopes-dev/next-ide/releases/latest).
 2. Open it and drag **next-ide** to **Applications**.
-3. The app isn't notarized by Apple yet, so macOS blocks the first launch. Clear the quarantine flag once:
-
-   ```bash
-   xattr -dr com.apple.quarantine /Applications/next-ide.app
-   ```
-
-4. Open next-ide, click **+** to create a workspace, add a project folder, and press **▶** to start Claude in it.
+3. Open next-ide. Release builds are signed with a Developer ID and notarized by Apple, so macOS opens them without warnings.
+4. Click **+** to create a workspace, add a project folder, and press **▶** to start Claude in it.
 
 next-ide finds `claude` through your login shell's `PATH`, falling back to `~/.local/bin/claude`. If it lives somewhere else, set `"claudePath"` in `~/Library/Application Support/next-ide/settings.json`.
 
