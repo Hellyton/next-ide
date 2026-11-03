@@ -17,12 +17,20 @@ permissions:
 
 jobs:
   dmg:
-    # Apple Silicon runner. The dictation helper uses SpeechAnalyzer, which needs the macOS 26 SDK
-    # (Xcode 26+), so keep this on an image that ships Xcode 26 or newer.
-    runs-on: macos-26
+    # Apple Silicon runner. macos-15 has far more capacity than macos-26 (jobs there were dropped
+    # with "not acquired by Runner"), and it ships Xcode 26, which the dictation helper needs
+    # (SpeechAnalyzer, macOS 26 SDK). The step below switches to the newest Xcode 26 on the image.
+    runs-on: macos-15
     environment: release
     steps:
       - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: |
+          xcode="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -z "$xcode" ]; then echo "::error::No Xcode 26 on this runner image"; ls -d /Applications/Xcode*.app; exit 1; fi
+          sudo xcode-select -s "$xcode/Contents/Developer"
+          xcrun --show-sdk-version
 
       - uses: actions/setup-node@v4
         with:
