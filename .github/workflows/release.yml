@@ -66,8 +66,19 @@ jobs:
           rm -f "$RUNNER_TEMP/cert.p12"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kc_pass" "$keychain" > /dev/null
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
-          security find-identity -v -p codesigning "$keychain" | grep -q 'Developer ID Application' \
-            || { echo "::error::No Developer ID Application identity in the .p12"; exit 1; }
+          # Apple's public Developer ID intermediates (G1 and G2): without them a clean runner can't
+          # build the certificate chain and reports the identity as invalid.
+          for ca in DeveloperIDCA DeveloperIDG2CA; do
+            curl -fsSL "https://www.apple.com/certificateauthority/$ca.cer" -o "$RUNNER_TEMP/$ca.cer"
+            security import "$RUNNER_TEMP/$ca.cer" -k "$keychain" || true
+          done
+          if ! security find-identity -v -p codesigning "$keychain" | grep -q 'Developer ID Application'; then
+            echo "Identities in the job keychain (valid or not):"
+            security find-identity -p codesigning "$keychain"
+            echo "Private keys in the job keychain: $(security dump-keychain "$keychain" | grep -c 'class: 0x00000010')"
+            echo "::error::No valid Developer ID Application identity. If 'Private keys' is 0, re-export the .p12 from Keychain Access > My Certificates, including the private key."
+            exit 1
+          fi
 
       - name: Build, sign and notarize
         if: steps.creds.outputs.signed == 'true'
