@@ -13,3 +13,4 @@ resources/bin/
 .env.*
 *.pem
 *.p12
+.hallmark/

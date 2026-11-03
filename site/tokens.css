@@ -1,0 +1,63 @@
+/* Hallmark · genre: atmospheric · macrostructure: Feature Stack · theme: Midnight
+ * paper: dark (L 15%) · display: geometric-sans (Geist) · accent: warm signal orange (hue 45)
+ * Tokens for the next-ide site. Every colour, font, space and motion value lives here.
+ */
+:root {
+  /* Paper → ink, warm-tinted (anchor hue 45, the app's send-button orange) */
+  --color-paper:    oklch(15% 0.008 45);
+  --color-paper-2:  oklch(19% 0.010 45);
+  --color-paper-3:  oklch(23% 0.012 45);
+  --color-rule:     oklch(31% 0.010 45);
+  --color-neutral:  oklch(62% 0.010 45);
+  --color-muted:    oklch(76% 0.008 45);
+  --color-ink:      oklch(95% 0.006 70);
+  --color-accent:   oklch(70% 0.17 45);
+  --color-accent-ink: oklch(18% 0.03 45);
+  --color-accent-hover: oklch(75% 0.16 48);
+  --color-focus:    oklch(78% 0.15 55);
+  --color-bloom-1:  oklch(62% 0.17 45 / 0.22);
+  --color-bloom-2:  oklch(55% 0.16 15 / 0.14);
+  --color-shadow:   oklch(8% 0.01 45 / 0.6);
+  --color-glow:     oklch(70% 0.17 45 / 0.18);
+
+  /* Type */
+  --font-display: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-body:    "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:    "Geist Mono", ui-monospace, "SF Mono", monospace;
+
+  --text-xs:   0.8125rem;
+  --text-sm:   0.9375rem;
+  --text-base: 1.0625rem;
+  --text-lg:   1.25rem;
+  --text-xl:   clamp(1.5rem, 1.2rem + 1.2vw, 2rem);
+  --text-2xl:  clamp(1.875rem, 1.4rem + 2vw, 2.75rem);
+  --text-display: clamp(2.75rem, 1.6rem + 5vw, 5.5rem);
+
+  /* 4 pt spacing scale */
+  --space-2xs: 0.25rem;
+  --space-xs:  0.5rem;
+  --space-sm:  0.75rem;
+  --space-md:  1rem;
+  --space-lg:  1.5rem;
+  --space-xl:  2.5rem;
+  --space-2xl: 4rem;
+  --space-3xl: 7rem;
+  --space-4xl: 10rem;
+
+  --page-gutter: clamp(1.25rem, 4vw, 3rem);
+  --page-max: 76rem;
+
+  --rule-hair: 1px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-pill: 999px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
+  --dur-long: 420ms;
+  --dur-hero: 1200ms;
+}

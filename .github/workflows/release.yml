@@ -97,7 +97,7 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         # --publish never: the release step below uploads the DMG; electron-builder must not.
-        run: npm run dist -- --publish never -c.mac.notarize=true
+        run: npm run dist -- --publish never -c.mac.notarize=true -c.dmg.sign=true
 
       - name: Notarize and staple the DMG
         if: steps.creds.outputs.signed == 'true'
