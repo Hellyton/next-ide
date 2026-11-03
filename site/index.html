@@ -1,15 +1,17 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>next-ide — every Claude Code session, one window</title>
-  <meta name="description" content="A native macOS IDE that runs your own Claude Code across all your projects, side by side. Chat, split panes, terminal, files and Git. Free and open source." />
+  <title>next-ide — todas as sessões do Claude Code, uma janela</title>
+  <meta name="description" content="IDE nativa para macOS que roda o seu próprio Claude Code em todos os seus projetos, lado a lado. Chat, painéis divididos, terminal, arquivos e Git. Grátis e open source." />
   <meta name="theme-color" content="#1c1714" />
-  <meta property="og:title" content="next-ide — every Claude Code session, one window" />
-  <meta property="og:description" content="A native macOS IDE that runs your own Claude Code across all your projects, side by side." />
+  <meta property="og:title" content="next-ide — todas as sessões do Claude Code, uma janela" />
+  <meta property="og:description" content="IDE nativa para macOS que roda o seu próprio Claude Code em todos os seus projetos, lado a lado." />
   <meta property="og:image" content="https://thiagolopes-dev.github.io/next-ide/images/hero.png" />
   <meta property="og:type" content="website" />
+  <meta property="og:locale" content="pt_BR" />
+  <meta property="og:locale:alternate" content="en_US" />
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="icon" type="image/png" href="icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -17,160 +19,173 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" />
   <link rel="stylesheet" href="tokens.css" />
   <link rel="stylesheet" href="site.css" />
-  <script>document.documentElement.classList.add('js')</script>
+  <script>
+    document.documentElement.classList.add('js')
+    // Apply a saved English choice before first paint, so the page doesn't flash Portuguese.
+    try { if (localStorage.getItem('next-ide-lang') === 'en') document.documentElement.lang = 'en' } catch (e) {}
+  </script>
+  <script src="i18n.js" defer></script>
   <script src="site.js" defer></script>
 </head>
 <body>
-  <a class="skip" href="#main">Skip to content</a>
+  <a class="skip" href="#main" data-i18n="skip">Pular para o conteúdo</a>
 
-  <nav class="nav-pill" aria-label="Primary">
+  <nav class="nav-pill" aria-label="Principal" data-i18n-aria="nav">
     <a class="wordmark" href="#top"><img src="icon.png" alt="" width="20" height="20" />next-ide</a>
     <ul class="nav-pill__links">
-      <li><a href="#tour">Tour</a></li>
-      <li><a href="#how">How it works</a></li>
-      <li><a href="#faq">FAQ</a></li>
+      <li><a href="#tour" data-i18n="nav.tour">Tour</a></li>
+      <li><a href="#how" data-i18n="nav.how">Como funciona</a></li>
+      <li><a href="#faq" data-i18n="nav.faq">Dúvidas</a></li>
       <li><a href="https://github.com/thiagolopes-dev/next-ide">GitHub</a></li>
     </ul>
-    <a class="btn btn--fill btn--sm" href="https://github.com/thiagolopes-dev/next-ide/releases/latest">Download</a>
+    <div class="lang" role="group" aria-label="Idioma" data-i18n-aria="lang">
+      <button class="lang__btn" type="button" data-lang="pt" aria-pressed="true" title="Português" aria-label="Português">
+        <svg viewBox="0 0 28 20" aria-hidden="true"><rect width="28" height="20" fill="#229e45"/><path d="M14 2.4 25.6 10 14 17.6 2.4 10Z" fill="#f8e509"/><circle cx="14" cy="10" r="4.6" fill="#2b49a3"/><path d="M9.6 9.1c3-.9 6.3-.5 8.9 1.3" stroke="#fff" stroke-width=".9" fill="none"/></svg>
+      </button>
+      <button class="lang__btn" type="button" data-lang="en" aria-pressed="false" title="English" aria-label="English">
+        <svg viewBox="0 0 28 20" aria-hidden="true"><rect width="28" height="20" fill="#fff"/><g fill="#b22234"><rect width="28" height="1.54"/><rect y="3.08" width="28" height="1.54"/><rect y="6.15" width="28" height="1.54"/><rect y="9.23" width="28" height="1.54"/><rect y="12.31" width="28" height="1.54"/><rect y="15.38" width="28" height="1.54"/><rect y="18.46" width="28" height="1.54"/></g><rect width="12" height="10.77" fill="#3c3b6e"/><g fill="#fff"><circle cx="2" cy="2" r=".6"/><circle cx="6" cy="2" r=".6"/><circle cx="10" cy="2" r=".6"/><circle cx="4" cy="4.2" r=".6"/><circle cx="8" cy="4.2" r=".6"/><circle cx="2" cy="6.4" r=".6"/><circle cx="6" cy="6.4" r=".6"/><circle cx="10" cy="6.4" r=".6"/><circle cx="4" cy="8.6" r=".6"/><circle cx="8" cy="8.6" r=".6"/></g></svg>
+      </button>
+    </div>
+    <a class="btn btn--fill btn--sm" href="https://github.com/thiagolopes-dev/next-ide/releases/latest" data-i18n="nav.download">Baixar</a>
   </nav>
 
   <main id="main">
     <header class="hero" id="top">
       <div class="hero__copy">
-        <p class="hero__kicker">Open source · macOS</p>
-        <h1 class="hero__title">Every Claude Code session. <span class="landmark">One window.</span></h1>
-        <p class="hero__lede">A native macOS IDE that runs your own <code>claude</code> across all your projects, side by side. Chat, split panes, terminal, files and Git, without a wall of terminal tabs.</p>
+        <p class="hero__kicker" data-i18n="hero.kicker">Open source · macOS</p>
+        <h1 class="hero__title" data-i18n="hero.title">Todas as sessões do Claude Code. <span class="landmark">Uma janela.</span></h1>
+        <p class="hero__lede" data-i18n="hero.lede">Uma IDE nativa para macOS que roda o seu próprio <code>claude</code> em todos os seus projetos, lado a lado. Chat, painéis divididos, terminal, arquivos e Git, sem uma parede de abas de terminal.</p>
         <div class="hero__actions">
-          <a class="btn btn--fill" href="https://github.com/thiagolopes-dev/next-ide/releases/latest">Download for macOS</a>
-          <a class="btn btn--ghost" href="https://github.com/thiagolopes-dev/next-ide">Star on GitHub</a>
+          <a class="btn btn--fill" href="https://github.com/thiagolopes-dev/next-ide/releases/latest" data-i18n="hero.download">Baixar para macOS</a>
+          <a class="btn btn--ghost" href="https://github.com/thiagolopes-dev/next-ide" data-i18n="hero.star">Estrela no GitHub</a>
         </div>
-        <p class="hero__meta">Free · MIT · Apple Silicon &amp; Intel · macOS 13+ · signed and notarized</p>
+        <p class="hero__meta" data-i18n="hero.meta">Grátis · MIT · Apple Silicon e Intel · macOS 13+ · assinado e notarizado</p>
       </div>
       <figure class="hero__shot">
-        <img src="images/hero.png" width="2400" height="1500" alt="next-ide with two Claude Code sessions side by side: one adding discount codes with an inline diff, the other explaining a slow checkout query." />
+        <img src="images/hero.png" width="2400" height="1500" data-i18n-alt="alt.hero" alt="next-ide com duas sessões do Claude Code lado a lado: uma adicionando cupons de desconto com o diff na tela, a outra explicando uma consulta lenta no checkout." />
       </figure>
     </header>
 
     <section class="tour" id="tour" aria-labelledby="tour-title">
       <div class="tour__pane">
-        <h2 class="section-title" id="tour-title">A desk for every project.</h2>
+        <h2 class="section-title" id="tour-title" data-i18n="tour.title">Uma mesa para cada projeto.</h2>
         <ol class="tour__steps">
           <li class="tour__step is-active" data-step="0">
-            <h3>Sessions side by side</h3>
-            <p>Every project lives in the sidebar, grouped into workspaces. Open as many Claude sessions as you want and split them on screen with <kbd>⌘\</kbd>. You see at a glance which one is working, waiting or done.</p>
+            <h3 data-i18n="tour.s0.h">Sessões lado a lado</h3>
+            <p data-i18n="tour.s0.p">Cada projeto fica na barra lateral, agrupado em workspaces. Abra quantas sessões do Claude quiser e divida a tela com <kbd>⌘\</kbd>. Você vê de relance qual está trabalhando, esperando ou pronta.</p>
           </li>
           <li class="tour__step" data-step="1">
-            <h3>Permissions in the chat</h3>
-            <p>Claude asks before it runs something risky, right where you are reading. Allow once, always for this project, or deny. Manual, accept-edits, plan and auto modes are one <kbd>⇧Tab</kbd> away.</p>
+            <h3 data-i18n="tour.s1.h">Permissões no chat</h3>
+            <p data-i18n="tour.s1.p">O Claude pede antes de rodar algo arriscado, bem onde você está lendo. Permita uma vez, sempre neste projeto, ou negue. Os modos manual, aceitar edições, plan e auto estão a um <kbd>⇧Tab</kbd>.</p>
           </li>
           <li class="tour__step" data-step="2">
-            <h3>Every slash command</h3>
-            <p><code>/resume</code>, <code>/rewind</code>, <code>/context</code>, <code>/model</code>, <code>/mcp</code> and the rest of the CLI, plus <code>@</code> mentions for files and subagents, image paste and background tasks.</p>
+            <h3 data-i18n="tour.s2.h">Todos os comandos /</h3>
+            <p data-i18n="tour.s2.p"><code>/resume</code>, <code>/rewind</code>, <code>/context</code>, <code>/model</code>, <code>/mcp</code> e o resto do CLI, além de menções com <code>@</code> para arquivos e subagentes, colar imagens e tarefas em segundo plano.</p>
           </li>
           <li class="tour__step" data-step="3">
-            <h3>Files and a real terminal</h3>
-            <p>A file tree, a fast highlighted viewer and editor, <kbd>⌘P</kbd> quick open, and a zsh terminal in any pane. The layout comes back the next time you open the app.</p>
+            <h3 data-i18n="tour.s3.h">Arquivos e um terminal de verdade</h3>
+            <p data-i18n="tour.s3.p">Árvore de arquivos, visualizador e editor rápidos com destaque de sintaxe, <kbd>⌘P</kbd> para abrir arquivos e um terminal zsh em qualquer painel. O layout volta igual na próxima vez que você abrir o app.</p>
           </li>
           <li class="tour__step" data-step="4">
-            <h3>Commit without leaving</h3>
-            <p>Review the diff Claude just made, stage, commit and push from the Git panel next to the chat. Switch branches from the status line.</p>
+            <h3 data-i18n="tour.s4.h">Commit sem sair</h3>
+            <p data-i18n="tour.s4.p">Revise o diff que o Claude acabou de fazer, selecione, faça commit e push pelo painel Git ao lado do chat. Troque de branch pela barra de status.</p>
           </li>
         </ol>
       </div>
       <div class="tour__shots">
         <figure class="tour__shot" data-step="0">
-          <img src="images/hero.png" width="2400" height="1500" loading="lazy" alt="Two Claude sessions split side by side, with a workspace sidebar." />
-          <figcaption>Sessions side by side</figcaption>
+          <img src="images/hero.png" width="2400" height="1500" loading="lazy" data-i18n-alt="alt.s0" alt="Duas sessões do Claude divididas lado a lado, com a barra lateral de workspaces." />
+          <figcaption>Sessões lado a lado</figcaption>
         </figure>
         <figure class="tour__shot" data-step="1">
-          <img src="images/permissions.png" width="2400" height="1500" loading="lazy" alt="A permission prompt in the chat asking to run git push, with Allow, Always in this project and Deny buttons." />
-          <figcaption>Permissions in the chat</figcaption>
+          <img src="images/permissions.png" width="2400" height="1500" loading="lazy" data-i18n-alt="alt.s1" alt="Um pedido de permissão no chat para rodar git push, com os botões Permitir, Sempre neste projeto e Negar." />
+          <figcaption>Permissões no chat</figcaption>
         </figure>
         <figure class="tour__shot" data-step="2">
-          <img src="images/slash-commands.png" width="2400" height="1500" loading="lazy" alt="The slash command menu listing resume, clear, model, statusline, btw, rewind, context, effort, mode and rename." />
-          <figcaption>Every slash command</figcaption>
+          <img src="images/slash-commands.png" width="2400" height="1500" loading="lazy" data-i18n-alt="alt.s2" alt="O menu de comandos com resume, clear, model, statusline, btw, rewind, context, effort, mode e rename." />
+          <figcaption>Todos os comandos /</figcaption>
         </figure>
         <figure class="tour__shot" data-step="3">
-          <img src="images/files-terminal.png" width="2400" height="1500" loading="lazy" alt="A TypeScript file open in the viewer above a zsh terminal showing git log and git status." />
-          <figcaption>Files and a real terminal</figcaption>
+          <img src="images/files-terminal.png" width="2400" height="1500" loading="lazy" data-i18n-alt="alt.s3" alt="Um arquivo TypeScript aberto no visualizador, acima de um terminal zsh com git log e git status." />
+          <figcaption>Arquivos e um terminal de verdade</figcaption>
         </figure>
         <figure class="tour__shot" data-step="4">
-          <img src="images/git.png" width="2400" height="1500" loading="lazy" alt="The Git panel with two changed files and a diff, next to the chat that made the change." />
-          <figcaption>Commit without leaving</figcaption>
+          <img src="images/git.png" width="2400" height="1500" loading="lazy" data-i18n-alt="alt.s4" alt="O painel Git com dois arquivos alterados e o diff, ao lado do chat que fez a mudança." />
+          <figcaption>Commit sem sair</figcaption>
         </figure>
       </div>
     </section>
 
     <section class="how" id="how" aria-labelledby="how-title">
-      <h2 class="section-title" id="how-title">It's your Claude Code. Just more of it.</h2>
-      <p class="how__lede">next-ide doesn't reimplement anything. It drives the <code>claude</code> binary you already have, through the official Agent SDK.</p>
-      <p class="how__flow" aria-label="next-ide talks to the Agent SDK, which runs your claude CLI, which calls the Anthropic API">
-        <span>next-ide</span><span class="how__arrow" aria-hidden="true">→</span><span>Agent SDK</span><span class="how__arrow" aria-hidden="true">→</span><span class="is-yours">your claude</span><span class="how__arrow" aria-hidden="true">→</span><span>Anthropic API</span>
+      <h2 class="section-title" id="how-title" data-i18n="how.title">É o seu Claude Code. Só que mais.</h2>
+      <p class="how__lede" data-i18n="how.lede">O next-ide não reimplementa nada. Ele comanda o binário <code>claude</code> que você já tem, pelo Agent SDK oficial.</p>
+      <p class="how__flow" aria-label="O next-ide fala com o Agent SDK, que roda o seu claude CLI, que chama a API da Anthropic" data-i18n-aria="how.flow">
+        <span>next-ide</span><span class="how__arrow" aria-hidden="true">→</span><span>Agent SDK</span><span class="how__arrow" aria-hidden="true">→</span><span class="is-yours" data-i18n="how.yours">seu claude</span><span class="how__arrow" aria-hidden="true">→</span><span data-i18n="how.api">API da Anthropic</span>
       </p>
       <dl class="how__facts">
         <div>
-          <dt>Your login</dt>
-          <dd>Pro, Max or an API key, whatever <code>claude</code> already uses. next-ide never sees or stores it.</dd>
+          <dt data-i18n="how.f0.t">Seu login</dt>
+          <dd data-i18n="how.f0.d">Pro, Max ou API key, o que o <code>claude</code> já usa. O next-ide nunca vê nem guarda.</dd>
         </div>
         <div>
-          <dt>Your setup</dt>
-          <dd><code>CLAUDE.md</code>, hooks, MCP servers, skills and permission rules load exactly like in the terminal.</dd>
+          <dt data-i18n="how.f1.t">Sua configuração</dt>
+          <dd data-i18n="how.f1.d"><code>CLAUDE.md</code>, hooks, servidores MCP, skills e regras de permissão carregam igualzinho ao terminal.</dd>
         </div>
         <div>
-          <dt>Same speed</dt>
-          <dd>Same model, same prompt cache. Sessions appear in the CLI's <code>/resume</code>, and the other way round.</dd>
+          <dt data-i18n="how.f2.t">Mesma velocidade</dt>
+          <dd data-i18n="how.f2.d">Mesmo modelo, mesmo cache de prompt. As sessões aparecem no <code>/resume</code> do CLI, e o contrário também.</dd>
         </div>
       </dl>
     </section>
 
     <section class="install" id="install" aria-labelledby="install-title">
-      <h2 class="section-title" id="install-title">Install in a minute.</h2>
+      <h2 class="section-title" id="install-title" data-i18n="install.title">Instale em um minuto.</h2>
       <ol class="install__steps">
-        <li><span class="install__n">1</span><p>Have <a href="https://docs.claude.com/en/docs/claude-code">Claude Code</a> installed and logged in. Running <code>claude</code> in a terminal should work.</p></li>
-        <li><span class="install__n">2</span><p><a href="https://github.com/thiagolopes-dev/next-ide/releases/latest">Download the DMG</a> and drag next-ide to Applications. It's signed and notarized, so it opens like any app.</p></li>
-        <li><span class="install__n">3</span><p>Create a workspace, add a project folder and press <kbd>▶</kbd>. That's a Claude session.</p></li>
+        <li><span class="install__n">1</span><p data-i18n="install.s0">Tenha o <a href="https://docs.claude.com/en/docs/claude-code">Claude Code</a> instalado e logado. Rodar <code>claude</code> no terminal tem que funcionar.</p></li>
+        <li><span class="install__n">2</span><p data-i18n="install.s1"><a href="https://github.com/thiagolopes-dev/next-ide/releases/latest">Baixe o DMG</a> do seu Mac (Apple Silicon ou Intel) e arraste o next-ide para Aplicativos. Ele é assinado e notarizado, então abre como qualquer app.</p></li>
+        <li><span class="install__n">3</span><p data-i18n="install.s2">Crie um workspace, adicione a pasta de um projeto e aperte <kbd>▶</kbd>. Pronto, é uma sessão do Claude.</p></li>
       </ol>
-      <p class="install__src">Rather build it yourself?
+      <p class="install__src"><span data-i18n="install.src">Prefere compilar você mesmo?</span>
         <button class="copy" type="button" data-copy="git clone https://github.com/thiagolopes-dev/next-ide.git && cd next-ide && npm install && npm run dev">
           <code>git clone … && npm install && npm run dev</code>
-          <span class="copy__label" aria-live="polite">Copy</span>
+          <span class="copy__label" aria-live="polite" data-i18n="copy">Copiar</span>
         </button>
       </p>
     </section>
 
     <section class="faq" id="faq" aria-labelledby="faq-title">
-      <h2 class="section-title" id="faq-title">Questions.</h2>
+      <h2 class="section-title" id="faq-title" data-i18n="faq.title">Dúvidas.</h2>
       <details>
-        <summary>Is it slower than the CLI?</summary>
-        <p>No. Each session is your own <code>claude</code> running behind the Agent SDK, so answers take as long as in the terminal. The first message in a new tab waits a second or two while the CLI starts and loads your MCP servers.</p>
+        <summary data-i18n="faq.q0">É mais lento que o CLI?</summary>
+        <p data-i18n="faq.a0">Não. Cada sessão é o seu próprio <code>claude</code> rodando por trás do Agent SDK, então as respostas demoram o mesmo que no terminal. A primeira mensagem de uma aba nova espera um ou dois segundos enquanto o CLI inicia e carrega seus servidores MCP.</p>
       </details>
       <details>
-        <summary>Does it need a subscription?</summary>
-        <p>It needs whatever Claude Code needs. If <code>claude</code> works in your terminal, with a Pro or Max plan or an API key, next-ide works too.</p>
+        <summary data-i18n="faq.q1">Precisa de assinatura?</summary>
+        <p data-i18n="faq.a1">Precisa do mesmo que o Claude Code precisa. Se o <code>claude</code> funciona no seu terminal, com plano Pro ou Max ou com uma API key, o next-ide funciona também.</p>
       </details>
       <details>
-        <summary>Where does my data go?</summary>
-        <p>Nowhere new. No accounts, no servers, no telemetry. Workspaces and settings stay on your Mac; conversations are stored by Claude Code in <code>~/.claude</code>.</p>
+        <summary data-i18n="faq.q2">Para onde vão meus dados?</summary>
+        <p data-i18n="faq.a2">Para lugar nenhum novo. Sem contas, sem servidores, sem telemetria. Workspaces e configurações ficam no seu Mac; as conversas são guardadas pelo próprio Claude Code em <code>~/.claude</code>.</p>
       </details>
       <details>
-        <summary>Windows or Linux?</summary>
-        <p>Not yet. The app is macOS-only for now. The code is MIT, and pull requests are welcome.</p>
+        <summary data-i18n="faq.q3">Windows ou Linux?</summary>
+        <p data-i18n="faq.a3">Ainda não. Por enquanto o app é só para macOS. O código é MIT, e pull requests são bem-vindos.</p>
       </details>
     </section>
   </main>
 
   <footer class="foot-stmt">
-    <p class="foot-stmt__line">Many projects. One window. Your Claude.</p>
+    <p class="foot-stmt__line" data-i18n="foot.line">Muitos projetos. Uma janela. O seu Claude.</p>
     <div class="foot-stmt__meta">
       <a class="wordmark" href="#top"><img src="icon.png" alt="" width="18" height="18" />next-ide</a>
       <ul class="foot-stmt__links">
         <li><a href="https://github.com/thiagolopes-dev/next-ide">GitHub</a></li>
         <li><a href="https://github.com/thiagolopes-dev/next-ide/releases">Releases</a></li>
-        <li><a href="https://github.com/thiagolopes-dev/next-ide/blob/main/SECURITY.md">Security</a></li>
-        <li><a href="https://github.com/thiagolopes-dev/next-ide/blob/main/LICENSE">MIT License</a></li>
+        <li><a href="https://github.com/thiagolopes-dev/next-ide/blob/main/SECURITY.md" data-i18n="foot.security">Segurança</a></li>
+        <li><a href="https://github.com/thiagolopes-dev/next-ide/blob/main/LICENSE" data-i18n="foot.license">Licença MIT</a></li>
       </ul>
     </div>
-    <p class="foot-stmt__legal">An independent project by Thiago Lopes. Not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic, PBC.</p>
+    <p class="foot-stmt__legal" data-i18n="foot.legal">Um projeto independente de Thiago Lopes. Sem vínculo com a Anthropic e sem endosso dela. Claude e Claude Code são marcas da Anthropic, PBC.</p>
   </footer>
 </body>
 </html>
