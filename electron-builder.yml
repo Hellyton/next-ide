@@ -23,7 +23,15 @@ mac:
   target:
     - dir
     - dmg
-  identity: null
+  # Developer ID signing + hardened runtime. With no Developer ID certificate available
+  # (CSC_IDENTITY_AUTO_DISCOVERY=false or none in the keychain) the app stays ad-hoc signed
+  # by build/afterPack.cjs. Notarization is turned on per build: -c.mac.notarize=true plus the
+  # APPLE_API_KEY / APPLE_API_KEY_ID / APPLE_API_ISSUER env vars (see .github/workflows/release.yml).
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: false
   extendInfo:
     LSUIElement: false
     NSMicrophoneUsageDescription: O next-ide usa o microfone para o ditado por voz no composer.

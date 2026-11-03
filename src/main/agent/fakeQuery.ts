@@ -1,6 +1,7 @@
 import { AsyncQueue } from './AsyncQueue'
 import type { QueryFn, QueryLike, UserMessageLike } from './AgentSession'
 import type { SessionStoreApi } from './sdk'
+import { demoTurn } from './demoTurns'
 
 const textOf = (m: UserMessageLike): string =>
   m.message.content
@@ -12,10 +13,23 @@ const queuedSends = (prompt: AsyncIterable<UserMessageLike>): number => {
   return typeof size === 'number' ? size : 0
 }
 
+const resultOf = (turn: number, model: string, prompt: AsyncIterable<UserMessageLike>): unknown => ({
+  type: 'result',
+  subtype: 'success',
+  is_error: false,
+  duration_ms: 42,
+  // Cumulative within the query, like the real SDK.
+  total_cost_usd: Number((0.01 * turn).toFixed(2)),
+  usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+  modelUsage: { [model]: { contextWindow: 200000 } },
+  // Sends still waiting in the prompt queue, like the SDK's command-queue count.
+  queued_turn_count: queuedSends(prompt),
+})
+
 /** Scripted stand-in for the SDK used by E2E (NEXT_IDE_FAKE_AGENT=1). No network, no subprocess. */
 export const fakeQuery: QueryFn = ({ prompt, options }) => {
   const out = new AsyncQueue<unknown>()
-  let model = options.model ?? 'fake-model'
+  let model = options.model ?? process.env.NEXT_IDE_FAKE_MODEL ?? 'fake-model'
   let turn = 0
   const runningTasks = new Set<string>()
   const mcp = new Map<string, { status: string; error?: string; scope: string }>([
@@ -37,6 +51,19 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
       turn++
       const text = textOf(msg)
       const id = `fake_msg_${turn}`
+      if (text.includes('release')) {
+        await options.canUseTool('Bash', { command: 'git push origin main --follow-tags', description: 'Push the v1.4.0 release tag' }, {
+          signal: new AbortController().signal,
+          suggestions: [{ type: 'addRules' }],
+          title: 'Run git push origin main --follow-tags?',
+        })
+      }
+      const demo = demoTurn(text, options.cwd)
+      if (demo) {
+        for (const m of demo) out.push(m)
+        out.push(resultOf(turn, model, prompt))
+        continue
+      }
       if (text.includes('permissão')) {
         const input = { command: 'rm -rf dist' }
         const result = await options.canUseTool('Bash', input, {
@@ -100,18 +127,7 @@ export const fakeQuery: QueryFn = ({ prompt, options }) => {
           usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
         },
       })
-      out.push({
-        type: 'result',
-        subtype: 'success',
-        is_error: false,
-        duration_ms: 42,
-        // Cumulative within the query, like the real SDK.
-        total_cost_usd: Number((0.01 * turn).toFixed(2)),
-        usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
-        modelUsage: { [model]: { contextWindow: 200000 } },
-        // Sends still waiting in the prompt queue, like the SDK's command-queue count.
-        queued_turn_count: queuedSends(prompt),
-      })
+      out.push(resultOf(turn, model, prompt))
     }
     out.end()
   })()

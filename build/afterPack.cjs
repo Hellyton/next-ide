@@ -1,5 +1,5 @@
-// The app is not signed with a Developer ID (personal tool). Sign it ad hoc before electron-builder
-// wraps it into the DMG, so macOS launches it from the installed copy too.
+// Ad-hoc signature as a baseline. When a Developer ID certificate is available, electron-builder
+// re-signs over it (hardened runtime); without one, this keeps the app launchable from the DMG.
 const { execFileSync } = require('node:child_process')
 const { join } = require('node:path')
 
