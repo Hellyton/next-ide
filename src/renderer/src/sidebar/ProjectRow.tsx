@@ -7,6 +7,7 @@ import { useWorkspaces } from '../stores/workspaceStore'
 import { FileSearchResults } from './FileSearchResults'
 import { FileTree } from './FileTree'
 import { Chevron } from './Chevron'
+import { ClaudeIcon, TerminalIcon } from './icons'
 import { useGitBranch } from './useGitBranch'
 
 export function ProjectRow({ project, onRemove }: { project: Project; onRemove: () => void }) {
@@ -47,18 +48,18 @@ export function ProjectRow({ project, onRemove }: { project: Project; onRemove: 
         <button
           aria-label={`Abrir Claude em ${project.name}`}
           title="Abrir Claude"
-          className="rounded px-1 text-neutral-400 hover:bg-neutral-700 hover:text-orange-400"
+          className="flex h-6 w-6 items-center justify-center rounded opacity-80 hover:bg-neutral-700 hover:opacity-100"
           onClick={() => open('agent')}
         >
-          ▶
+          <ClaudeIcon className="h-3.5 w-4" />
         </button>
         <button
           aria-label={`Abrir terminal em ${project.name}`}
           title="Abrir terminal"
-          className="rounded px-1 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100"
+          className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100"
           onClick={() => open('terminal')}
         >
-          ⌨
+          <TerminalIcon className="h-4 w-4" />
         </button>
         <button
           aria-label={`Remover ${project.name}`}

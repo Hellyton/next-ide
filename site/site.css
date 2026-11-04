@@ -39,6 +39,7 @@ code, kbd {
   padding: 0.1em 0.4em;
 }
 kbd { border: var(--rule-hair) solid var(--color-rule); }
+kbd .kbd-icon { display: inline-block; width: 1.15em; height: 0.8em; vertical-align: -0.05em; }
 
 h1, h2, h3 { color: var(--color-ink); font-family: var(--font-display); font-style: normal; margin: 0; overflow-wrap: anywhere; min-width: 0; }
 

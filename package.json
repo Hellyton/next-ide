@@ -1,6 +1,6 @@
 {
   "name": "next-ide",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Desktop IDE to run many Claude Code sessions across projects side by side, in one window",
   "license": "MIT",

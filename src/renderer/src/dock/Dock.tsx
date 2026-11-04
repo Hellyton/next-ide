@@ -18,6 +18,7 @@ import { useDock } from './dockStore'
 import { attachLayoutPersistence, restoreLayout } from './layoutPersistence'
 import { PanelTab } from './PanelTab'
 import { panelTitle } from './panelOptions'
+import { ClaudeIcon, TerminalIcon } from '../sidebar/icons'
 
 const components = {
   agent: AgentPanel,
@@ -49,8 +50,9 @@ let detachPersistence: (() => void) | null = null
 
 function Watermark() {
   return (
-    <div className="flex h-full items-center justify-center text-sm text-neutral-600">
-      Abra um projeto na barra lateral: ▶ Claude · ⌨ Terminal
+    <div className="flex h-full items-center justify-center gap-1.5 text-sm text-neutral-600">
+      Abra um projeto na barra lateral: <ClaudeIcon className="h-3 w-3.5" /> Claude ·{' '}
+      <TerminalIcon className="h-3.5 w-3.5" /> Terminal
     </div>
   )
 }
