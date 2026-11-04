@@ -63,6 +63,8 @@ export type Settings = {
   statusline: { segments: StatusSegmentId[]; customScript: boolean }
   /** Sidebar width in px (drag handle between the sidebar and the dock). */
   sidebarWidth?: number
+  /** Sidebar hidden via the toggle button or Cmd+B. */
+  sidebarCollapsed?: boolean
   theme: 'dark' | 'light' | 'system'
   /** macOS notifications when a panel finishes, asks for permission or fails while the window is in the background. Default on. */
   notifications?: boolean

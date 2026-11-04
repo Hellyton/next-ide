@@ -21,6 +21,11 @@ describe('matchShortcut', () => {
     expect(matchShortcut(ev({ key: '\\', code: 'IntlBackslash' }))).toEqual({ kind: 'split', direction: 'right' })
   })
 
+  it('Cmd+B toggles the sidebar', () => {
+    expect(matchShortcut(ev({ key: 'b', code: 'KeyB' }))).toEqual({ kind: 'toggleSidebar' })
+    expect(matchShortcut(ev({ key: 'B', code: 'KeyB', shiftKey: true }))).toBeNull()
+  })
+
   it('Cmd+W closes', () => {
     expect(matchShortcut(ev({ key: 'w', code: 'KeyW' }))).toEqual({ kind: 'close' })
   })

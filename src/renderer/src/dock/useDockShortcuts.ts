@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useQuickOpen } from '../quickopen/quickOpenStore'
+import { toggleSidebar } from '../layout/toggleSidebar'
 import { useDock } from './dockStore'
 import { matchShortcut } from './shortcuts'
 
@@ -15,6 +16,7 @@ export function useDockShortcuts(): void {
       if (cmd.kind === 'split') dock.split(cmd.direction)
       else if (cmd.kind === 'close') dock.closeActive()
       else if (cmd.kind === 'quickOpen') useQuickOpen.getState().show()
+      else if (cmd.kind === 'toggleSidebar') toggleSidebar()
       else dock.focusGroup(cmd.index)
     }
     window.addEventListener('keydown', onKey, true)

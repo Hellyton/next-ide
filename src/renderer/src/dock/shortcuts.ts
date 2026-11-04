@@ -12,6 +12,7 @@ export type DockCommand =
   | { kind: 'close' }
   | { kind: 'focusGroup'; index: number }
   | { kind: 'quickOpen' }
+  | { kind: 'toggleSidebar' }
 
 export function matchShortcut(e: ShortcutEvent): DockCommand | null {
   if (!e.metaKey || e.ctrlKey || e.altKey) return null
@@ -21,6 +22,7 @@ export function matchShortcut(e: ShortcutEvent): DockCommand | null {
   if (e.shiftKey) return null
   if (e.key.toLowerCase() === 'w') return { kind: 'close' }
   if (e.key.toLowerCase() === 'p') return { kind: 'quickOpen' }
+  if (e.key.toLowerCase() === 'b') return { kind: 'toggleSidebar' }
   if (/^[1-9]$/.test(e.key)) return { kind: 'focusGroup', index: Number(e.key) - 1 }
   return null
 }
