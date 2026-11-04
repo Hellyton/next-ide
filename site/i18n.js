@@ -49,7 +49,7 @@
     'install.title': 'Install in a minute.',
     'install.s0': 'Have <a href="https://docs.claude.com/en/docs/claude-code">Claude Code</a> installed and logged in. Running <code>claude</code> in a terminal should work.',
     'install.s1': '<a href="https://github.com/thiagolopes-dev/next-ide/releases/latest">Download the DMG</a> for your Mac (Apple Silicon or Intel) and drag next-ide to Applications. It\'s signed and notarized, so it opens like any app.',
-    'install.s2': "Create a workspace, add a project folder and press <kbd>▶</kbd>. That's a Claude session.",
+    'install.s2': "Create a workspace, add a project folder and press <kbd><svg class="kbd-icon" viewBox="0 0 16 11" aria-label="Claude" role="img" shape-rendering="crispEdges"><g fill="#E8925F"><rect x="2" width="12" height="8"/><rect y="4" width="16" height="2"/><rect x="3" y="8" width="1" height="3"/><rect x="5" y="8" width="1" height="3"/><rect x="10" y="8" width="1" height="3"/><rect x="12" y="8" width="1" height="3"/></g><g fill="#111"><rect x="4" y="2" width="1" height="2"/><rect x="11" y="2" width="1" height="2"/></g></svg></kbd>. That's a Claude session.",
     'install.src': 'Rather build it yourself?',
     copy: 'Copy',
     copied: 'Copied',

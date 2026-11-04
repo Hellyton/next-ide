@@ -9,9 +9,12 @@ import { launch } from '../../e2e/helpers'
  * Regenerates docs/images/*.png for the README. Run with `npm run screenshots`.
  * Everything is fake: throwaway demo projects under the OS temp dir and the scripted agent
  * (NEXT_IDE_FAKE_AGENT=1 + src/main/agent/demoTurns.ts). No account, network or real data.
+ * With NEXT_IDE_SHOTS_RAW=<dir> it also keeps the full-size Retina captures there (used by the
+ * promo video) and adds the video-only shots (Cmd+P, @ mentions, /context, /mcp, branches, statusline).
  */
 const OUT = join(__dirname, '../../docs/images')
 const SIZE = { width: 1600, height: 1000 }
+const RAW = process.env.NEXT_IDE_SHOTS_RAW
 
 const git = (cwd: string, ...args: string[]): void => {
   execFileSync('git', ['-c', 'user.name=Demo', '-c', 'user.email=demo@example.com', ...args], { cwd })
@@ -110,7 +113,12 @@ async function ask(page: Page, prompt: string): Promise<void> {
   await box.press('Enter')
 }
 
-async function shot(page: Page, name: string): Promise<void> {
+async function shot(page: Page, name: string, docs = true): Promise<void> {
+  if (RAW) {
+    mkdirSync(RAW, { recursive: true })
+    await page.screenshot({ path: join(RAW, `${name}.png`) })
+  }
+  if (!docs) return
   const path = join(OUT, `${name}.png`)
   await page.screenshot({ path })
   // Retina captures are 3200px wide; 2400 keeps them sharp on GitHub at half the size.
@@ -185,4 +193,71 @@ test('slash commands', async () => {
   await page.waitForTimeout(800)
   await shot(page, 'slash-commands')
   await close()
+})
+
+/** Opens a session and lets the demo turn finish, so the chat behind each popover is full. */
+async function withSession(): Promise<{ page: Page; close: () => Promise<void> }> {
+  const { page, close } = await start()
+  await openClaude(page, 'acme-store')
+  await ask(page, 'Add discount codes to the cart total and cover them with tests')
+  await page.waitForTimeout(1500)
+  return { page, close }
+}
+
+const command = async (page: Page, cmd: string): Promise<void> => {
+  const box = page.getByRole('textbox', { name: 'Mensagem para o Claude' })
+  await box.fill(cmd)
+  await box.press('Enter')
+  await page.waitForTimeout(800)
+}
+
+test.describe('video-only shots', () => {
+  test.skip(!RAW, 'set NEXT_IDE_SHOTS_RAW to capture them')
+
+  test('quick open', async () => {
+    const { page, close } = await withSession()
+    await page.keyboard.press('Meta+p')
+    await page.waitForTimeout(400)
+    await page.keyboard.type('ts')
+    await page.waitForTimeout(800)
+    await shot(page, 'quickopen', false)
+    await close()
+  })
+
+  test('mention', async () => {
+    const { page, close } = await withSession()
+    await page.getByRole('textbox', { name: 'Mensagem para o Claude' }).pressSequentially('Refactor @src/', { delay: 30 })
+    await page.waitForTimeout(800)
+    await shot(page, 'mention', false)
+    await close()
+  })
+
+  test('context', async () => {
+    const { page, close } = await withSession()
+    await command(page, '/context')
+    await shot(page, 'context', false)
+    await close()
+  })
+
+  test('mcp', async () => {
+    const { page, close } = await withSession()
+    await command(page, '/mcp')
+    await shot(page, 'mcp', false)
+    await close()
+  })
+
+  test('branch picker', async () => {
+    const { page, close } = await withSession()
+    await page.getByTestId('status-branch').last().click()
+    await page.waitForTimeout(800)
+    await shot(page, 'branch', false)
+    await close()
+  })
+
+  test('statusline', async () => {
+    const { page, close } = await withSession()
+    await command(page, '/statusline')
+    await shot(page, 'statusline', false)
+    await close()
+  })
 })
