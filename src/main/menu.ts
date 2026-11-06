@@ -2,6 +2,8 @@ import { Menu, type MenuItemConstructorOptions } from 'electron'
 import { BLUR_STEPS, TRANSPARENCY_STEPS } from '@shared/models'
 
 export function installMenu(opts: {
+  /** Transparency and blur only exist on macOS (see createWindow / windowBlur). */
+  windowEffects: boolean
   notifications: boolean
   onToggleNotifications(enabled: boolean): void
   transparency: number
@@ -37,6 +39,17 @@ export function installMenu(opts: {
           checked: opts.notifications,
           click: (item) => opts.onToggleNotifications(item.checked),
         },
+        ...(opts.windowEffects ? windowEffectItems(opts) : []),
+        { type: 'separator' },
+        { role: 'front' },
+      ],
+    },
+  ]
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
+function windowEffectItems(opts: { transparency: number; onTransparency(p: number): void; blur: number; onBlur(p: number): void }): MenuItemConstructorOptions[] {
+  return [
         {
           label: 'Transparência',
           submenu: TRANSPARENCY_STEPS.map((percent) => ({
@@ -55,10 +68,5 @@ export function installMenu(opts: {
             click: () => opts.onBlur(percent),
           })),
         },
-        { type: 'separator' },
-        { role: 'front' },
-      ],
-    },
   ]
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }

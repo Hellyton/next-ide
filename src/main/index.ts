@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Notification, shell, type MessageB
 import { spawn } from 'node:child_process'
 import { existsSync, watch } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { basename, delimiter, join } from 'node:path'
+import { basename, delimiter, join, sep } from 'node:path'
 import type { EventChannel, EventMap } from '@shared/ipc-contract'
 import { clampBlur, clampTransparency, type Settings } from '@shared/models'
 import { projectPaths } from '@shared/workspaces'
@@ -29,6 +29,9 @@ import { spawnShell } from './pty/spawnShell'
 import { setWindowBlur } from './windowBlur'
 import { runStatusLine } from './statusline/runStatusLine'
 import { createStores } from './store/stores'
+import { toSlash } from '@shared/slash'
+
+const isMac = process.platform === 'darwin'
 
 app.setName('next-ide')
 if (process.env.NEXT_IDE_USER_DATA) app.setPath('userData', process.env.NEXT_IDE_USER_DATA)
@@ -85,6 +88,21 @@ rootsReady = stores.workspaces
   .catch((err) => console.error('[next-ide] failed to read workspaces for file access', err))
 
 type Sdk = { queryFn: QueryFn } & SessionStoreApi
+
+/**
+ * The Claude Code binary the SDK ships for this platform, as a last resort when the user has no
+ * `claude` installed. Packaged, it lives in app.asar.unpacked (a binary inside the asar can't be spawned).
+ */
+function bundledClaudePath(): string | undefined {
+  if (!app.isPackaged) return undefined
+  try {
+    const exe = require.resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/claude${process.platform === 'win32' ? '.exe' : ''}`)
+    const unpacked = exe.replace(`app.asar${sep}`, `app.asar.unpacked${sep}`)
+    return existsSync(unpacked) ? unpacked : undefined
+  } catch {
+    return undefined
+  }
+}
 const FAKE_AGENT = process.env.NEXT_IDE_FAKE_AGENT === '1'
 let sdk: Sdk | null = null
 let claudePath: string | undefined
@@ -94,7 +112,7 @@ const agentReady: Promise<void> = (async () => {
     sdk = { queryFn: fakeQuery, ...fakeSessions }
     return
   }
-  claudePath = await resolveClaudePath((await stores.settings.read()).claudePath)
+  claudePath = (await resolveClaudePath((await stores.settings.read()).claudePath)) ?? bundledClaudePath()
   sdk = await loadSdk()
 })()
 agentReady.catch((err) => console.error('[next-ide] failed to prepare Claude Agent SDK', err))
@@ -173,7 +191,7 @@ const dictationBin = app.isPackaged
   ? join(process.resourcesPath, 'bin', 'next-ide-dictation')
   : join(app.getAppPath(), 'resources', 'bin', 'next-ide-dictation')
 const dictation = new DictationManager({
-  exists: () => Boolean(FAKE_DICTATION) || existsSync(dictationBin),
+  exists: () => Boolean(FAKE_DICTATION) || (isMac && existsSync(dictationBin)),
   spawn: () =>
     FAKE_DICTATION
       ? spawn(process.execPath, [join(app.getAppPath(), 'test', 'fixtures', 'fakeDictation.mjs'), FAKE_DICTATION], {
@@ -188,7 +206,7 @@ async function pickFolders(): Promise<string[]> {
   const fake = process.env.NEXT_IDE_E2E_PICK_FOLDER
   if (fake) return fake.split(delimiter).filter(Boolean)
   const result = await dialog.showOpenDialog(mainWindow!, { properties: ['openDirectory', 'createDirectory', 'multiSelections'] })
-  return result.canceled ? [] : result.filePaths
+  return result.canceled ? [] : result.filePaths.map((f) => toSlash(f))
 }
 
 async function pickWorkspaceFile(): Promise<string | null> {
@@ -253,11 +271,12 @@ function createWindow(): BrowserWindow {
     width: 1600,
     height: 1000,
     show: false,
-    // See-through from the start: transparency is the renderer's surface alpha (text stays solid) and
-    // a window can't become transparent later.
-    transparent: true,
-    backgroundColor: '#00000000',
-    titleBarStyle: 'hiddenInset',
+    // macOS: see-through from the start (transparency is the renderer's surface alpha, text stays
+    // solid, and a window can't become transparent later) with the traffic lights inset.
+    // Windows/Linux: transparent windows lose their native frame, so keep a regular opaque window.
+    ...(isMac
+      ? { transparent: true, backgroundColor: '#00000000', titleBarStyle: 'hiddenInset' as const }
+      : { backgroundColor: '#0a0a0a', autoHideMenuBar: true }),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -302,8 +321,9 @@ void app.whenReady().then(async () => {
     const settings: unknown = await stores.settings.read()
     if (settings && typeof settings === 'object') {
       settingsNotifications = (settings as { notifications?: boolean }).notifications
-      windowTransparency = clampTransparency((settings as { windowTransparency?: unknown }).windowTransparency)
-      windowBlur = clampBlur((settings as { windowBlur?: unknown }).windowBlur)
+      // The opaque Windows/Linux window has no see-through surface or blur to adjust.
+      windowTransparency = isMac ? clampTransparency((settings as { windowTransparency?: unknown }).windowTransparency) : 0
+      windowBlur = isMac ? clampBlur((settings as { windowBlur?: unknown }).windowBlur) : 0
     }
   } catch (err) {
     console.error('[next-ide] failed to read settings at startup', err)
@@ -316,6 +336,7 @@ void app.whenReady().then(async () => {
       .catch((err) => console.error('[next-ide] failed to persist menu setting', err))
   }
   installMenu({
+    windowEffects: isMac,
     notifications: notificationsEnabled,
     onToggleNotifications: (enabled) => {
       notificationsEnabled = enabled

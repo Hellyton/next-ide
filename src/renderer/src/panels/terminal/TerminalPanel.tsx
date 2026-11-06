@@ -6,6 +6,7 @@ import { useSessions } from '../../stores/sessionsStore'
 import { attachTerminal, type TerminalEntry } from './terminalRegistry'
 import { TerminalSearch } from './TerminalSearch'
 import { withoutInitialCommand } from './terminalParams'
+import { isModOnly } from '../../platform'
 
 export function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanelParams>) {
   const ref = useRef<HTMLDivElement>(null)
@@ -45,7 +46,7 @@ export function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanel
     <div
       className="relative h-full w-full"
       onKeyDownCapture={(e) => {
-        if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.key.toLowerCase() === 'f') {
+        if (isModOnly(e) && !e.shiftKey && e.key.toLowerCase() === 'f') {
           e.preventDefault()
           e.stopPropagation()
           setSearchOpen(true)

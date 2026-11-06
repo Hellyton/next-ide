@@ -47,3 +47,17 @@ describe('matchShortcut', () => {
     expect(matchShortcut(ev({ key: 'k', code: 'KeyK' }))).toBeNull()
   })
 })
+
+describe('matchShortcut on Windows/Linux (Ctrl instead of Cmd)', () => {
+  const win = (over: Partial<ShortcutEvent>): ShortcutEvent => ev({ metaKey: false, ctrlKey: true, ...over })
+  it('uses Ctrl as the modifier and ignores Win/Super', () => {
+    expect(matchShortcut(win({ key: 'w', code: 'KeyW' }), false)).toEqual({ kind: 'close' })
+    expect(matchShortcut(win({ key: 'p', code: 'KeyP' }), false)).toEqual({ kind: 'quickOpen' })
+    expect(matchShortcut(win({ key: '2', code: 'Digit2' }), false)).toEqual({ kind: 'focusGroup', index: 1 })
+    expect(matchShortcut(ev({ key: 'w', code: 'KeyW' }), false)).toBeNull()
+  })
+  it('keeps plain Ctrl+B for the composer; Ctrl+Shift+B toggles the sidebar', () => {
+    expect(matchShortcut(win({ key: 'b', code: 'KeyB' }), false)).toBeNull()
+    expect(matchShortcut(win({ key: 'B', code: 'KeyB', shiftKey: true }), false)).toEqual({ kind: 'toggleSidebar' })
+  })
+})

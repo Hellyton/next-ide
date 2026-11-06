@@ -87,6 +87,13 @@ flowchart LR
 
 O next-ide acha o `claude` pelo `PATH` do seu shell de login e, se não achar, tenta `~/.local/bin/claude`. Se ele estiver em outro lugar, defina `"claudePath"` em `~/Library/Application Support/next-ide/settings.json`.
 
+#### Windows
+
+1. Baixe `next-ide-<versão>-setup-x64.exe` (instalador) ou `next-ide-<versão>-portable-x64.exe` (roda sem instalar). Eles são gerados pelo workflow **Windows** (`.github/workflows/windows.yml`), ou localmente com `npm run dist:win`.
+2. O `.exe` não é assinado: na primeira vez o SmartScreen mostra um aviso. Clique em **Mais informações → Executar assim mesmo**.
+3. Instale o Claude Code no Windows (o next-ide procura `claude.exe` no `PATH` e em `%USERPROFILE%\.local\bin`). Se não achar, usa o Claude que vem dentro do app. O terminal integrado abre o PowerShell.
+4. No Windows os atalhos usam `Ctrl` no lugar de `Cmd` (alternar a barra lateral é `Ctrl+Shift+B`, para `Ctrl+B` continuar mandando a tarefa para segundo plano). O ditado por voz, a transparência e o desfoque da janela são só do macOS. As configurações ficam em `%APPDATA%\next-ide\settings.json`.
+
 ### Atalhos
 
 | Atalho | Ação |
@@ -109,6 +116,7 @@ cd next-ide
 npm install
 npm run dev        # roda em desenvolvimento com hot reload
 npm run dist       # gera os DMGs arm64 e x64 em dist/
+npm run dist:win   # gera o instalador e o .exe portátil do Windows em dist/
 ```
 
 Outros scripts:
@@ -241,6 +249,13 @@ flowchart LR
 
 next-ide finds `claude` through your login shell's `PATH`, falling back to `~/.local/bin/claude`. If it lives somewhere else, set `"claudePath"` in `~/Library/Application Support/next-ide/settings.json`.
 
+#### Windows
+
+1. Download `next-ide-<version>-setup-x64.exe` (installer) or `next-ide-<version>-portable-x64.exe` (runs without installing). They are built by the **Windows** workflow (`.github/workflows/windows.yml`), or locally with `npm run dist:win`.
+2. The `.exe` is unsigned: the first launch shows a SmartScreen warning. Click **More info → Run anyway**.
+3. Install Claude Code for Windows (next-ide looks for `claude.exe` on `PATH` and in `%USERPROFILE%\.local\bin`). If none is found it uses the one bundled with the app. The built-in terminal opens PowerShell.
+4. On Windows the shortcuts use `Ctrl` instead of `Cmd` (toggling the sidebar is `Ctrl+Shift+B`, so `Ctrl+B` still sends the task to the background). Voice dictation and window transparency/blur are macOS only. Settings live in `%APPDATA%\next-ide\settings.json`.
+
 ### Keyboard shortcuts
 
 | Shortcut | Action |
@@ -263,6 +278,7 @@ cd next-ide
 npm install
 npm run dev        # run in development with hot reload
 npm run dist       # build the arm64 and x64 DMGs in dist/
+npm run dist:win   # build the Windows installer and portable .exe in dist/
 ```
 
 Other scripts:

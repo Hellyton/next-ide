@@ -1,4 +1,5 @@
 import { join, sep } from 'node:path'
+import { toSlash } from '@shared/slash'
 
 export type WatchHandle = { close(): void }
 /** `rel` is relative to `root`; null when the OS didn't say which file changed. */
@@ -65,7 +66,7 @@ export class WatcherManager {
     const entry = this.entries.get(root)
     const kind = classifyChange(rel)
     if (!entry || kind === 'ignore') return
-    if (kind === 'fs') entry.paths.add(rel === null ? root : join(root, rel))
+    if (kind === 'fs') entry.paths.add(rel === null ? root : toSlash(join(root, rel)))
     // Any working-tree change can change `git status`; git metadata changes can change the branch.
     entry.git = true
     entry.timer ??= setTimeout(() => this.flush(root), this.debounceMs)

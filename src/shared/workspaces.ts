@@ -3,7 +3,7 @@ import type { Project, Workspace } from './models'
 export type NewId = () => string
 
 export function basename(p: string): string {
-  const parts = p.split('/').filter(Boolean)
+  const parts = p.split(/[\\/]/).filter(Boolean)
   return parts[parts.length - 1] ?? p
 }
 

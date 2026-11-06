@@ -1,0 +1,48 @@
+name: Windows
+
+# Builds the Windows installer (next-ide-<version>-setup-x64.exe) and a portable .exe that runs
+# without installing. Download them from the run's "next-ide-windows" artifact (Actions tab), or,
+# for a tag v*, from the GitHub Release. Unsigned: SmartScreen asks once ("More info" > "Run anyway").
+on:
+  push:
+    tags: ['v*']
+    branches: ['claude/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build the .exe
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run dist:win -- --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: next-ide-windows
+          path: dist/*.exe
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/*.exe --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/*.exe --title "next-ide $GITHUB_REF_NAME" --notes-file .github/release-notes.md
+          fi

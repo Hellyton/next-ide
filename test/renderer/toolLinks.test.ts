@@ -30,3 +30,14 @@ describe('toolLinks', () => {
     expect(projectForPath(['/x'], '/y/a.ts')).toBeNull()
   })
 })
+
+describe('toolLinks with Windows paths', () => {
+  it('resolveToolPath keeps the drive letter and turns backslashes into slashes', () => {
+    expect(resolveToolPath('C:/proj', 'src\\a.ts')).toBe('C:/proj/src/a.ts')
+    expect(resolveToolPath('C:/proj', 'C:\\proj\\src\\..\\b.ts')).toBe('C:/proj/b.ts')
+  })
+  it('parseToolOutputLine reads drive-letter grep lines', () => {
+    expect(parseToolOutputLine('C:\\proj\\a.ts:12:const x')).toEqual({ path: 'C:\\proj\\a.ts', line: 12 })
+    expect(parseToolOutputLine('C:\\proj\\a.ts')).toEqual({ path: 'C:\\proj\\a.ts' })
+  })
+})

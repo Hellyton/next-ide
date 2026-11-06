@@ -40,7 +40,11 @@ export async function runStatusLine(
   if (!settings || !command) return null
   const payload = withClaudeDefaults(input, settings)
   return new Promise((resolve) => {
-    const child = spawn(opts.shell ?? (process.env.SHELL || '/bin/zsh'), ['-lc', command], { stdio: ['pipe', 'pipe', 'ignore'] })
+    // Windows: no login shell; let Node run the command through cmd.exe (like the CLI does there).
+    const child =
+      process.platform === 'win32' && !opts.shell
+        ? spawn(command, { shell: true, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] })
+        : spawn(opts.shell ?? (process.env.SHELL || '/bin/zsh'), ['-lc', command], { stdio: ['pipe', 'pipe', 'ignore'] })
     let out = ''
     const timer = setTimeout(() => {
       child.kill('SIGKILL')

@@ -1,8 +1,10 @@
 import { toggleSidebar } from './toggleSidebar'
+import { isMac } from '../platform'
 
-/** Sits right of the macOS traffic lights, in both states, so it never moves under the cursor. */
+/** Sits right of the macOS traffic lights (top-left elsewhere), in both states, so it never moves under the cursor. */
 export function SidebarToggle({ collapsed }: { collapsed: boolean }) {
-  const label = collapsed ? 'Mostrar barra lateral (⌘B)' : 'Ocultar barra lateral (⌘B)'
+  const keys = isMac ? '⌘B' : 'Ctrl+Shift+B'
+  const label = collapsed ? `Mostrar barra lateral (${keys})` : `Ocultar barra lateral (${keys})`
   return (
     <button
       type="button"
@@ -11,7 +13,7 @@ export function SidebarToggle({ collapsed }: { collapsed: boolean }) {
       title={label}
       data-testid="sidebar-toggle"
       onClick={toggleSidebar}
-      className="fixed top-[7px] left-[78px] z-50 flex h-[22px] w-[26px] items-center justify-center rounded text-neutral-500 [-webkit-app-region:no-drag] hover:bg-neutral-800 hover:text-neutral-200 focus-visible:ring-1 focus-visible:ring-neutral-600 focus-visible:outline-none"
+      className={`fixed top-[7px] ${isMac ? 'left-[78px]' : 'left-[8px]'} z-50 flex h-[22px] w-[26px] items-center justify-center rounded text-neutral-500 [-webkit-app-region:no-drag] hover:bg-neutral-800 hover:text-neutral-200 focus-visible:ring-1 focus-visible:ring-neutral-600 focus-visible:outline-none`}
     >
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
         <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" />

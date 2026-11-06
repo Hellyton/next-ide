@@ -19,11 +19,12 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:e2e": "electron-vite build && playwright test",
-    "postinstall": "chmod +x node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null || true; node scripts/brand-electron.mjs || true",
+    "postinstall": "node scripts/postinstall.mjs",
     "brand": "node scripts/brand-electron.mjs",
     "package": "npm run build:dictation && node scripts/fetch-koffi-x64.mjs && electron-vite build && electron-builder --dir",
     "app": "open dist/mac-arm64/next-ide.app",
     "dist": "npm run build:dictation && node scripts/fetch-koffi-x64.mjs && electron-vite build && electron-builder",
+    "dist:win": "node scripts/fetch-claude-win.mjs && electron-vite build && electron-builder --win -c.npmRebuild=false",
     "screenshots": "electron-vite build && playwright test -c scripts/screenshots/playwright.config.ts"
   },
   "dependencies": {

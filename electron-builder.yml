@@ -13,6 +13,8 @@ asarUnpack:
   # koffi (window blur) loads a native binary too.
   - '**/node_modules/koffi/**'
   - '**/node_modules/@koromix/**'
+  # Claude Code binary the SDK ships per platform: a fallback when no `claude` is installed (it is spawned).
+  - '**/node_modules/@anthropic-ai/claude-agent-sdk-*/**'
 # Swift dictation helper (built by scripts/build-dictation.mjs), shipped next to app.asar.
 extraResources:
   - from: resources/bin
@@ -39,6 +41,27 @@ mac:
     LSUIElement: false
     NSMicrophoneUsageDescription: O next-ide usa o microfone para o ditado por voz no composer.
     NSSpeechRecognitionUsageDescription: O next-ide transcreve sua fala no próprio Mac para o ditado por voz.
+# Windows: an NSIS installer plus a portable .exe (no install, just double-click), x64.
+win:
+  icon: resources/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  # Only the Windows builds of the native packages (a cross-build on Linux/macOS also has the host's).
+  files:
+    - '!**/node_modules/@anthropic-ai/claude-agent-sdk-{linux,darwin}-*/**'
+    - '!**/node_modules/@anthropic-ai/claude-agent-sdk-win32-arm64/**'
+    - '!**/node_modules/@koromix/koffi-{linux,darwin}-*/**'
+    - '!**/node_modules/node-pty/prebuilds/darwin-*/**'
+    - '!**/node_modules/node-pty/prebuilds/win32-arm64/**'
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: next-ide-${version}-setup-${arch}.exe
+portable:
+  artifactName: next-ide-${version}-portable-${arch}.exe
 dmg:
   title: next-ide
   artifactName: next-ide-${version}-${arch}.dmg

@@ -1,5 +1,6 @@
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { extname, join, relative, sep } from 'node:path'
+import { toSlash } from '@shared/slash'
 import ignore, { type Ignore } from 'ignore'
 import { MAX_VIEW_BYTES, type FileContent, type FsEntry } from '@shared/files'
 
@@ -44,7 +45,7 @@ export async function listDir(dir: string, root: string, ig: Ignore): Promise<Fs
     const isDir = d.isDirectory() || (d.isSymbolicLink() && (await isDirectory(path)))
     const rel = toPosix(relative(root, path))
     if (rel && ig.ignores(isDir ? `${rel}/` : rel)) continue
-    out.push({ name: d.name, path, kind: isDir ? 'dir' : 'file' })
+    out.push({ name: d.name, path: toSlash(path), kind: isDir ? 'dir' : 'file' })
   }
   return out.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'dir' ? -1 : 1))
 }

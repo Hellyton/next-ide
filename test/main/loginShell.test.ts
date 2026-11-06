@@ -30,3 +30,13 @@ describe('loginShellPath', () => {
     expect(await loginShellPath('/nope/shell')).toBeNull()
   })
 })
+
+describe('Windows', () => {
+  it('mergePath joins with the given delimiter', () => {
+    expect(mergePath('C:\\b;C:\\a', 'C:\\a', ';')).toBe('C:\\a;C:\\b')
+  })
+  it('resolveClaudePath looks for claude.exe in ~/.local/bin', async () => {
+    const deps = { exists: (p: string) => p.endsWith('claude.exe'), home: 'C:/Users/me', which: async () => null, platform: 'win32' as const }
+    expect(await resolveClaudePath(undefined, deps)).toMatch(/claude\.exe$/)
+  })
+})

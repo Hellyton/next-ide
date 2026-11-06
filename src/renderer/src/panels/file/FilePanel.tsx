@@ -8,6 +8,7 @@ import { highlight } from '../../files/highlighter'
 import { langForPath } from '../../files/languages'
 import { relPath } from '../../files/tree'
 import { useFiles } from '../../stores/filesStore'
+import { modLabel } from '../../platform'
 
 /** 1-based line numbers covered by the current text selection inside the code view, if any. */
 function selectedLineRange(root: HTMLElement | null): LineRange | null {
@@ -176,7 +177,7 @@ export function FilePanel({ params }: IDockviewPanelProps<FilePanelParams>) {
                 disabled={!dirty || saving}
                 onClick={() => void save()}
               >
-                {saving ? 'Salvando…' : 'Salvar ⌘S'}
+                {saving ? 'Salvando…' : `Salvar ${modLabel('S')}`}
               </button>
               <button className="rounded bg-neutral-800 px-2 py-0.5 text-neutral-200 hover:bg-neutral-700" onClick={() => setDraft(null)}>
                 {dirty ? 'Descartar' : 'Fechar edição'}

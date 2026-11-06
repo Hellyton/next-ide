@@ -1,4 +1,5 @@
 import { basename, dirname, isAbsolute, resolve } from 'node:path'
+import { toSlash } from '@shared/slash'
 
 /** Removes trailing commas outside strings, tracking escapes and string boundaries. */
 function removeTrailingCommas(src: string): string {
@@ -88,6 +89,6 @@ export function parseCodeWorkspace(json: string, filePath: string): { name: stri
   const paths = (data.folders ?? [])
     .map((f) => f.path)
     .filter((p): p is string => typeof p === 'string' && p.length > 0)
-    .map((p) => (isAbsolute(p) ? p : resolve(base, p)))
+    .map((p) => toSlash(isAbsolute(p) ? p : resolve(base, p)))
   return { name: basename(filePath).replace(/\.code-workspace$/, ''), paths }
 }
