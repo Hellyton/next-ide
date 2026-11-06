@@ -10,6 +10,11 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  /* The IDE never scrolls as a page: panes scroll themselves. Without this, a background panel that
+     dockview keeps rendered at the window's previous size (renderer 'always') overflows the page on a
+     resize/maximize, page scrollbars appear and steal width, dockview re-lays out, they vanish, and the
+     layout shakes in a loop (Windows scrollbars take space; macOS overlay ones mostly hid it). */
+  overflow: hidden;
 }
 
 ::-webkit-scrollbar {

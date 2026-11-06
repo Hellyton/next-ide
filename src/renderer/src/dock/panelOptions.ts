@@ -1,12 +1,13 @@
 import type { AddPanelOptions } from 'dockview-react'
 import type { PanelParams, PanelType } from '@shared/models'
 import { basename } from '@shared/workspaces'
+import { isWindows } from '../platform'
 
 export function panelTitle(p: PanelParams): string {
   if (p.type === 'file') return basename(p.filePath)
   if (p.type === 'git') return `${basename(p.projectPath)} · git`
   if (p.type === 'agent') return `${p.title ?? basename(p.projectPath)} · claude`
-  return `${basename(p.projectPath)} · zsh`
+  return `${basename(p.projectPath)} · ${isWindows ? 'powershell' : 'zsh'}`
 }
 
 export function newPanelId(type: PanelType, uuid: () => string = () => crypto.randomUUID()): string {

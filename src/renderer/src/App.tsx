@@ -43,7 +43,7 @@ export function App() {
         <Sidebar />
       </aside>
       {collapsed ? <div /> : <SidebarResizer width={width} onResize={setWidth} onCommit={commit} />}
-      <main className="flex min-w-0 flex-col">
+      <main className="flex min-w-0 flex-col overflow-hidden">
         {/* With the sidebar gone the traffic lights and the toggle sit over the dock: give them a title strip. */}
         {collapsed && <div className="h-9 shrink-0 [-webkit-app-region:drag]" data-testid="collapsed-titlebar" />}
         <div className="min-h-0 flex-1">
