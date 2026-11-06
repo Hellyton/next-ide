@@ -56,6 +56,8 @@ win:
     - '!**/node_modules/@koromix/koffi-{linux,darwin}-*/**'
     - '!**/node_modules/node-pty/prebuilds/darwin-*/**'
     - '!**/node_modules/node-pty/prebuilds/win32-arm64/**'
+    # node-pty's Windows binaries are its prebuilds; a host-compiled build/ (e.g. a Linux one) must not ship.
+    - '!**/node_modules/node-pty/build/**'
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
